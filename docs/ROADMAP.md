@@ -22,7 +22,7 @@
 | # | Phase | Status |
 |---|---|---|
 | 0 | Product & System Foundation | 🔄 Partially pre-existing (PROJECT_CONTEXT v1.1) |
-| 1 | Repository & Development Infrastructure | ✅ Done — backend items delivered in Phase 2 (verified); GitHub push pending owner remote |
+| 1 | Repository & Development Infrastructure | ✅ Done — GitHub connected (jianb14/jeyvro), pushed & verified; only backend-linter item deferred to tooling pass |
 | 2 | Backend Foundation & Database | 🔄 Foundation verified (Django+DRF+PG live, migrations, tests) — media/filtering/sorting land with their feature phases |
 | 3 | Authentication, Users & Access Control | ⬜ Not started |
 | 4 | Seller & Store Foundation | ⬜ Not started |
@@ -303,8 +303,8 @@ Establish a clean, reproducible development environment.
 -   [x] Exclude `__pycache__`
 -   [x] Exclude local database files
 -   [x] Create initial commit
--   [ ] Connect repository to GitHub
--   [ ] Push verified initial state
+-   [x] Connect repository to GitHub
+-   [x] Push verified initial state
 
 ### 1.2 Frontend
 
@@ -340,7 +340,7 @@ Establish a clean, reproducible development environment.
 -   [x] Document local setup
 -   [x] Document environment variables
 
-> **Note:** Phase 1 is functionally complete. The backend items (1.3, pytest, docs, backend gate items) were delivered during **Phase 2** and are checked here on verified evidence (Django check, migrations on real PostgreSQL, live health smoke, pytest). Remaining unchecked: "Configure backend linting/formatting" (needs a C3-approved tool like ruff — deferred to a tooling pass) and the two GitHub items (awaiting a remote from the owner).
+> **Note:** Phase 1 is complete. The backend items (1.3, pytest, docs, backend gate items) were delivered during **Phase 2** and are checked here on verified evidence (Django check, migrations on real PostgreSQL, live health smoke, pytest). "Connect repository to GitHub" and "Push verified initial state" completed 2026-09-24 (origin: github.com/jianb14/jeyvro, local/remote hashes verified identical, 0 secrets pushed). Remaining unchecked: "Configure backend linting/formatting" only (needs a C3-approved tool like ruff — deferred to a tooling pass).
 
 ### Gate
 
