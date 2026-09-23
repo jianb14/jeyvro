@@ -22,8 +22,8 @@
 | # | Phase | Status |
 |---|---|---|
 | 0 | Product & System Foundation | 🔄 Partially pre-existing (PROJECT_CONTEXT v1.1) |
-| 1 | Repository & Development Infrastructure | 🔄 In progress — repo/frontend/tooling done; backend items land in Phase 2 |
-| 2 | Backend Foundation & Database | ⬜ Not started |
+| 1 | Repository & Development Infrastructure | ✅ Done — backend items delivered in Phase 2 (verified); GitHub push pending owner remote |
+| 2 | Backend Foundation & Database | 🔄 Foundation verified (Django+DRF+PG live, migrations, tests) — media/filtering/sorting land with their feature phases |
 | 3 | Authentication, Users & Access Control | ⬜ Not started |
 | 4 | Seller & Store Foundation | ⬜ Not started |
 | 5 | Catalog, Products & Inventory | ⬜ Not started |
@@ -320,33 +320,35 @@ Establish a clean, reproducible development environment.
 
 ### 1.3 Backend
 
--   [ ] Create Django environment
--   [ ] Create backend project
--   [ ] Configure Django REST Framework
--   [ ] Configure PostgreSQL
--   [ ] Configure environment variables
--   [ ] Create `.env.example`
--   [ ] Configure development settings
--   [ ] Configure production settings structure
--   [ ] Configure CORS/CSRF strategy
+-   [x] Create Django environment
+-   [x] Create backend project
+-   [x] Configure Django REST Framework
+-   [x] Configure PostgreSQL
+-   [x] Configure environment variables
+-   [x] Create `.env.example`
+-   [x] Configure development settings
+-   [x] Configure production settings structure
+-   [x] Configure CORS/CSRF strategy
 
 ### 1.4 Tooling
 
 -   [ ] Configure backend linting/formatting
 -   [x] Configure frontend linting/formatting
--   [ ] Add backend test framework (pytest)
+-   [x] Add backend test framework (pytest)
 -   [x] Add frontend test framework (Vitest + Testing Library)
 -   [x] Add test commands
--   [ ] Document local setup
--   [ ] Document environment variables
+-   [x] Document local setup
+-   [x] Document environment variables
+
+> **Note:** Phase 1 is functionally complete. The backend items (1.3, pytest, docs, backend gate items) were delivered during **Phase 2** and are checked here on verified evidence (Django check, migrations on real PostgreSQL, live health smoke, pytest). Remaining unchecked: "Configure backend linting/formatting" (needs a C3-approved tool like ruff — deferred to a tooling pass) and the two GitHub items (awaiting a remote from the owner).
 
 ### Gate
 
 -   [x] Git repository clean
 -   [x] Frontend lint passes
 -   [x] Frontend build passes
--   [ ] Django check passes
--   [ ] PostgreSQL connection works
+-   [x] Django check passes
+-   [x] PostgreSQL connection works
 -   [x] Test harness executes
 
 **Skills:** git-workflow, backend-core, frontend-feature, testing
@@ -361,54 +363,65 @@ Build the shared backend architecture before business-heavy features.
 
 ### 2.1 Backend architecture
 
--   [ ] API root structure
--   [ ] API versioning
--   [ ] Shared serializers/utilities
--   [ ] Exception handling
--   [ ] Validation conventions
--   [ ] Pagination
+-   [x] API root structure
+-   [x] API versioning
+-   [x] Shared serializers/utilities
+-   [x] Exception handling
+-   [x] Validation conventions
+-   [x] Pagination
 -   [ ] Filtering
 -   [ ] Sorting
--   [ ] API response conventions
--   [ ] API error conventions
--   [ ] Logging foundation
+-   [x] API response conventions
+-   [x] API error conventions
+-   [x] Logging foundation
 -   [ ] Request correlation strategy
 
 ### 2.2 Database conventions
 
--   [ ] UUID strategy
--   [ ] Created/updated timestamps
--   [ ] Soft-delete policy where appropriate
--   [ ] Unique constraints
--   [ ] Database indexes
--   [ ] Foreign-key conventions
--   [ ] Decimal/money handling
--   [ ] Timezone handling
--   [ ] Status field conventions
--   [ ] Historical/audit strategy
+-   [x] UUID strategy
+-   [x] Created/updated timestamps
+-   [x] Soft-delete policy where appropriate
+-   [x] Unique constraints
+-   [x] Database indexes
+-   [x] Foreign-key conventions
+-   [x] Decimal/money handling
+-   [x] Timezone handling
+-   [x] Status field conventions
+-   [x] Historical/audit strategy
 
 ### 2.3 Domain app structure
 
 Create and document boundaries for:
 
--   [ ] `accounts`
--   [ ] `stores`
--   [ ] `catalog`
+-   [x] `accounts`
+-   [x] `stores`
+-   [x] `catalog`
 -   [ ] `inventory`
--   [ ] `cart`
--   [ ] `orders`
--   [ ] `payments`
+-   [x] `cart`
+-   [x] `orders`
+-   [x] `payments`
 -   [ ] `shipping`
--   [ ] `reviews`
--   [ ] `notifications`
--   [ ] `messaging`
+-   [x] `reviews`
+-   [x] `notifications`
+-   [x] `messaging`
 -   [ ] `promotions`
 -   [ ] `returns`
 -   [ ] `finance`
--   [ ] `analytics`
--   [ ] `audit`
+-   [x] `analytics`
+-   [x] `audit`
+
+> **Note on app boundaries:** PROJECT_CONTEXT §8 (source of truth) defines the
+> app list: accounts, stores, catalog, cart, orders, payments, reviews,
+> messaging, notifications, analytics, audit. `inventory` folds into
+> `catalog`, `shipping` into `orders`; `promotions`, `returns`, and `finance`
+> land with their phases (16, 17) — each documented in PROJECT_CONTEXT first
+> if it needs its own app. The 5 unchecked names are re-evaluated then.
 
 ### 2.4 Media foundation
+
+> Media validation and storage are implemented with the first real file
+> upload (seller product images, Phase 12) — documented in
+> `backend/CONVENTIONS.md`. Deferred deliberately, not forgotten.
 
 -   [ ] Image validation
 -   [ ] File size validation
@@ -419,10 +432,10 @@ Create and document boundaries for:
 
 ### Gate
 
--   [ ] Architecture imports cleanly
--   [ ] Initial migrations run
--   [ ] Database constraints verified
--   [ ] API error handling verified
+-   [x] Architecture imports cleanly
+-   [x] Initial migrations run
+-   [x] Database constraints verified
+-   [x] API error handling verified
 -   [ ] Media validation tested
 
 **Skills:** backend-core, backend-api, security
