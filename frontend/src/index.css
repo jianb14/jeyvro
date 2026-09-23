@@ -1,0 +1,121 @@
+﻿@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand - Moss: calm, desaturated green */
+  --color-moss-50: #f3f7f0;
+  --color-moss-100: #e4ecdc;
+  --color-moss-200: #cad9bf;
+  --color-moss-300: #a7c096;
+  --color-moss-400: #84a471;
+  --color-moss-500: #678a53;
+  --color-moss-600: #4f6d3f;
+  --color-moss-700: #405734;
+  --color-moss-800: #35462c;
+  --color-moss-900: #2d3b27;
+  --color-moss-950: #151f10;
+
+  /* Warm neutral - Sand */
+  --color-sand-50: #faf9f6;
+  --color-sand-100: #f2f0ea;
+  --color-sand-200: #e5e1d6;
+  --color-sand-300: #d3ccbb;
+  --color-sand-400: #b7ad97;
+  --color-sand-500: #a1937a;
+  --color-sand-600: #89795f;
+  --color-sand-700: #6e614c;
+  --color-sand-800: #574e3f;
+  --color-sand-900: #474035;
+  --color-sand-950: #2a261f;
+
+  /* Dark surfaces - Night */
+  --color-night-700: #2e3626;
+  --color-night-800: #232a1b;
+  --color-night-900: #1a2015;
+  --color-night-950: #12160e;
+
+  /* Semantic - success */
+  --color-success-50: #f0f7f1;
+  --color-success-100: #dcecdc;
+  --color-success-200: #bcdabb;
+  --color-success-300: #92c194;
+  --color-success-400: #67a46c;
+  --color-success-500: #4a8a53;
+  --color-success-600: #3a6f43;
+  --color-success-700: #305937;
+  --color-success-800: #29472f;
+  --color-success-900: #233b29;
+  --color-success-950: #102116;
+
+  /* Semantic - warning (muted honey) */
+  --color-warning-50: #fbf7ef;
+  --color-warning-100: #f5ebd6;
+  --color-warning-200: #ead4ab;
+  --color-warning-300: #ddb97c;
+  --color-warning-400: #d0a054;
+  --color-warning-500: #c28c40;
+  --color-warning-600: #a67332;
+  --color-warning-700: #855a2b;
+  --color-warning-800: #6d492a;
+  --color-warning-900: #5c3d26;
+  --color-warning-950: #351f13;
+
+  /* Semantic - danger (muted terracotta) */
+  --color-danger-50: #fbf3f2;
+  --color-danger-100: #f6e3e1;
+  --color-danger-200: #eecfcb;
+  --color-danger-300: #e0aca6;
+  --color-danger-400: #d08880;
+  --color-danger-500: #c26b62;
+  --color-danger-600: #ad544b;
+  --color-danger-700: #904440;
+  --color-danger-800: #773c3a;
+  --color-danger-900: #653635;
+  --color-danger-950: #381918;
+
+  /* Semantic - info (muted slate blue) */
+  --color-info-50: #f2f7fa;
+  --color-info-100: #e3edf4;
+  --color-info-200: #c8ddec;
+  --color-info-300: #a2c5de;
+  --color-info-400: #7aa9cd;
+  --color-info-500: #5c8fb9;
+  --color-info-600: #4b759f;
+  --color-info-700: #405f83;
+  --color-info-800: #3a506d;
+  --color-info-900: #34455c;
+  --color-info-950: #1e2a3a;
+
+  /* Soft, layered neutral shadows */
+  --shadow-soft: 0 1px 2px rgb(45 59 39 / 0.05), 0 4px 16px rgb(45 59 39 / 0.06);
+  --shadow-lift: 0 2px 4px rgb(45 59 39 / 0.05), 0 8px 20px rgb(45 59 39 / 0.08);
+  --shadow-pop: 0 2px 4px rgb(45 59 39 / 0.06), 0 10px 24px rgb(45 59 39 / 0.10);
+  --shadow-dropdown: 0 1px 2px rgb(45 59 39 / 0.05), 0 6px 14px rgb(45 59 39 / 0.08);
+
+  --animate-fade-in: fade-in 0.35s ease both;
+  --animate-slide-up: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-scale-in: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
+  --animate-slide-in-right: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-in-left: slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slide-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes scale-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+  @keyframes indeterminate { 0% { transform: translateX(-120%); } 60% { transform: translateX(60%); } 100% { transform: translateX(320%); } }
+  @keyframes slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+  @keyframes slide-in-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-sand-50 font-sans text-sand-900 antialiased dark:bg-night-950 dark:text-sand-100;
+  }
+  ::selection { background: var(--color-moss-200); color: var(--color-moss-950); }
+  .dark ::selection { background: var(--color-moss-700); color: #ffffff; }
+}
