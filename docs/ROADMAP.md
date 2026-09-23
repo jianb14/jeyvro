@@ -22,7 +22,7 @@
 | # | Phase | Status |
 |---|---|---|
 | 0 | Product & System Foundation | 🔄 Partially pre-existing (PROJECT_CONTEXT v1.1) |
-| 1 | Repository & Development Infrastructure | ⬜ Not started |
+| 1 | Repository & Development Infrastructure | 🔄 In progress — repo/frontend/tooling done; backend items land in Phase 2 |
 | 2 | Backend Foundation & Database | ⬜ Not started |
 | 3 | Authentication, Users & Access Control | ⬜ Not started |
 | 4 | Seller & Store Foundation | ⬜ Not started |
@@ -293,30 +293,30 @@ Establish a clean, reproducible development environment.
 
 ### 1.1 Repository
 
--   [ ] Initialize Git inside the `Jeyvro/` project only
--   [ ] Configure Git identity and branch strategy
--   [ ] Add `.gitignore`
--   [ ] Exclude `node_modules`
--   [ ] Exclude build output
--   [ ] Exclude `.env`
--   [ ] Exclude Python virtual environments
--   [ ] Exclude `__pycache__`
--   [ ] Exclude local database files
--   [ ] Create initial commit
+-   [x] Initialize Git inside the `Jeyvro/` project only
+-   [x] Configure Git identity and branch strategy
+-   [x] Add `.gitignore`
+-   [x] Exclude `node_modules`
+-   [x] Exclude build output
+-   [x] Exclude `.env`
+-   [x] Exclude Python virtual environments
+-   [x] Exclude `__pycache__`
+-   [x] Exclude local database files
+-   [x] Create initial commit
 -   [ ] Connect repository to GitHub
 -   [ ] Push verified initial state
 
 ### 1.2 Frontend
 
--   [ ] Verify React + Vite
--   [ ] Verify Tailwind CSS
--   [ ] Verify routing
--   [ ] Verify linting
--   [ ] Verify production build
--   [ ] Establish frontend folder conventions
--   [ ] Establish component conventions
--   [ ] Establish feature-module conventions
--   [ ] Establish API/data-access conventions
+-   [x] Verify React + Vite
+-   [x] Verify Tailwind CSS
+-   [x] Verify routing
+-   [x] Verify linting
+-   [x] Verify production build
+-   [x] Establish frontend folder conventions
+-   [x] Establish component conventions
+-   [x] Establish feature-module conventions
+-   [x] Establish API/data-access conventions
 
 ### 1.3 Backend
 
@@ -333,21 +333,21 @@ Establish a clean, reproducible development environment.
 ### 1.4 Tooling
 
 -   [ ] Configure backend linting/formatting
--   [ ] Configure frontend linting/formatting
+-   [x] Configure frontend linting/formatting
 -   [ ] Add backend test framework (pytest)
--   [ ] Add frontend test framework (Vitest + Testing Library)
--   [ ] Add test commands
+-   [x] Add frontend test framework (Vitest + Testing Library)
+-   [x] Add test commands
 -   [ ] Document local setup
 -   [ ] Document environment variables
 
 ### Gate
 
--   [ ] Git repository clean
--   [ ] Frontend lint passes
--   [ ] Frontend build passes
+-   [x] Git repository clean
+-   [x] Frontend lint passes
+-   [x] Frontend build passes
 -   [ ] Django check passes
 -   [ ] PostgreSQL connection works
--   [ ] Test harness executes
+-   [x] Test harness executes
 
 **Skills:** git-workflow, backend-core, frontend-feature, testing
 
