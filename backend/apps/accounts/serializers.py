@@ -1,0 +1,85 @@
+"""Account serializers — declared fields only (backend-api rule 2).
+
+All validation is server-side (§10.1); passwords never round-trip.
+"""
+from django.contrib.auth.password_validation import validate_password
+from rest_framework import serializers
+
+from .models import Address, NotificationPreference, User
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(
+        write_only=True, style={'input_type': 'password'}
+    )
+
+    class Meta:
+        model = User
+        fields = ['email', 'password', 'first_name', 'last_name', 'phone']
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value
+
+    def create(self, validated_data):
+        return User.objects.create_user(**validated_data)
+
+
+class UserSerializer(serializers.ModelSerializer):
+    """Read/update own profile. Email is the identity — never edited here."""
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'phone', 'avatar_url',
+            'is_seller', 'email_verified', 'account_status', 'date_joined',
+        ]
+        read_only_fields = [
+            'id', 'email', 'avatar_url', 'is_seller', 'email_verified',
+            'account_status', 'date_joined',
+        ]
+
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+
+class AddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Address
+        fields = [
+            'id', 'label', 'full_name', 'phone', 'line1', 'line2', 'city',
+            'province', 'postal_code', 'is_default', 'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationPreference
+        fields = ['order_updates_email', 'promotions_email', 'messaging_email']

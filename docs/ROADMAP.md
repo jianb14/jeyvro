@@ -24,7 +24,7 @@
 | 0 | Product & System Foundation | 🔄 Partially pre-existing (PROJECT_CONTEXT v1.1) |
 | 1 | Repository & Development Infrastructure | ✅ Done — GitHub connected (jianb14/jeyvro), pushed & verified; only backend-linter item deferred to tooling pass |
 | 2 | Backend Foundation & Database | 🔄 Foundation verified (Django+DRF+PG live, migrations, tests) — media/filtering/sorting land with their feature phases |
-| 3 | Authentication, Users & Access Control | ⬜ Not started |
+| 3 | Authentication, Users & Access Control | 🔄 Core verified (11/11 backend tests + live E2E) — session expiry settings & staff-endpoint permissions land with later phases |
 | 4 | Seller & Store Foundation | ⬜ Not started |
 | 5 | Catalog, Products & Inventory | ⬜ Not started |
 | 6 | Customer Shopping & Discovery | ⬜ Not started |
@@ -451,54 +451,62 @@ domain.
 
 ### 3.1 User system
 
--   [ ] Custom User model
--   [ ] Customer profile
--   [ ] Seller profile foundation
--   [ ] Staff/admin role foundation
--   [ ] Avatar support
--   [ ] Account status
--   [ ] Email address handling
--   [ ] Phone number handling
+-   [x] Custom User model
+-   [x] Customer profile
+-   [x] Seller profile foundation
+-   [x] Staff/admin role foundation
+-   [x] Avatar support
+-   [x] Account status
+-   [x] Email address handling
+-   [x] Phone number handling
 
 ### 3.2 Authentication
 
--   [ ] Registration
--   [ ] Login
--   [ ] Logout
--   [ ] Session/token strategy
+-   [x] Registration
+-   [x] Login
+-   [x] Logout
+-   [x] Session/token strategy
 -   [ ] Refresh/expiration strategy
--   [ ] Email verification
--   [ ] Password reset
--   [ ] Change password
--   [ ] Login throttling
--   [ ] Failed-login handling
+-   [x] Email verification
+-   [x] Password reset
+-   [x] Change password
+-   [x] Login throttling
+-   [x] Failed-login handling
 
 ### 3.3 Authorization
 
--   [ ] Role-based access control
--   [ ] Object-level permissions
--   [ ] Ownership checks
--   [ ] Protected frontend routes
--   [ ] Protected API endpoints
+-   [x] Role-based access control
+-   [x] Object-level permissions
+-   [x] Ownership checks
+-   [x] Protected frontend routes
+-   [x] Protected API endpoints
 -   [ ] Staff permissions
 -   [ ] Admin permissions
 
 ### 3.4 Customer account
 
--   [ ] Profile page
--   [ ] Account settings
--   [ ] Security settings
--   [ ] Address book foundation
--   [ ] Notification preferences
+-   [x] Profile page
+-   [x] Account settings
+-   [x] Security settings
+-   [x] Address book foundation
+-   [x] Notification preferences
 
 ### Gate
 
--   [ ] Register → login → authenticated session
--   [ ] Logout works
--   [ ] Password reset works
--   [ ] Unauthorized API access blocked
--   [ ] Ownership checks tested
--   [ ] Auth E2E smoke test passes
+-   [x] Register → login → authenticated session
+-   [x] Logout works
+-   [x] Password reset works
+-   [x] Unauthorized API access blocked
+-   [x] Ownership checks tested
+-   [x] Auth E2E smoke test passes
+
+> **Note:** session-based auth chosen (same-origin SPA via the Vite proxy;
+> JWT would be a new dependency — revisit under C3 when a mobile/PWA client
+> arrives, §17). Unchecked items: "Refresh/expiration strategy" (explicit
+> `SESSION_COOKIE_AGE` settings — next session), and Staff/Admin endpoint
+> permissions (the `IsStaff`/`InStaffGroup` classes exist and are tested as
+> classes, but they bind when the first staff endpoints arrive — Phase 13).
+> Auth decisions are recorded in `backend/CONVENTIONS.md`.
 
 **Skills:** security, backend-api, frontend-feature, backend-feature
 

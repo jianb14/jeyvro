@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useTheme } from "../../lib/useTheme";
+import { useAuth } from "../../features/auth/AuthContext";
 import { LogoMark, MenuIcon, XIcon, SunIcon, MoonIcon, GithubIcon } from "../ui/Icons";
 import { Button } from "../ui/Button";
 import { Avatar } from "../ui/Avatar";
@@ -35,6 +37,13 @@ function ThemeToggle() {
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, loading, logout } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await logout();
+    navigate("/");
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-sand-200/80 bg-sand-50/85 backdrop-blur-md dark:border-night-800 dark:bg-night-950/85">
@@ -78,20 +87,31 @@ export function Navbar() {
             ]}
           />
           <ThemeToggle />
-          <DropdownMenu
-            align="end"
-            trigger={
-              <button aria-label="Account menu" className="rounded-full outline-offset-2 outline-moss-600/60 focus-visible:outline-2">
-                <Avatar name="Jeyvro Admin" size="sm" status="online" />
-              </button>
-            }
-            items={[
-              { key: "profile", label: "Profile", icon: UserIcon, shortcut: "⇧P", onSelect: () => {} },
-              { key: "settings", label: "Settings", icon: SettingsIcon, shortcut: "⌘,", onSelect: () => {} },
-              { key: "sep", divider: true },
-              { key: "logout", label: "Log out", icon: LogOutIcon, tone: "danger", onSelect: () => {} },
-            ]}
-          />
+          {loading ? null : user ? (
+            <DropdownMenu
+              align="end"
+              trigger={
+                <button aria-label="Account menu" className="rounded-full outline-offset-2 outline-moss-600/60 focus-visible:outline-2">
+                  <Avatar name={user.first_name || user.email} size="sm" status="online" />
+                </button>
+              }
+              items={[
+                { key: "profile", label: "My account", icon: UserIcon, onSelect: () => navigate("/account") },
+                { key: "settings", label: "Settings", icon: SettingsIcon, onSelect: () => navigate("/account") },
+                { key: "sep", divider: true },
+                { key: "logout", label: "Log out", icon: LogOutIcon, tone: "danger", onSelect: handleLogout },
+              ]}
+            />
+          ) : (
+            <>
+              <Link to="/login">
+                <Button variant="outline" size="sm">Log in</Button>
+              </Link>
+              <Link to="/register">
+                <Button size="sm">Sign up</Button>
+              </Link>
+            </>
+          )}
         </div>
 
         <button

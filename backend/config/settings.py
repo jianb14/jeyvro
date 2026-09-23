@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'corsheaders',
     # JEYVRO apps
     'apps.common',
+    'apps.accounts',
     'apps.core',
 ]
 
@@ -79,6 +80,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+
+# Custom user model — email-as-username (Phase 3, PROJECT_CONTEXT §4).
+AUTH_USER_MODEL = 'accounts.User'
+
+# Email — console backend in development (emails print to the runserver log;
+# no mail server needed). Production SMTP config lands with deployment.
+EMAIL_BACKEND = env(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.console.EmailBackend',
+)
+DEFAULT_FROM_EMAIL = 'JEYVRO <no-reply@jeyvro.local>'
 
 # Database — PostgreSQL is the primary database (PROJECT_CONTEXT C5/C6).
 # Money/quantities will use DecimalField (backend-core rule 3).
@@ -154,6 +166,23 @@ CORS_ALLOWED_ORIGINS = [
     ).split(',')
     if origin.strip()
 ]
+
+# CSRF — the SPA posts with X-CSRFToken from the csrf cookie; the Vite dev
+# origin is trusted so session-authenticated cross-origin requests validate.
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in env(
+        'CSRF_TRUSTED_ORIGINS',
+        'http://localhost:5173,http://127.0.0.1:5173',
+    ).split(',')
+    if origin.strip()
+]
+
+# Session cookies — SameSite=Lax keeps session-auth safe for the SPA on the
+# same site; Secure is enforced in production settings (Phase 23).
+
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 # Logging foundation — console logs in dev; production config lands with
 # the deployment phase. Request correlation (X-Request-ID) is deferred.
