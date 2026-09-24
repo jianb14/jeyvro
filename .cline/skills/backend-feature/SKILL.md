@@ -15,7 +15,7 @@ Ship consistent domains fast — the same shape of model, service, API, permissi
 
 ## Current honest state
 
-Backend is live: `accounts` (full auth stack, Phase 3), `stores` (seller/store foundation with the early `audit` app, Phase 4), and `catalog` (products/variants/inventory with validated uploads, Phase 5) — each with services, serializers, permissions, and tests. The frontend mock→API swap is done for auth/stores/catalog. Next domain in the build order: `cart` (Phase 7; customer browsing UI is Phase 6).
+Backend is live: `accounts` (full auth stack, Phase 3), `stores` (seller/store foundation with the early `audit` app, Phase 4), `catalog` (products/variants/inventory with validated uploads, Phase 5), and `cart` (server cart + private wishlist with guest-session carts and the login merge, Phase 7) — each with services, serializers, permissions, and tests. The frontend mock→API swap is done for auth/stores/catalog, and cart/wishlist are wired to the live API from day one. Next domain in the build order: `orders` (Phase 8) — it consumes the cart service and the catalog stock services.
 
 ## When to use
 

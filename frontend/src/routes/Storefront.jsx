@@ -1,21 +1,29 @@
 /**
- * Public storefront page (Phase 4.2) — /store/:slug. API truth only:
- * 404 → EmptyState; active stores only (server enforces it).
+ * Public storefront (Phase 4.2; store products land in Phase 6.4) — /store/:slug.
+ * API truth only: 404 → EmptyState; active stores only (server enforces it).
+ * The products shelf is server-filtered by store (marketplace-catalog
+ * rule 3) — never client-filtered.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Navbar } from "../components/layout/Navbar";
 import { Alert } from "../components/ui/Alert";
 import { Badge } from "../components/ui/Badge";
+import { Breadcrumb } from "../components/ui/Breadcrumb";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { StoreIcon } from "../components/ui/Icons";
+import { ProductGrid, ProductGridSkeleton } from "../components/ui/ProductCard";
 import { Skeleton } from "../components/ui/Skeleton";
+import { useQuickAdd } from "../features/cart/useQuickAdd";
+import { getProducts } from "../data/products";
 import { fetchPublicStore } from "../data/stores";
 
 export function Storefront() {
   const { slug } = useParams();
+  const addToCart = useQuickAdd();
   const [state, setState] = useState({ slug, status: "loading", store: null, error: null });
+  const [products, setProducts] = useState({ slug: null, status: "loading", items: [], error: null });
 
   useEffect(() => {
     let cancelled = false;
@@ -36,15 +44,44 @@ export function Storefront() {
     };
   }, [slug]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getProducts({ store: slug, pageSize: 12 })
+      .then((data) => {
+        if (!cancelled) setProducts({ slug, status: "ready", items: data.items, error: null });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setProducts({
+            slug,
+            status: "error",
+            items: [],
+            error: err.data?.detail || err.message,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
   // While a new slug loads, keep showing its loading state — never the
   // previous store's content (all setState calls live in async callbacks).
   const view = state.slug === slug ? state : { status: "loading" };
   const { store, error } = view;
+  const storeProducts =
+    products.slug === slug
+      ? products
+      : { status: "loading", items: [], error: null };
 
   return (
     <div className="min-h-screen bg-sand-50 dark:bg-night-950">
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-12">
+        <Breadcrumb
+          className="mb-6"
+          items={[{ label: "Home", to: "/" }, { label: store?.name ?? "Store" }]}
+        />
         {error && (
           <Alert tone="danger" title="Could not load this store">{error}</Alert>
         )}
@@ -95,9 +132,13 @@ export function Storefront() {
                   </h1>
                   <div className="flex items-center gap-2">
                     <Badge tone="success" variant="soft" size="sm">Open store</Badge>
-                    {store.rating != null && (
+                    {store.rating != null ? (
                       <span className="text-sm text-sand-500 dark:text-sand-400">
                         ★ {store.rating}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-sand-500 dark:text-sand-400">
+                        New store — no ratings yet
                       </span>
                     )}
                   </div>
@@ -135,11 +176,35 @@ export function Storefront() {
               )}
             </section>
 
-            <section className="rounded-2xl border border-dashed border-sand-300 p-8 text-center dark:border-night-700">
-              <StoreIcon size={24} className="mx-auto mb-2 text-sand-400" />
-              <p className="text-sm text-sand-500 dark:text-sand-400">
-                Products from this store arrive with the catalog phase.
-              </p>
+            <section className="flex flex-col gap-4">
+              <h2 className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100">
+                Products
+              </h2>
+              {storeProducts.error && (
+                <Alert tone="danger" title="Could not load this store's products">
+                  {storeProducts.error}
+                </Alert>
+              )}
+              {!storeProducts.error && storeProducts.status === "loading" && (
+                <ProductGridSkeleton count={6} columns={3} />
+              )}
+              {!storeProducts.error &&
+                storeProducts.status === "ready" &&
+                storeProducts.items.length === 0 && (
+                  <EmptyState
+                    compact
+                    icon={StoreIcon}
+                    title="No products yet"
+                    description="This store has not published anything yet — check back soon."
+                  />
+                )}
+              {!storeProducts.error && storeProducts.items.length > 0 && (
+                <ProductGrid
+                  products={storeProducts.items}
+                  onAddToCart={addToCart}
+                  columns={3}
+                />
+              )}
             </section>
           </article>
         )}

@@ -15,7 +15,7 @@ Turn a customer's cart into trustworthy orders: server-computed totals, immutabl
 
 ## Current honest state
 
-Frontend mocks cart/checkout flows; no backend yet. Backend build order puts `cart` → `orders` after `catalog` (per `backend-feature`).
+Cart is **live** (Phase 7): `apps/cart` (Cart / CartItem / WishlistItem) with session-keyed guest carts (merged into the account cart at login), prices/stock/totals recomputed server-side on every read, store-grouped payloads, and the `/cart` UI wired through `data/cart.js`. Checkout, order creation, and order-time reservation/decrement are next (Phase 8) — they consume `catalog.services.reserve_stock` / `commit_sale`; the cart holds quantities only.
 
 ## When to use
 

@@ -12,12 +12,14 @@ Everything needed to navigate this workspace without re-asking the user.
 ## Stack
 
 - **Frontend:** React 19 + Vite + Tailwind CSS v4 (CSS-first config, no `tailwind.config.js`), plain JavaScript/JSX — no TypeScript. Routing via `react-router-dom` (`BrowserRouter` in `main.jsx`).
-- **Backend:** Django + Django REST Framework + PostgreSQL (to be built — the sole approved backend target). Until then, the frontend runs on mock data accessors (see the `data-layer` skill).
+- **Backend (live):** Django + Django REST Framework + PostgreSQL — `manage.py runserver` on port 8000; `/api` is proxied in dev. The frontend reaches it **only** through the async accessors in `frontend/src/data/` (see the `data-layer` skill).
 - Design tokens in `frontend/src/index.css` (`@theme`): moss/sand/night palettes + semantic colors. See the `design-tokens` skill.
 - Dark mode: class-based (`.dark` on `<html>`), persisted in `localStorage` as `jeyvro-theme`, initialized by an inline script in `frontend/index.html`.
 - Fonts: Outfit (`font-sans`), Plus Jakarta Sans (`font-display`, via Google Fonts).
 - Data access goes **only** through async accessors in `frontend/src/data/` — see the `data-layer` skill.
-- No state library, no test runner, no git repo yet.
+- State: no external state library — feature-scoped React contexts (`features/auth`, `features/cart`, `features/wishlist`) hold server truth; see the `frontend-state` skill.
+- Tests: Vitest + jsdom + Testing Library on the frontend (`src/**/*.test.js[x]`), pytest + pytest-django on the backend. See the `testing` skill.
+- Repo: GitHub `jianb14/jeyvro` (branch `main`); see the `git-workflow` skill.
 
 ## Commands
 
@@ -27,34 +29,45 @@ Frontend (run from `frontend/`):
 |---|---|
 | `npm run dev` | Vite dev server (proxies `/api` → localhost:8000, Django) |
 | `npm run lint` | ESLint over the project |
+| `npm run test` | Vitest suite (jsdom + Testing Library) |
+| `npm run test:watch` | Vitest in watch mode |
 | `npm run build` | Production build (vite build) |
 | `npm run preview` | Preview the production build |
 
-Backend: none yet — Django (to be scaffolded) will run via `manage.py runserver` on port 8000.
+Backend (run from `backend/`, using the venv at `%LOCALAPPDATA%\jeyvro-venv`):
+
+| Command | What it does |
+|---|---|
+| `python manage.py runserver` | API on port 8000 (proxied by Vite) |
+| `python -m pytest -q` | Full backend test suite |
+| `python manage.py makemigrations` / `migrate` | Model migrations |
 
 > **Windows (this machine):** PowerShell blocks `npm.ps1` — use `npm.cmd run ...` instead. If shell output is not visible, redirect to a temp log file and read it.
+> **Vitest path quirk:** run the frontend **test** gate through a space-free path — `subst X: "<repo>"` then `cd X:\frontend`. The space in the repo path breaks Vitest's module identity and every suite fails with a misleading "failed to find the current suite" error (lint and build are unaffected). See the `testing` skill.
 
 ## Folder map
 
 ```
 frontend/
   index.html                  fonts, theme-init script, #root
-  vite.config.js              React + Tailwind plugins; dev proxy: /api → localhost:8000 (Django)
+  vite.config.js              React + Tailwind plugins; test config (jsdom); dev proxy: /api → localhost:8000
   src/
     main.jsx                  entry: StrictMode + BrowserRouter
-    App.jsx                   routes: / → Home, /design-system → DesignSystem
+    App.jsx                   all routes (Home, Browse, ProductDetail, Storefront, Cart, Wishlist, auth, DesignSystem)
     index.css                 ALL design tokens (@theme) + base styles
     routes/
       Home.jsx                marketplace landing (search, grid, full async states)
       DesignSystem.jsx        wraps pages/DesignSystemPage
-    data/
-      products.js             async accessors — the ONLY frontend data access point
+    features/                 feature modules: auth/, cart/ (CartContext + useQuickAdd), wishlist/
+    data/                     async accessors — the ONLY frontend data access point (products, cart, wishlist, stores, auth)
+    test/setup.js             Vitest setup (jest-dom matchers + RTL cleanup)
     lib/
       cx.js                   class merge utility (cx(...classes))
       useTheme.js             light/dark toggle hook
       useToasts.js            toast queue hook (useToasts)
+      productCart.js          which variant a product-card "Add to cart" adds (shared by Home/Browse/Storefront)
     components/
-      layout/Navbar.jsx       design-system header
+      layout/Navbar.jsx       marketplace header (search, categories, cart/wishlist/user)
       ui/                     ~45 primitives, one file each (see below)
     pages/
       DesignSystemPage.jsx    assembles the design-system demo (NAV_SECTIONS + sections)

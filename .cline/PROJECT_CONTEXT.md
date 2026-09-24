@@ -1,5 +1,8 @@
 # JEYVRO — Project Context (Single Source of Truth)
 
+> Version 1.6 · v1.6 changelog: §11 corrected to reality — the frontend test gate is live (Vitest + Testing Library, run via a space-free path on this machine) and the backend pytest gate is mandatory; no new marketplace rules this phase.
+> Version 1.5 · v1.5 changelog: §6 cart & wishlist rules added (Phase 7) — guest session carts with login merge, line prices/stock/totals always server-resolved, wishlist private and product-level.
+> Version 1.4 · v1.4 changelog: C5 corrected to reality — the frontend mock→API swap is complete (Phase 6); no new marketplace rules this phase.
 > Version 1.3 · Approved by the project owner.
 > v1.3 changelog: §6 product publishing, inventory, and pricing/discount rules added (Phase 5).
 > v1.2 changelog: §6 seller verification, store lifecycle, and store ownership rules added (Phase 4).
@@ -70,11 +73,13 @@ User & seller management · product & category management · order oversight · 
 - **Product publishing (Phase 5):** lifecycle `draft → pending_review → published → unpublished / rejected / archived`; "out of stock" is a **derived display state** (every variant at zero available), never a stored status. Sellers own draft→pending_review, unpublish, and archive; staff own pending_review→published / rejected (reason required, audit-logged). The public catalog exposes published products from active stores only.
 - **Inventory (Phase 5):** stock lives **per variant only** — never duplicated on the product; available = on_hand − reserved. Every change runs inside a transaction with row locks (`select_for_update`) and appends a StockMovement row (append-only history); stock can never go negative (DB CHECK constraint). Order-time reservation/commit lands with Phase 8 and reuses these services.
 - **Pricing & discounts (Phase 5):** money is Decimal(12,2) — never float (C6). The displayed price is resolved server-side (lowest active variant price, falling back to the product base price) and never trusted from the client; discounts derive from `compare_at_price` and are computed server-side, never stored client-side.
+- **Cart (Phase 7):** the cart is server-side — one cart per customer or per guest session (session-keyed; exactly one owner enforced by the database). Guest carts merge into the account cart at login, quantities summed in one transaction. Cart lines store **quantities only**: unit prices and stock are resolved server-side on every read and recomputed again at checkout, and totals (subtotal, savings, item count) are computed by the backend and only rendered by the client. Add/update validate variant, product, store, and live stock; carts group by store for multi-vendor display.
+- **Wishlist (Phase 7):** private per customer and product-level — owner-scoped queries with one row per (user, product) enforced by a DB constraint. Availability is derived server-side: saved products that leave the catalog show as unavailable instead of being silently deleted.
 - **Orders:** explicit lifecycle (placed → awaiting payment → paid → shipped → delivered → completed / cancelled / refunded) with audit trail.
 - **Reviews:** verified buyers only; moderateable; seller ratings derive from product reviews.
 - **Messaging:** buyer ↔ seller conversations per order or per product.
 - **Notifications:** in-app first (unread badge); email digests later.
-- **Entity relationships (the domain map every marketplace skill builds on):** `Store` (owned by 1 seller) → many `Products` → many `Variants` + `Images` · `Category` tree → Products · `Cart` (1 customer) → `CartItems` → Variant · Checkout → `Order` → `OrderItems` (immutable snapshots, store-scoped) → `Payments` (ledger + status) → seller payout records · Inventory lives per `Variant` (transactional decrement at purchase, restore on cancel) · `Review` (1 per user+product, verified buyers) → Product → seller rating · `WishlistItem` (customer ↔ product) · `Conversation` (customer ↔ store, per order/product) → `Messages` · `Notification` (per user) · `AuditLog` (staff actions). Role scopes (customer / seller / staff / administrator) per §4 — staff power is group-based, administrator is the full-control group.
+- **Entity relationships (the domain map every marketplace skill builds on):** `Store` (owned by 1 seller) → many `Products` → many `Variants` + `Images` · `Category` tree → Products · `Cart` (1 customer or 1 guest session) → `CartItems` → Variant · Checkout → `Order` → `OrderItems` (immutable snapshots, store-scoped) → `Payments` (ledger + status) → seller payout records · Inventory lives per `Variant` (transactional decrement at purchase, restore on cancel) · `Review` (1 per user+product, verified buyers) → Product → seller rating · `WishlistItem` (customer ↔ product) · `Conversation` (customer ↔ store, per order/product) → `Messages` · `Notification` (per user) · `AuditLog` (staff actions). Role scopes (customer / seller / staff / administrator) per §4 — staff power is group-based, administrator is the full-control group.
 
 ## 7. Frontend Architecture Expectations
 
@@ -83,10 +88,10 @@ Stack: React · Vite · JavaScript/JSX (no TypeScript for now) · Tailwind CSS v
 ```
 frontend/src/
   routes/             marketplace pages — thin, compose features
-  features/           per-domain modules (cart/, checkout/, auth/, seller/, …)
-                      holding logic, hooks, and feature-specific components
-                      (TARGET structure — created per-domain as features are
-                      built; not yet present on disk — do not assume it exists)
+  features/           per-domain modules (auth/, cart/, wishlist/, …) holding
+                      logic, hooks, and feature-specific components — created
+                      per-domain as features are built (auth, cart and wishlist
+                      are live; seller/checkout land with their phases)
   components/ui/      GENERIC primitives only (no cart/order-specific code)
   components/layout/  app-wide chrome (Navbar, Footer)
   data/               THE only data access point — async accessors
@@ -131,8 +136,8 @@ Stack: Python · Django · Django REST Framework · PostgreSQL. Status: **to be 
 
 ## 11. Testing Expectations
 
-- **Backend (mandatory once Django exists):** pytest/DRF tests for models, serializers, permissions, and money flows (cart totals, checkout, inventory decrement, refunds). No order/payment logic merges without tests.
-- **Frontend (honest current state):** `npm run lint` + `npm run build` are the gate today; Vitest + Testing Library when features stabilize; Playwright E2E for checkout later.
+- **Backend (mandatory — live):** pytest/DRF tests for models, serializers, permissions, and money flows (cart totals, checkout, inventory decrement, refunds). No order/payment logic merges without tests. Run `"%LOCALAPPDATA%\jeyvro-venv\Scripts\python.exe" -m pytest -q` from `backend/`.
+- **Frontend (live gate):** `npm run lint` + `npm run test` + `npm run build` from `frontend/`. Vitest + Testing Library cover data accessors and components; Playwright E2E for checkout comes later. **On this machine the test gate must run through a space-free path** (`subst X: <repo>` then `cd X:\frontend`) — the space in the repo path breaks Vitest's module identity and fails every suite with a misleading error (see the `testing` skill).
 - Test before refactoring; every bug fix ships with a regression test.
 
 ## 12. UI/UX Principles
@@ -178,7 +183,7 @@ Stack: Python · Django · Django REST Framework · PostgreSQL. Status: **to be 
 - **C2:** JavaScript/JSX (no TypeScript) unless the owner explicitly revisits.
 - **C3:** No new runtime dependency without explicit user approval.
 - **C4:** Git repo initialized inside `Jeyvro/` (GitHub: `jianb14/jeyvro`) — keep changes small and separable. A stray zero-commit repo exists at the user-home root (`C:/Users/Christian R`) — it must not be used.
-- **C5:** Backend exists (Django + DRF + PostgreSQL, `backend/`). The frontend still runs its mock accessors in `frontend/src/data/` (Promise-based, simulated latency) for catalog browsing; `auth.js` and `stores.js` talk to the real Django API. **Django is the sole approved backend target — no other backend stack.**
+- **C5:** Backend exists (Django + DRF + PostgreSQL, `backend/`). All frontend accessors in `frontend/src/data/` talk to the real Django API — the mock→API swap is complete (auth, stores, catalog; Phase 6 closed the last one; no mock accessors remain). **Django is the sole approved backend target — no other backend stack.**
 - **C6:** Currency is PHP ₱ (Philippine market) — Decimal on the backend, formatted via the `Price` component on the frontend.
 - **C7:** Secrets never appear in code, logs, or AI responses.
 

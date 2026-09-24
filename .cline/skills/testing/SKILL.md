@@ -28,9 +28,10 @@ Make "done" mean something: every Jeyvro change passes declared gates, money flo
 
 ## Current honest state (PROJECT_CONTEXT §11)
 
-- **Today:** the runnable gates are `npm run lint` + `npm run build` (from `frontend/`; use `npm.cmd` on this machine). No test runner is installed — do not add one without approval (C3).
-- **Once Django exists:** pytest/DRF tests are mandatory for models, serializers, permissions, and money flows. **No order/payment logic merges without tests.**
-- **Later:** Vitest + Testing Library when frontend features stabilize; Playwright E2E for checkout.
+- **Backend (live):** from `backend/`, run `"%LOCALAPPDATA%\jeyvro-venv\Scripts\python.exe" -m pytest -q` — pytest + pytest-django against PostgreSQL. Models, services, permissions, and money flows are covered app-by-app (`tests/test_*.py`; 44 tests as of Phase 7). Run the full suite before closing a phase.
+- **Frontend (live):** from `frontend/`, `npm run lint`, `npm run test`, `npm run build` (use `npm.cmd` on this machine). Vitest + jsdom + Testing Library: accessor tests (`src/data/*.test.js`) assert the wire contract with a stubbed `fetch`; component tests assert rendered behavior (no implementation details).
+- **Gotcha:** on this machine the frontend gates must be run through a space-free path — see *Environment gotcha* below, or every suite fails with a misleading Vitest error.
+- **Later:** Playwright E2E for checkout.
 
 ## Workflow
 
@@ -61,7 +62,30 @@ Follow the universal loop (PROJECT_CONTEXT §14), instantiated for a bug fix:
 2. No order/payment logic merges without tests once the backend exists (§11).
 3. Every bug fix ships with a regression test (once a test runner exists for that side).
 4. Prove current behavior with a test *before* refactoring; prove nothing changed after.
-5. Never add test dependencies (pytest, Vitest, Playwright) without the owner's approval (C3).
+5. Never add test dependencies without the owner's approval (C3) — pytest/pytest-django and Vitest/Testing Library are already approved and installed; new *runtime* dependencies still need approval.
+
+## Environment gotcha: Vitest fails when the project path contains a space
+
+Symptom (Vitest 5.0.1 + Vite 8 + jsdom, Node 24, Windows): **every** suite dies right after the RUN banner with
+
+`Error: Vitest failed to find the current suite.` or `TypeError: Cannot read properties of undefined (reading 'config')`
+
+reported at the first `describe(...)` in a test file **and** at the first `afterEach(...)` in `src/test/setup.js` — every file collected `0 test`, and it reproduces in a minimal node-environment config with no plugins and no setup files.
+
+That is a **path** problem, not a code problem: the space in `C:\Users\Christian R\OneDrive\Desktop\Jeyvro` breaks Vitest's module-identity mapping, so the runner's state and the test file's `import { describe } from 'vitest'` end up as two different module instances. Ruled out by probes: jsdom, the React plugin, setup files, `globalSetup`, the vite cache, pool/isolate settings, a stale or partially-installed `node_modules`, and an interfering `npm run dev` server.
+
+Workaround — run the gates through a space-free drive mapping (`subst` needs no admin and changes nothing on disk):
+
+```powershell
+subst X: "C:\Users\Christian R\OneDrive\Desktop\Jeyvro"
+cd X:\frontend
+npm.cmd run test    # same files, green
+npm.cmd run lint
+npm.cmd run build
+subst X: /d         # optional cleanup
+```
+
+Evidence: the identical tree passes every suite from `X:\frontend` (~6s) and fails identically from the space-containing path. Lint and build are unaffected by the path — only Vitest's runner is.
 6. Test behavior through public interfaces (API endpoints, rendered component output) — not internal private functions.
 7. Never weaken, skip, or delete a test to get green — fix the code, or raise the rule change with the owner and update PROJECT_CONTEXT first.
 8. Debug with evidence: read and cite the actual error/log in the fix — never guess-and-push.

@@ -14,6 +14,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.cart import services as cart_services
+
 from . import services
 from .models import Address, NotificationPreference, User
 from .permissions import IsOwner
@@ -83,7 +85,11 @@ class LoginView(APIView):
             )
 
         services.clear_failed_logins(email)
+        # Guest carts follow the visitor into their account (§6 Phase 7):
+        # capture the pre-login session key — login() cycles it.
+        guest_session_key = request.session.session_key
         login(request, user)
+        cart_services.merge_guest_cart(user, guest_session_key)
         return Response(UserSerializer(user).data)
 
 

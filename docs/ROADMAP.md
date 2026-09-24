@@ -27,8 +27,8 @@
 | 3 | Authentication, Users & Access Control | 🔄 Core verified (11/11 backend tests + live E2E) — session expiry settings & staff-endpoint permissions land with later phases |
 | 4 | Seller & Store Foundation | ✅ Done — stores app + audit foundation, 19/19 backend tests, lint/build green, live E2E smoke (apply→approve→storefront) passed; logo/banner are URL-based until the media phase |
 | 5 | Catalog, Products & Inventory | ✅ Done — catalog app (products/variants/inventory/validated uploads), 26/26 tests, live smoke (create→publish→public) passed, mock→API swap done; variant image selection lands with Phase 6 |
-| 6 | Customer Shopping & Discovery | ⬜ Not started |
-| 7 | Cart & Wishlist | ⬜ Not started |
+| 6 | Customer Shopping & Discovery | ✅ Done — marketplace navbar (server search + API categories), Home sections, /products browse (URL-driven filters/sort/pagination), category pages, /product/:slug detail (gallery, variant picker, quantity, store info, related), storefront product shelves, recently-viewed foundation; lint/build green, 9/9 frontend tests, 29/29 backend tests, live smoke passed. Add-to-cart / buy-now / wishlist are Phase-7 UI foundations (placeholder toasts); variant-level image selection (§5.3) remains open |
+| 7 | Cart & Wishlist | ✅ Done — server-side `apps/cart` (Cart/CartItem/WishlistItem with exactly-one-owner + one-row-per-(cart,variant)/(user,product) DB constraints): session-keyed guest carts merged at login, quantity-only lines with price/stock/totals re-resolved server-side on every read, store-grouped payloads, private product-level wishlist; `/cart` + `/wishlist` pages with cart/wishlist data accessors, CartContext/WishlistContext, wishlist heart + quick-add variant resolution on every ProductCard; 15/15 cart tests, 44/44 backend tests, 5 files/15 frontend tests, lint/build green. On this machine `npm run test` must run through a space-free path (`subst X:`) — see the testing skill |
 | 8 | Checkout, Shipping Calculation & Order Creation | ⬜ Not started |
 | 9 | Payments & Financial Transactions | ⬜ Not started |
 | 10 | Order Fulfillment & Delivery | ⬜ Not started |
@@ -654,58 +654,58 @@ Build the main customer browsing experience.
 
 ### 6.1 Home
 
--   [ ] Header
--   [ ] Search
--   [ ] Category navigation
--   [ ] Hero/content sections
--   [ ] Featured products
--   [ ] Trending products
--   [ ] Featured stores
--   [ ] Promotional sections
--   [ ] Recently viewed foundation
--   [ ] Responsive states
+-   [x] Header
+-   [x] Search
+-   [x] Category navigation
+-   [x] Hero/content sections
+-   [x] Featured products
+-   [x] Trending products
+-   [x] Featured stores
+-   [x] Promotional sections
+-   [x] Recently viewed foundation
+-   [x] Responsive states
 
 ### 6.2 Browse
 
--   [ ] Category page
--   [ ] Product listing
--   [ ] Filters
--   [ ] Sorting
--   [ ] Pagination
--   [ ] Loading states
--   [ ] Empty states
--   [ ] Error states
+-   [x] Category page
+-   [x] Product listing
+-   [x] Filters
+-   [x] Sorting
+-   [x] Pagination
+-   [x] Loading states
+-   [x] Empty states
+-   [x] Error states
 
 ### 6.3 Product detail
 
--   [ ] Product gallery
--   [ ] Variant picker
--   [ ] Price
--   [ ] Discount display
--   [ ] Stock indicator
--   [ ] Quantity
--   [ ] Add to cart
--   [ ] Buy now
--   [ ] Wishlist
--   [ ] Store information
--   [ ] Related products foundation
+-   [x] Product gallery
+-   [x] Variant picker
+-   [x] Price
+-   [x] Discount display
+-   [x] Stock indicator
+-   [x] Quantity
+-   [x] Add to cart
+-   [x] Buy now
+-   [x] Wishlist
+-   [x] Store information
+-   [x] Related products foundation
 
 ### 6.4 Storefront
 
--   [ ] Store header
--   [ ] Store information
--   [ ] Store products
--   [ ] Store rating foundation
--   [ ] Store policies
+-   [x] Store header
+-   [x] Store information
+-   [x] Store products
+-   [x] Store rating foundation
+-   [x] Store policies
 
 ### Gate
 
--   [ ] Customer can browse products
--   [ ] Search/browse results work
--   [ ] Product details load correctly
--   [ ] Variant selection works
--   [ ] Stock state is accurate
--   [ ] Responsive customer flow verified
+-   [x] Customer can browse products
+-   [x] Search/browse results work
+-   [x] Product details load correctly
+-   [x] Variant selection works
+-   [x] Stock state is accurate
+-   [x] Responsive customer flow verified
 
 **Skills:** frontend-feature, marketplace-catalog, frontend-responsive
 
@@ -719,36 +719,36 @@ Create a reliable multi-vendor shopping basket.
 
 ### 7.1 Cart
 
--   [ ] Server-side cart
--   [ ] Cart items
--   [ ] Add item
--   [ ] Update quantity
--   [ ] Remove item
--   [ ] Clear cart
--   [ ] Cart totals
--   [ ] Variant validation
--   [ ] Stock validation
--   [ ] Price revalidation
--   [ ] Multi-seller grouping
--   [ ] Guest cart strategy
--   [ ] Guest → account cart merge
+-   [x] Server-side cart
+-   [x] Cart items
+-   [x] Add item
+-   [x] Update quantity
+-   [x] Remove item
+-   [x] Clear cart
+-   [x] Cart totals
+-   [x] Variant validation
+-   [x] Stock validation
+-   [x] Price revalidation
+-   [x] Multi-seller grouping
+-   [x] Guest cart strategy
+-   [x] Guest → account cart merge
 
 ### 7.2 Wishlist
 
--   [ ] Wishlist
--   [ ] Add item
--   [ ] Remove item
--   [ ] Wishlist page
--   [ ] Wishlist state on ProductCard
+-   [x] Wishlist
+-   [x] Add item
+-   [x] Remove item
+-   [x] Wishlist page
+-   [x] Wishlist state on ProductCard
 
 ### Gate
 
--   [ ] Cart survives navigation
--   [ ] Cart is server-authoritative
--   [ ] Invalid stock cannot be purchased
--   [ ] Multi-seller cart works
--   [ ] Guest cart merge works
--   [ ] Wishlist works
+-   [x] Cart survives navigation
+-   [x] Cart is server-authoritative
+-   [x] Invalid stock cannot be purchased
+-   [x] Multi-seller cart works
+-   [x] Guest cart merge works
+-   [x] Wishlist works
 
 **Skills:** marketplace-orders, data-layer
 

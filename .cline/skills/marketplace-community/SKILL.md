@@ -15,7 +15,7 @@ Customers trust the marketplace (verified reviews, real ratings) and stay connec
 
 ## Current honest state
 
-Frontend has `ReviewCard`, `Rating`, wishlist mocks; no backend yet. Backend build order puts `reviews` → `messaging` → `notifications` after `payments` (per `backend-feature`).
+Wishlist is **live** (Phase 7, built alongside the cart in `apps/cart`): private per customer (owner-scoped queries, DB-unique per user+product), product-level, availability derived server-side, UI at `/wishlist` with heart state on every ProductCard (`features/wishlist/WishlistContext`). Reviews → messaging → notifications still follow `payments` (per `backend-feature`); `ReviewCard`/`Rating` stay presentation-only until then.
 
 ## When to use
 

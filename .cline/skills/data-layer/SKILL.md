@@ -9,39 +9,37 @@ description: Rules for data access in the Jeyvro marketplace — use when fetchi
 
 One rule above all: **components never fetch and never import mock data directly.** All data flows through async accessor functions in `frontend/src/data/`.
 
-## Architecture (mock now → Django later)
+## Architecture (accessors → Django API)
 
 ```
 React component → accessor (frontend/src/data/*.js)
-                     ├─ today:   mock array + simulated latency
-                     └─ future:  fetch("/api/v1/...") → Django REST Framework
-Django (to be built): apps per domain → PostgreSQL
+                     └─ fetch("/api/v1/...") → Django REST Framework
+Django (live): apps per domain → PostgreSQL
 ```
 
-- The frontend accessors return Promises and simulate latency (~450ms) so loading/empty/error states are genuinely exercised.
+- The mock era is over (C5): every accessor talks to the real Django API. Keep the accessor boundary anyway — it is the single swap/repair point and keeps components framework-agnostic.
 - The Vite dev server proxies `/api` → `http://localhost:8000` (Django `manage.py runserver`; see `frontend/vite.config.js`) — same-origin calls, no CORS setup in dev.
+- Live accessors: `auth.js`, `products.js` (catalog), `stores.js`, `cart.js`, `wishlist.js`. Shared plumbing (`fetch`, cookies, CSRF, the §8 error convention) lives in `lib/api.js`.
 
-## Planned REST contract (Django, /api/v1)
+## REST contract (Django, /api/v1 — live)
 
-| Endpoint (planned) | Returns |
+| Endpoint | Returns |
 |---|---|
-| `GET /api/v1/products?q=&store=&category=` | `{ count, items: Product[] }` |
-| `GET /api/v1/products/:id` | `Product` or `404 { error }` |
-| cart, orders, reviews, auth | designed per-feature under `/api/v1/` (§8 of the project context) |
+| `GET /api/v1/catalog/products/?q=&store=&category=&sort=&page=` | `{ count, items: Product[] }` |
+| `GET /api/v1/catalog/products/:slug/` | `Product` or `404 { error }` |
+| `GET /api/v1/cart/` · `DELETE` (clear) | cart payload (`owner/items/groups/totals`) |
+| `POST /api/v1/cart/items` · `PATCH/DELETE /api/v1/cart/items/:id` | the recomputed cart payload |
+| `GET/POST /api/v1/wishlist/` · `DELETE /api/v1/wishlist/items/:slug` | `{ count, items }` / item object |
+| stores, auth, orders, reviews | designed per-feature under `/api/v1/` (§8 of the project context) |
 
-**Product shape (the current frontend contract — keep identical):** `id, seed, title, price, originalPrice?, discount?, rating, sold, stock, store, verified?, isNew?, category`.
+**Product shape (the frontend contract, mapped in `products.js#mapProduct`):** `id, seed, title, price, originalPrice?, discount?, rating, sold, stock, store, storeSlug, verified?, isNew?, category, categorySlug, image, images[], variants[]`.
 
-## Connecting a page to data (today)
+## Adding a new data need (today)
 
-1. Add/extend accessors in `frontend/src/data/<resource>.js` — Promise-based, with simulated delay.
-2. In the component: call the accessor in an effect; wire loading (Skeleton) / empty (EmptyState) / error (Alert) / success (Toast) per the `ux-patterns` skill.
-3. State resets triggered by user actions (search, filter changes) happen in **event handlers** — never synchronous setState inside effect bodies (the lint rules reject it).
-
-## The swap (mock → Django API)
-
-1. **Build the Django API first** (app-per-domain, DRF viewsets, envelopes per §8 of the project context).
-2. **Frontend:** replace each accessor body in `frontend/src/data/*.js` with `fetch("/api/v1/...")` returning the same shapes (throw on `!res.ok` so error states fire). Components, skeletons, empty states, and error handling stay untouched.
-3. If a response shape must change, change it in the accessor — never in the component.
+1. **Backend first** — the endpoint exists under `/api/v1/` with the §8 envelopes before the UI consumes it.
+2. **Add the accessor** in `frontend/src/data/<resource>.js` — Promise-based, mapping API shapes to the component contract (numbers parsed here, never in components).
+3. In the component: call the accessor in an event handler/effect; wire loading (Skeleton) / empty (EmptyState) / error (Alert) / success (Toast) per the `ux-patterns` skill.
+4. Never let a component import `fetch` directly or reach past its accessor.
 
 ## Rules
 
