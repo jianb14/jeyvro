@@ -77,8 +77,8 @@ export function Home() {
             Handpicked local goods — <span className="text-moss-600 dark:text-moss-400">calm by design.</span>
           </h1>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-sand-500 dark:text-sand-400">
-            Mock data muna habang binubuo ang Django API — parehong accessors, parehong loading
-            at error states, isang file lang ang papalitan kapag handa na ang totoong backend.
+            Live mula sa aming sariling API — bawat produkto ay galing sa
+            mga tunay na store. Handpicked local goods, calm by design.
           </p>
 
           <form onSubmit={handleSearch} role="search" className="mt-8 flex w-full max-w-md gap-2">

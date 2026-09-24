@@ -15,7 +15,7 @@ Sellers manage rich product data (variants, images, stock) while customers disco
 
 ## Current honest state
 
-Frontend runs on mock accessors (`data/`); Django is not scaffolded yet. First backend build order: `accounts` → `stores` → **catalog** (per `backend-feature`).
+Backend `catalog` app is **live** (Phase 5): Category tree, Brand, Product (full lifecycle with staff publish/reject, audit-logged), Variant (auto-SKU, own price/stock via Inventory OneToOne, DB CHECK against negative availability), StockMovement append-only history, validated image upload (FileField + magic bytes — no Pillow per C3). Public browse/search/filter/sort are server-side over a display-price annotation. `data/products.js` now talks to the real API (mock→API swap done, shape-compatible). Ahead: variant-level image selection and customer browsing UI (Phase 6), order-time reservation consumption (Phase 8).
 
 ## When to use
 

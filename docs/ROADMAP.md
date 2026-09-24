@@ -26,7 +26,7 @@
 | 2 | Backend Foundation & Database | 🔄 Foundation verified (Django+DRF+PG live, migrations, tests) — media/filtering/sorting land with their feature phases |
 | 3 | Authentication, Users & Access Control | 🔄 Core verified (11/11 backend tests + live E2E) — session expiry settings & staff-endpoint permissions land with later phases |
 | 4 | Seller & Store Foundation | ✅ Done — stores app + audit foundation, 19/19 backend tests, lint/build green, live E2E smoke (apply→approve→storefront) passed; logo/banner are URL-based until the media phase |
-| 5 | Catalog, Products & Inventory | ⬜ Not started |
+| 5 | Catalog, Products & Inventory | ✅ Done — catalog app (products/variants/inventory/validated uploads), 26/26 tests, live smoke (create→publish→public) passed, mock→API swap done; variant image selection lands with Phase 6 |
 | 6 | Customer Shopping & Discovery | ⬜ Not started |
 | 7 | Cart & Wishlist | ⬜ Not started |
 | 8 | Checkout, Shipping Calculation & Order Creation | ⬜ Not started |
@@ -214,11 +214,11 @@ marketplace.
 -   [x] Seller registration rules
 -   [x] Seller verification rules
 -   [x] Store ownership rules
--   [ ] Product ownership rules
--   [ ] Product publishing rules
--   [ ] Inventory rules
--   [ ] Pricing rules
--   [ ] Discount rules
+-   [x] Product ownership rules
+-   [x] Product publishing rules
+-   [x] Inventory rules
+-   [x] Pricing rules
+-   [x] Discount rules
 -   [ ] Voucher rules
 -   [ ] Commission rules
 -   [ ] Payout rules
@@ -571,76 +571,76 @@ Build the marketplace product system.
 
 ### 5.1 Catalog
 
--   [ ] Category
--   [ ] Subcategory
--   [ ] Brand
--   [ ] Product attributes
--   [ ] Category hierarchy
--   [ ] Category ordering/status
+-   [x] Category
+-   [x] Subcategory
+-   [x] Brand
+-   [x] Product attributes
+-   [x] Category hierarchy
+-   [x] Category ordering/status
 
 ### 5.2 Product
 
--   [ ] Product model
--   [ ] Store ownership
--   [ ] Product title
--   [ ] Description
--   [ ] SKU
--   [ ] Base price
--   [ ] Product status
--   [ ] Product images
--   [ ] Product attributes
--   [ ] Product metadata
+-   [x] Product model
+-   [x] Store ownership
+-   [x] Product title
+-   [x] Description
+-   [x] SKU
+-   [x] Base price
+-   [x] Product status
+-   [x] Product images
+-   [x] Product attributes
+-   [x] Product metadata
 
 ### 5.3 Variants
 
--   [ ] Variant model
--   [ ] Variant SKU
--   [ ] Variant price
--   [ ] Variant attributes
+-   [x] Variant model
+-   [x] Variant SKU
+-   [x] Variant price
+-   [x] Variant attributes
 -   [ ] Variant image
--   [ ] Variant status
+-   [x] Variant status
 
 ### 5.4 Inventory
 
--   [ ] Inventory record
--   [ ] Available quantity
--   [ ] Reserved quantity
--   [ ] Low-stock threshold
--   [ ] Stock adjustment
--   [ ] Stock movement history
--   [ ] Inventory transaction
--   [ ] Stock reservation
--   [ ] Stock release
--   [ ] Transaction-safe decrement
--   [ ] Transaction-safe restore
+-   [x] Inventory record
+-   [x] Available quantity
+-   [x] Reserved quantity
+-   [x] Low-stock threshold
+-   [x] Stock adjustment
+-   [x] Stock movement history
+-   [x] Inventory transaction
+-   [x] Stock reservation
+-   [x] Stock release
+-   [x] Transaction-safe decrement
+-   [x] Transaction-safe restore
 
 ### 5.5 Product lifecycle
 
--   [ ] Draft
--   [ ] Pending review
--   [ ] Published
--   [ ] Unpublished
--   [ ] Rejected
--   [ ] Archived
--   [ ] Out of stock
+-   [x] Draft
+-   [x] Pending review
+-   [x] Published
+-   [x] Unpublished
+-   [x] Rejected
+-   [x] Archived
+-   [x] Out of stock
 
 ### 5.6 Seed data
 
--   [ ] Seed categories
--   [ ] Seed brands
--   [ ] Seed stores
--   [ ] Seed products
--   [ ] Seed variants
--   [ ] Seed inventory
+-   [x] Seed categories
+-   [x] Seed brands
+-   [x] Seed stores
+-   [x] Seed products
+-   [x] Seed variants
+-   [x] Seed inventory
 
 ### Gate
 
--   [ ] Seller can create product
--   [ ] Product can contain variants
--   [ ] Product images upload safely
--   [ ] Inventory updates correctly
--   [ ] Stock cannot become invalid
--   [ ] Public catalog only exposes valid products
+-   [x] Seller can create product
+-   [x] Product can contain variants
+-   [x] Product images upload safely
+-   [x] Inventory updates correctly
+-   [x] Stock cannot become invalid
+-   [x] Public catalog only exposes valid products
 
 **Skills:** marketplace-catalog, backend-feature
 
