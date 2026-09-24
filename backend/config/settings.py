@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'apps.core',
     'apps.audit',
     'apps.stores',
+    'apps.catalog',
 ]
 
 MIDDLEWARE = [
@@ -133,10 +134,14 @@ TIME_ZONE = 'Asia/Manila'  # PH market (PROJECT_CONTEXT C6)
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
+# Static + media (Phase 5: product images upload to local media/ in dev;
+# production moves to object storage + CDN, PROJECT_CONTEXT §17).
 STATIC_URL = 'static/'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Upload safety net (per-file validation also runs in services — §10.1).
+DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

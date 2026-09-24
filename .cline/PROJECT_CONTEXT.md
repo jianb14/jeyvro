@@ -1,6 +1,7 @@
 # JEYVRO — Project Context (Single Source of Truth)
 
-> Version 1.2 · Approved by the project owner.
+> Version 1.3 · Approved by the project owner.
+> v1.3 changelog: §6 product publishing, inventory, and pricing/discount rules added (Phase 5).
 > v1.2 changelog: §6 seller verification, store lifecycle, and store ownership rules added (Phase 4).
 > v1.1 changelog: git-repo status corrected (§15, C4) · seller payouts added (§5, §6, §17) · §7 `features/` marked as target structure · §18 added (how skills reference this document).
 > This document is the source of truth for every Jeyvro skill, rule, and AI session.
@@ -66,6 +67,9 @@ User & seller management · product & category management · order oversight · 
 - **Seller payouts:** every seller balance derives from order/payment records (never manually keyed); payouts start as manual, admin-recorded settlements that are audit-logged (§9), moving to automated gateway settlement later (§17).
 - **Seller verification (Phase 4):** a registered customer applies as a seller (store name, description, contact) → the application and the store both start `pending` → staff approve (store goes `active`) or reject (a reason is required; the applicant may reapply). Sellers never self-approve — every review is a staff action.
 - **Store lifecycle & ownership (Phase 4):** `pending → active → suspended` — staff-only transitions through the moderation service, audit-logged (§9); one user owns exactly one store, and every store endpoint re-verifies ownership server-side (§10.3). Suspended/pending stores are invisible on public storefronts but keep their data.
+- **Product publishing (Phase 5):** lifecycle `draft → pending_review → published → unpublished / rejected / archived`; "out of stock" is a **derived display state** (every variant at zero available), never a stored status. Sellers own draft→pending_review, unpublish, and archive; staff own pending_review→published / rejected (reason required, audit-logged). The public catalog exposes published products from active stores only.
+- **Inventory (Phase 5):** stock lives **per variant only** — never duplicated on the product; available = on_hand − reserved. Every change runs inside a transaction with row locks (`select_for_update`) and appends a StockMovement row (append-only history); stock can never go negative (DB CHECK constraint). Order-time reservation/commit lands with Phase 8 and reuses these services.
+- **Pricing & discounts (Phase 5):** money is Decimal(12,2) — never float (C6). The displayed price is resolved server-side (lowest active variant price, falling back to the product base price) and never trusted from the client; discounts derive from `compare_at_price` and are computed server-side, never stored client-side.
 - **Orders:** explicit lifecycle (placed → awaiting payment → paid → shipped → delivered → completed / cancelled / refunded) with audit trail.
 - **Reviews:** verified buyers only; moderateable; seller ratings derive from product reviews.
 - **Messaging:** buyer ↔ seller conversations per order or per product.

@@ -20,6 +20,9 @@ __pycache__/
 *.sqlite3-journal
 pgdata/
 
+# Uploaded media (local dev storage — production moves to object storage)
+backend/media/
+
 # Logs / OS
 *.log
 *.out

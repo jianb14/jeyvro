@@ -6,9 +6,11 @@ now, consistent with `accounts.User.avatar_url`; validated file upload
 arrives with the media phase (CONVENTIONS.md — Media).
 """
 from django.db import models
-from django.utils.text import slugify
+from django.utils import timezone
 
 from apps.common.models import TimeStampedModel
+from apps.common.utils import slugify_unique
+from apps.common.utils import slugify_unique
 
 
 class Store(TimeStampedModel):
@@ -55,14 +57,7 @@ class Store(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            base = slugify(self.name) or 'store'
-            candidate = base
-            counter = 2
-            # Slugs are unique across all stores, including non-active ones.
-            while Store.objects.filter(slug=candidate).exclude(pk=self.pk).exists():
-                candidate = f'{base}-{counter}'
-                counter += 1
-            self.slug = candidate
+            self.slug = slugify_unique(Store, self.name, exclude_pk=self.pk)
         super().save(*args, **kwargs)
 
     def __str__(self):
