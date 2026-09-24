@@ -23,16 +23,16 @@ List the existing components that already solve parts of this feature — check 
 
 ## Step 3 — Compose the layout
 
-- Follow existing composition patterns: `MarketplaceSection.jsx` (product grid + cart + checkout flow) and `WorkspaceSection.jsx` (upload + drawer + command palette) are the reference implementations.
+- Follow existing composition patterns: `routes/Home.jsx` (discovery + full async states), `routes/Browse.jsx` (URL-driven filters/sort/pagination), `routes/Cart.jsx` (store-grouped lines + totals) and `components/ui/ProductShelf.jsx` are the reference implementations.
 - Page grid: `mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`; card grids collapse `grid gap-5 md:grid-cols-2` / `lg:grid-cols-3`.
 - Data flows through async accessors from `src/data/` (see the `data-layer` skill) — never fetch inside components, never import mock arrays directly.
 - States per `ux-patterns`: loading (Skeleton), empty (EmptyState), error (Alert), success (Toast) — the accessors simulate latency, so these states genuinely fire.
 - Where state lives → `frontend-state` skill · responsive/mobile-first authoring → `frontend-responsive` skill · speed discipline → `frontend-performance` skill.
 
-## Step 4 — Route and showcase
+## Step 4 — Route and wire
 
 1. **Marketplace pages:** create `src/routes/<Name>.jsx` (see `routes/Home.jsx` as the reference), add a `<Route>` in `App.jsx`, and link it from the app header.
-2. **New UI primitives** (if any) go in `components/ui/` per the `frontend-ui` skill, showcased in `src/sections/`, and registered in `pages/DesignSystemPage.jsx` (`NAV_SECTIONS` **and** page body).
+2. **New UI primitives** (if any) go in `components/ui/` per the `frontend-ui` skill and must be used by a real route/feature — there is no design-system page since Phase 7; primitives are validated by tests + the review gates.
 
 ## Step 5 — Review (mandatory gate)
 

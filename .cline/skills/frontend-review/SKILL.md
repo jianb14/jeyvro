@@ -37,7 +37,7 @@ Quality gate for any frontend work in this workspace. Run this **before** declar
 ## Gate 3 — Responsive
 
 - [ ] Layouts hold at mobile (~360px), tablet (~768px), desktop (~1280px)
-- [ ] No horizontal overflow at small widths; grids collapse with `sm:`/`md:`/`lg:` prefixes like the existing sections
+- [ ] No horizontal overflow at small widths; grids collapse with `sm:`/`md:`/`lg:` prefixes like the existing pages and grids (`routes/Home.jsx`, `routes/Browse.jsx`)
 
 ## Gate 4 — Verification (mandatory)
 

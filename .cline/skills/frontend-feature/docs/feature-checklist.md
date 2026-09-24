@@ -4,7 +4,7 @@ Work top to bottom; do not skip the gates.
 
 ## Scope
 - [ ] User goal and data source (real/demo) confirmed or reasonably inferred
-- [ ] Checked existing sections — extending beats duplicating
+- [ ] Checked existing components, routes, and features — extending beats duplicating
 
 ## Inventory
 - [ ] Listed existing components that cover each part of the feature
@@ -17,10 +17,10 @@ Work top to bottom; do not skip the gates.
 - [ ] Design tokens only — no hardcoded colors/shadows/animations (`design-tokens`)
 - [ ] Every component has `dark:` variants; `cx()` merging; icons from `Icons.jsx` only
 
-## Registration
-- [ ] `src/sections/<Name>Section.jsx` created with `Section`/`Demo`
-- [ ] Added to `NAV_SECTIONS` **and** page body in `DesignSystemPage.jsx`
-- [ ] New primitives demoed in their own section
+## Integration
+- [ ] Route added in `App.jsx` and linked from the app header where it belongs
+- [ ] New primitives in `components/ui/` are used by a real route/feature (no playground page since Phase 7)
+- [ ] Non-trivial behaviour covered by a Vitest test (`components/ui/Button.test.jsx` is the reference)
 
 ## Gates (from `frontend-review` skill)
 - [ ] Keyboard operable; focus visible; ARIA wired; labels associated

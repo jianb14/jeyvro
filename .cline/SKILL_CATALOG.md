@@ -38,7 +38,7 @@ Dependencies: none. Used by: frontend-ui, frontend-feature, frontend-review.
 ### 4. frontend-ui — ESSENTIAL
 Category: Frontend · React
 Purpose: build and extend the UI primitives in `components/ui`.
-Scope: React conventions (named exports, `forwardRef`, `useId`, `cx()`), Icons as the only icon source, design-system registration.
+Scope: React conventions (named exports, `forwardRef`, `useId`, `cx()`), Icons as the only icon source, primitives validated by tests + the review gates.
 When to use: new primitive; modifying an existing component; icon work.
 When NOT: pages/flows (frontend-feature), data fetching (data-layer), token definitions (design-tokens).
 Dependencies: design-tokens, ux-patterns.

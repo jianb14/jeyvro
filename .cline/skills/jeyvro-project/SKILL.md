@@ -1,6 +1,6 @@
 ---
 name: jeyvro-project
-description: Orientation for the Jeyvro workspace — use when asked where things live, how to run or build the project, what the stack is, what components exist, or when starting a fresh session in this repo. Covers the frontend folder map, all npm commands (including the Windows npm.cmd quirk), the 45+ component inventory in components/ui, the lib utilities, and how the DesignSystemPage and its sections are organized.
+description: Orientation for the Jeyvro workspace — use when asked where things live, how to run or build the project, what the stack is, what components exist, or when starting a fresh session in this repo. Covers the frontend folder map, all npm commands (including the Windows npm.cmd quirk), the 50-primitive inventory in components/ui, the lib utilities, and how routes, features, and data accessors are organized.
 ---
 
 > **Source of truth:** [PROJECT_CONTEXT.md](../../PROJECT_CONTEXT.md) — when anything conflicts, the project context wins.
@@ -53,11 +53,15 @@ frontend/
   vite.config.js              React + Tailwind plugins; test config (jsdom); dev proxy: /api → localhost:8000
   src/
     main.jsx                  entry: StrictMode + BrowserRouter
-    App.jsx                   all routes (Home, Browse, ProductDetail, Storefront, Cart, Wishlist, auth, DesignSystem)
+    App.jsx                   all routes (Home, Browse, ProductDetail, Storefront, Cart, Wishlist, auth)
     index.css                 ALL design tokens (@theme) + base styles
     routes/
       Home.jsx                marketplace landing (search, grid, full async states)
-      DesignSystem.jsx        wraps pages/DesignSystemPage
+      Browse.jsx              /products + /category/:slug (URL-driven filters/sort/pagination)
+      ProductDetail.jsx       /product/:slug (gallery, variant picker over server truth, quantity)
+      Storefront.jsx          /store/:slug (store shelf)
+      Cart.jsx                /cart (store-grouped lines, live revalidation)
+      Wishlist.jsx            /wishlist (availability-aware saved products)
     features/                 feature modules: auth/, cart/ (CartContext + useQuickAdd), wishlist/
     data/                     async accessors — the ONLY frontend data access point (products, cart, wishlist, stores, auth)
     test/setup.js             Vitest setup (jest-dom matchers + RTL cleanup)
@@ -68,10 +72,7 @@ frontend/
       productCart.js          which variant a product-card "Add to cart" adds (shared by Home/Browse/Storefront)
     components/
       layout/Navbar.jsx       marketplace header (search, categories, cart/wishlist/user)
-      ui/                     ~45 primitives, one file each (see below)
-    pages/
-      DesignSystemPage.jsx    assembles the design-system demo (NAV_SECTIONS + sections)
-    sections/                 design-system showcases, one per category + shared.jsx
+      ui/                     49 primitives, one file each (see below; Button.test.jsx is the component-test reference)
 ```
 
 ## Component inventory (`components/ui/`, all named exports)
@@ -79,12 +80,12 @@ frontend/
 Layout/primitives: Button, Card (+CardHeader/Title/Description/Content/Footer), Divider, Kbd, Label, Icons (the only icon source).
 Forms: Input, Textarea, Select, Checkbox, Radio, Switch, FileUpload (+FileList), VariantPicker.
 Navigation: Tabs (+TabPanel), Breadcrumb, Pagination, DropdownMenu (+MenuButton), CommandPalette.
-Data display: Table (+THead/TH/TBody/TR/TD), Badge, Avatar (+AvatarGroup), Chip, Rating, Price, ProductCard (+ProductGrid), StockIndicator, StoreCard, ReviewCard, OrderStatusBadge, PaymentMethodCard, AddressCard (+AddressList), CartItem, CartSummary, Accordion, Tooltip, Timeline.
-Feedback/overlays: Alert, Toast (+ToastViewport), Progress, Spinner, Skeleton, Modal, Drawer, EmptyState, Stepper.
+Data display: Table (+THead/TH/TBody/TR/TD), Badge, Avatar (+AvatarGroup), Chip, Rating, Price, ProductCard (+ProductGrid), ProductShelf, ProductArt, StockIndicator, StoreCard, ReviewCard, OrderStatusBadge, PaymentMethodCard, AddressCard (+AddressList), CartItem, CartSummary, QuantityStepper, Accordion, Tooltip, Timeline.
+Feedback/overlays: Alert, Toast (+ToastViewport), ToastProvider, Progress, Spinner, Skeleton, Modal, Drawer, EmptyState, Stepper.
 
-## Routes vs design-system registration
+## Routes and primitives
 
 - **Marketplace pages** are routes: create `src/routes/<Name>.jsx` (reference implementation: `routes/Home.jsx`), add a `<Route>` in `App.jsx`, link it from the app header.
-- **Design-system showcases** live in `src/sections/<Name>Section.jsx` using `Section`/`Demo` from `sections/shared.jsx`, registered in `pages/DesignSystemPage.jsx` (both `NAV_SECTIONS` and the page body). Only new UI primitives go here.
+- **New UI primitives** go in `components/ui/` and must be used by a real route/feature — the design-system playground was retired in Phase 7 (no `src/sections/`, no `pages/DesignSystemPage.jsx`); primitives are validated by tests + the `frontend-review` gates.
 
 For deeper guidance: building components → `frontend-ui` skill · tokens → `design-tokens` · UX behavior → `ux-patterns` · whole features → `frontend-feature` · data/API rules → `data-layer` · state placement → `frontend-state` · responsive/mobile-first → `frontend-responsive` · speed → `frontend-performance` · QA → `frontend-review` · git → `git-workflow` · testing/debugging → `testing` · Django/data/ORM → `backend-core` · REST API → `backend-api` · auth/permissions → `security` · backend domains → `backend-feature` · catalog → `marketplace-catalog` · cart/checkout/orders → `marketplace-orders` · sellers/stores → `marketplace-sellers` · reviews/wishlist/messaging → `marketplace-community` · staff/admin → `marketplace-admin` · payments/payouts → `payments-skill` · API/database tuning → `performance-skill` · shipping/ops → `deployment` · MCP/agent config → `ai-tooling`.

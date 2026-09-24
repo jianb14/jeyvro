@@ -1,6 +1,6 @@
 ---
 name: frontend-ui
-description: Build, edit, or refactor React components in the Jeyvro frontend (React 19 + Vite + Tailwind CSS v4, plain JSX). Use when creating or changing anything under frontend/src — components/ui, components/layout, pages, or sections. Enforces project conventions: named exports only, cx() utility, forwardRef/useId on form controls, icons only from Icons.jsx, createPortal overlays with Escape handling, ARIA and keyboard support, and mandatory dark mode variants.
+description: Build, edit, or refactor React components in the Jeyvro frontend (React 19 + Vite + Tailwind CSS v4, plain JSX). Use when creating or changing anything under frontend/src — components/ui or components/layout. Enforces project conventions: named exports only, cx() utility, forwardRef/useId on form controls, icons only from Icons.jsx, createPortal overlays with Escape handling, ARIA and keyboard support, and mandatory dark mode variants.
 ---
 
 > **Source of truth:** [PROJECT_CONTEXT.md](../../PROJECT_CONTEXT.md) — when anything conflicts, the project context wins.
@@ -59,9 +59,12 @@ Follow `Button.jsx` / `Card.jsx`:
 - Associate labels with inputs (`htmlFor` + `useId`), wire `aria-invalid` and `aria-describedby` for errors; never convey status by color alone (icon + text).
 - Heading hierarchy: one h1 per page, section titles h2, card titles h3 (matches `CardTitle`).
 
-## 7. Demo your work
+## 7. Validate your work
 
-- New or changed UI primitives must be showcased in the playground: add/update a file in `frontend/src/sections/` using the shared `Section`/`Demo` wrappers, and register it in `frontend/src/pages/DesignSystemPage.jsx`.
+- The design-system playground was **retired in Phase 7** (no `src/sections/`, no `pages/DesignSystemPage.jsx`). A new or changed primitive is validated where it actually ships:
+  - it must be used by a real route or feature — an unused primitive is not done;
+  - non-trivial behaviour gets a Vitest test (`components/ui/Button.test.jsx` is the reference);
+  - the `frontend-review` gates (a11y, dark mode, tokens, responsive) apply as usual.
 
 Before declaring a component done, verify it against [docs/checklist.md](docs/checklist.md) and run the `frontend-review` skill (lint + build are mandatory).
 

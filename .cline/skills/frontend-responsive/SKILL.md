@@ -29,7 +29,7 @@ Every Jeyvro screen works one-handed on a ~360px phone first, then enhances clea
 ## Workflow
 
 1. **Understand** — what must the mobile layout do first? What is the content priority?
-2. **Inspect** — check the reference patterns (`routes/Home.jsx`, `MarketplaceSection.jsx`) and existing grid usage before inventing one.
+2. **Inspect** — check the reference patterns (`routes/Home.jsx`, `routes/Browse.jsx`) and existing grid usage before inventing one.
 3. **Plan** — mobile base layout → list the enhancements per breakpoint (`sm`/`md`/`lg`).
 4. **Implement** — author the base layer for small screens; add min-width prefixes upward.
 5. **Test** — gates (`npm.cmd run lint` / `build`) + manually verify ~360 / ~768 / ~1280.

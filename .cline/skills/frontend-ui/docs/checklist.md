@@ -27,6 +27,6 @@ Before saying a component is finished, verify every item below.
 
 ## Integration
 
-- [ ] Showcased in `frontend/src/sections/` (using `Section`/`Demo`) and registered in `DesignSystemPage.jsx`
+- [ ] Used by a real route/feature (no design-system page since Phase 7) and exercised by a test where behaviour is non-trivial
 - [ ] `npm run lint` passes in `frontend/`
 - [ ] `npm run build` passes in `frontend/`
