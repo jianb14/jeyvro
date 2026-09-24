@@ -15,7 +15,7 @@ Ship consistent domains fast — the same shape of model, service, API, permissi
 
 ## Current honest state
 
-No Django app exists yet. Recommended first domains, in order: `accounts` → `stores` → `catalog` (scaffold per `backend-core` first).
+Backend is live: `accounts` (full auth stack, Phase 3) and `stores` (seller/store foundation with the early `audit` app, Phase 4), each with services, serializers, permissions, and tests. Next domain in the build order: `catalog` (Phase 5).
 
 ## When to use
 

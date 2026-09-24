@@ -1,6 +1,7 @@
 # JEYVRO — Project Context (Single Source of Truth)
 
-> Version 1.1 · Approved by the project owner.
+> Version 1.2 · Approved by the project owner.
+> v1.2 changelog: §6 seller verification, store lifecycle, and store ownership rules added (Phase 4).
 > v1.1 changelog: git-repo status corrected (§15, C4) · seller payouts added (§5, §6, §17) · §7 `features/` marked as target structure · §18 added (how skills reference this document).
 > This document is the source of truth for every Jeyvro skill, rule, and AI session.
 > On any conflict, this file wins. When reality changes, update this file first, then the affected skills.
@@ -63,6 +64,8 @@ User & seller management · product & category management · order oversight · 
 - **Checkout:** address → shipping → payment → review; creates an Order that snapshots prices and items at purchase time.
 - **Payments:** gateway-adapter interface (start with Cash-on-Delivery; PayMongo/GCash/Maya later); every payment has a ledger record and status.
 - **Seller payouts:** every seller balance derives from order/payment records (never manually keyed); payouts start as manual, admin-recorded settlements that are audit-logged (§9), moving to automated gateway settlement later (§17).
+- **Seller verification (Phase 4):** a registered customer applies as a seller (store name, description, contact) → the application and the store both start `pending` → staff approve (store goes `active`) or reject (a reason is required; the applicant may reapply). Sellers never self-approve — every review is a staff action.
+- **Store lifecycle & ownership (Phase 4):** `pending → active → suspended` — staff-only transitions through the moderation service, audit-logged (§9); one user owns exactly one store, and every store endpoint re-verifies ownership server-side (§10.3). Suspended/pending stores are invisible on public storefronts but keep their data.
 - **Orders:** explicit lifecycle (placed → awaiting payment → paid → shipped → delivered → completed / cancelled / refunded) with audit trail.
 - **Reviews:** verified buyers only; moderateable; seller ratings derive from product reviews.
 - **Messaging:** buyer ↔ seller conversations per order or per product.
@@ -160,7 +163,7 @@ Stack: Python · Django · Django REST Framework · PostgreSQL. Status: **to be 
 ## 15. Development Workflow
 
 - Monorepo layout: `frontend/` + `backend/` (the Django project, once scaffolded) + `docs/` as needed.
-- Git (Jeyvro repo not yet initialized): feature branches (`feat/…`, `fix/…`), small commits, self-review of diffs. A stray zero-commit repo exists at the user-home root (`C:/Users/Christian R`) — **never use it**; initialize git inside the `Jeyvro/` folder only, and only with the owner's explicit approval.
+- Git: feature branches (`feat/…`, `fix/…`), small commits, self-review of diffs. The repo lives inside `Jeyvro/` (GitHub: `jianb14/jeyvro`); a stray zero-commit repo at the user-home root (`C:/Users/Christian R`) exists — **never use it**.
 - Dev run: frontend `npm run dev` (Vite, proxies `/api` → Django on port 8000); backend venv + `manage.py runserver` (port 8000) once Django exists.
 - Gates per change: lint → build → (tests when they exist) → manual smoke of affected flows.
 - Windows notes on this machine: use `npm.cmd` in PowerShell; redirect shell output to a log file when capture is unreliable.
@@ -170,8 +173,8 @@ Stack: Python · Django · Django REST Framework · PostgreSQL. Status: **to be 
 - **C1:** Never copy the exact look/layout of Shopee, Lazada, TikTok Shop, Instagram, or Amazon. Patterns are fine; cloning is not.
 - **C2:** JavaScript/JSX (no TypeScript) unless the owner explicitly revisits.
 - **C3:** No new runtime dependency without explicit user approval.
-- **C4:** No Jeyvro git repo yet (a stray zero-commit repo exists at the user-home root — it must not be used) — keep changes small and separable until git is initialized inside `Jeyvro/`.
-- **C5:** There is currently no backend. The frontend runs on mock data accessors in `frontend/src/data/` (Promise-based, simulated latency) until the Django API exists. **Django is the sole approved backend target — no other backend stack.**
+- **C4:** Git repo initialized inside `Jeyvro/` (GitHub: `jianb14/jeyvro`) — keep changes small and separable. A stray zero-commit repo exists at the user-home root (`C:/Users/Christian R`) — it must not be used.
+- **C5:** Backend exists (Django + DRF + PostgreSQL, `backend/`). The frontend still runs its mock accessors in `frontend/src/data/` (Promise-based, simulated latency) for catalog browsing; `auth.js` and `stores.js` talk to the real Django API. **Django is the sole approved backend target — no other backend stack.**
 - **C6:** Currency is PHP ₱ (Philippine market) — Decimal on the backend, formatted via the `Price` component on the frontend.
 - **C7:** Secrets never appear in code, logs, or AI responses.
 

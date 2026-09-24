@@ -15,7 +15,7 @@ Sellers register, run their own storefront, and see their own numbers — while 
 
 ## Current honest state
 
-Frontend has store/seller mock data only; no backend yet. Backend build order: `accounts` → **`stores`** (per `backend-feature`) — this skill guides both.
+Backend `stores` app is **live** (Phase 4): `SellerApplication` + `Store` models, moderation service (audit-logged via the early `audit` foundation), `/api/v1/stores/` endpoints (apply, my/store, public storefront, staff review queue). Frontend has the real flows: `/sell` application, account "My store" settings tab, `/store/:slug` public page. Still ahead: seller sales dashboard/analytics (order events must exist first) and validated file uploads for store media.
 
 ## When to use
 

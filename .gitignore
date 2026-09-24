@@ -22,5 +22,6 @@ pgdata/
 
 # Logs / OS
 *.log
+*.out
 .DS_Store
 Thumbs.db

@@ -229,8 +229,3 @@ class NotificationPreferenceView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
-
-        update_session_auth_hash(request, user)
-        return Response({'detail': 'password changed'})
-
-        return Response(UserSerializer(user).data)
