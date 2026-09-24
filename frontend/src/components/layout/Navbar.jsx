@@ -13,6 +13,7 @@ import {
   BellIcon,
   HeartIcon,
   DownloadIcon,
+  StoreIcon,
 } from "../ui/Icons";
 
 const NAV_LINKS = [
@@ -97,6 +98,7 @@ export function Navbar() {
               }
               items={[
                 { key: "profile", label: "My account", icon: UserIcon, onSelect: () => navigate("/account") },
+                { key: "sell", label: "Sell on Jeyvro", icon: StoreIcon, onSelect: () => navigate("/sell") },
                 { key: "settings", label: "Settings", icon: SettingsIcon, onSelect: () => navigate("/account") },
                 { key: "sep", divider: true },
                 { key: "logout", label: "Log out", icon: LogOutIcon, tone: "danger", onSelect: handleLogout },

@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Navbar } from "../components/layout/Navbar";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Alert } from "../components/ui/Alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Tabs, TabPanel } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
 import { useAuth } from "../features/auth/AuthContext";
+import { StoreSettingsPanel } from "../features/seller/StoreSettingsPanel";
 import * as authApi from "../data/auth";
 
 function ProfilePanel() {
@@ -259,11 +262,32 @@ const TABS = [
   { id: "security", label: "Security" },
   { id: "addresses", label: "Addresses" },
   { id: "preferences", label: "Preferences" },
+  { id: "store", label: "My store" },
 ];
+
+function SellerCallToAction() {
+  return (
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle>Turn your craft into a store</CardTitle>
+        <CardDescription>
+          Run your own storefront on Jeyvro — your products, your policies,
+          your pace. Applications are reviewed by our team before going live.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Link to="/sell">
+          <Button>Become a seller</Button>
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function Account() {
   const { user } = useAuth();
   const [tab, setTab] = useState("profile");
+  const isSeller = Boolean(user.is_seller);
 
   return (
     <div className="min-h-screen bg-sand-50 dark:bg-night-950">
@@ -281,10 +305,24 @@ export function Account() {
           </Badge>
         </div>
         <Tabs tabs={TABS} defaultTab="profile" onChange={setTab} />
-        {tab === "profile" && <TabPanel><ProfilePanel /></TabPanel>}
+        {tab === "profile" && (
+          <TabPanel>
+            <ProfilePanel />
+            {!isSeller && <div className="mt-8"><SellerCallToAction /></div>}
+          </TabPanel>
+        )}
         {tab === "security" && <TabPanel><SecurityPanel /></TabPanel>}
         {tab === "addresses" && <TabPanel><AddressesPanel /></TabPanel>}
         {tab === "preferences" && <TabPanel><PreferencesPanel /></TabPanel>}
+        {tab === "store" && (
+          <TabPanel>
+            {isSeller ? (
+              <StoreSettingsPanel />
+            ) : (
+              <SellerCallToAction />
+            )}
+          </TabPanel>
+        )}
       </main>
     </div>
   );

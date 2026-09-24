@@ -5,6 +5,8 @@ import { DesignSystem } from "./routes/DesignSystem";
 import { Login } from "./routes/Login";
 import { Register } from "./routes/Register";
 import { Account } from "./routes/Account";
+import { BecomeSeller } from "./routes/BecomeSeller";
+import { Storefront } from "./routes/Storefront";
 
 function App() {
   return (
@@ -14,11 +16,20 @@ function App() {
         <Route path="/design-system" element={<DesignSystem />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/store/:slug" element={<Storefront />} />
         <Route
           path="/account"
           element={
             <ProtectedRoute>
               <Account />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sell"
+          element={
+            <ProtectedRoute>
+              <BecomeSeller />
             </ProtectedRoute>
           }
         />

@@ -3,118 +3,82 @@
  * (data-layer rule: components never fetch directly).
  *
  * Talks to the real Django API (/api/v1/auth/...) with session cookies.
- * Error convention (§8): throws Error with .status and .data
- * ({error, detail?, field_errors?}) so pages render server messages.
+ * Fetch plumbing + error convention (§8) live in lib/api.js.
  */
 
-const BASE = '/api/v1/auth';
+import { ensureCsrfToken, request } from "../lib/api";
 
-async function request(path, { method = 'GET', body, csrf } = {}) {
-  const headers = {};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (csrf) headers['X-CSRFToken'] = csrf;
+const BASE = "/api/v1/auth";
 
-  const response = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    credentials: 'include',
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    data = null; // empty body (e.g. some 204s)
-  }
-
-  if (!response.ok) {
-    const error = new Error(data?.detail || data?.error || 'Request failed');
-    error.status = response.status;
-    error.data = data || {};
-    throw error;
-  }
-  return data;
-}
-
-function readCookie(name) {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-/** Fetches a fresh CSRF cookie and returns its token (needed for unsafe methods). */
-export async function ensureCsrfToken() {
-  await request('/csrf');
-  return readCookie('csrftoken');
-}
+export { ensureCsrfToken };
 
 export async function register(payload) {
   const csrf = await ensureCsrfToken();
-  return request('/register', { method: 'POST', body: payload, csrf });
+  return request(BASE, "/register", { method: "POST", body: payload, csrf });
 }
 
 export async function login(email, password) {
   const csrf = await ensureCsrfToken();
-  return request('/login', { method: 'POST', body: { email, password }, csrf });
+  return request(BASE, "/login", { method: "POST", body: { email, password }, csrf });
 }
 
 export async function logout() {
   const csrf = await ensureCsrfToken();
-  return request('/logout', { method: 'POST', csrf });
+  return request(BASE, "/logout", { method: "POST", csrf });
 }
 
 export function fetchMe() {
-  return request('/me');
+  return request(BASE, "/me");
 }
 
 export async function updateMe(payload) {
   const csrf = await ensureCsrfToken();
-  return request('/me', { method: 'PATCH', body: payload, csrf });
+  return request(BASE, "/me", { method: "PATCH", body: payload, csrf });
 }
 
 export async function changePassword(currentPassword, newPassword) {
   const csrf = await ensureCsrfToken();
-  return request('/change-password', {
-    method: 'POST',
+  return request(BASE, "/change-password", {
+    method: "POST",
     body: { current_password: currentPassword, new_password: newPassword },
     csrf,
   });
 }
 
 export function requestPasswordReset(email) {
-  return request('/password-reset', { method: 'POST', body: { email } });
+  return request(BASE, "/password-reset", { method: "POST", body: { email } });
 }
 
 export function confirmPasswordReset(uid, token, new_password) {
-  return request('/password-reset-confirm', {
-    method: 'POST',
+  return request(BASE, "/password-reset-confirm", {
+    method: "POST",
     body: { uid, token, new_password },
   });
 }
 
 export function verifyEmail(uid, token) {
-  return request(`/verify-email?uid=${encodeURIComponent(uid)}&token=${encodeURIComponent(token)}`);
+  return request(BASE, `/verify-email?uid=${encodeURIComponent(uid)}&token=${encodeURIComponent(token)}`);
 }
 
 export function fetchAddresses() {
-  return request('/addresses/');
+  return request(BASE, "/addresses/");
 }
 
 export async function createAddress(payload) {
   const csrf = await ensureCsrfToken();
-  return request('/addresses/', { method: 'POST', body: payload, csrf });
+  return request(BASE, "/addresses/", { method: "POST", body: payload, csrf });
 }
 
 export async function deleteAddress(id) {
   const csrf = await ensureCsrfToken();
-  return request(`/addresses/${id}/`, { method: 'DELETE', csrf });
+  return request(BASE, `/addresses/${id}/`, { method: "DELETE", csrf });
 }
 
 export function fetchNotificationPreferences() {
-  return request('/notification-preferences');
+  return request(BASE, "/notification-preferences");
 }
 
 export async function updateNotificationPreferences(payload) {
   const csrf = await ensureCsrfToken();
-  return request('/notification-preferences', { method: 'PUT', body: payload, csrf });
+  return request(BASE, "/notification-preferences", { method: "PUT", body: payload, csrf });
 }

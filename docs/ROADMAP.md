@@ -25,7 +25,7 @@
 | 1 | Repository & Development Infrastructure | ✅ Done — GitHub connected (jianb14/jeyvro), pushed & verified; only backend-linter item deferred to tooling pass |
 | 2 | Backend Foundation & Database | 🔄 Foundation verified (Django+DRF+PG live, migrations, tests) — media/filtering/sorting land with their feature phases |
 | 3 | Authentication, Users & Access Control | 🔄 Core verified (11/11 backend tests + live E2E) — session expiry settings & staff-endpoint permissions land with later phases |
-| 4 | Seller & Store Foundation | ⬜ Not started |
+| 4 | Seller & Store Foundation | ✅ Done — stores app + audit foundation, 19/19 backend tests, lint/build green, live E2E smoke (apply→approve→storefront) passed; logo/banner are URL-based until the media phase |
 | 5 | Catalog, Products & Inventory | ⬜ Not started |
 | 6 | Customer Shopping & Discovery | ⬜ Not started |
 | 7 | Cart & Wishlist | ⬜ Not started |
@@ -186,7 +186,7 @@ Final Production Audit
 Define the complete JEYVRO product before implementing the full
 marketplace.
 
-> **Single source of truth (PROJECT_CONTEXT §18):** the rules and lifecycles this phase defines must be written into `PROJECT_CONTEXT.md` — never into this roadmap; this file only references them. Known gaps PROJECT_CONTEXT does not yet cover: commission rules, voucher rules, returns/refunds/disputes rules, and seller verification. Add those to PROJECT_CONTEXT first, then check the boxes below.
+> **Single source of truth (PROJECT_CONTEXT §18):** the rules and lifecycles this phase defines must be written into `PROJECT_CONTEXT.md` — never into this roadmap; this file only references them. Known gaps PROJECT_CONTEXT does not yet cover: commission rules, voucher rules, and returns/refunds/disputes rules (seller registration/verification and store rules landed in PROJECT_CONTEXT v1.2). Add the remaining ones to PROJECT_CONTEXT first, then check the boxes below.
 
 ### 0.1 Product definition
 
@@ -211,9 +211,9 @@ marketplace.
 
 ### 0.3 Marketplace business rules
 
--   [ ] Seller registration rules
--   [ ] Seller verification rules
--   [ ] Store ownership rules
+-   [x] Seller registration rules
+-   [x] Seller verification rules
+-   [x] Store ownership rules
 -   [ ] Product ownership rules
 -   [ ] Product publishing rules
 -   [ ] Inventory rules
@@ -235,8 +235,8 @@ marketplace.
 ### 0.4 Lifecycle definitions
 
 -   [ ] Account lifecycle
--   [ ] Seller lifecycle
--   [ ] Store lifecycle
+-   [x] Seller lifecycle
+-   [x] Store lifecycle
 -   [ ] Product lifecycle
 -   [ ] Inventory lifecycle
 -   [ ] Cart lifecycle
@@ -520,44 +520,44 @@ Establish the multi-vendor side before seller-owned catalog data.
 
 ### 4.1 Seller application
 
--   [ ] Become-a-seller flow
--   [ ] Seller application model
--   [ ] Seller information
--   [ ] Verification status
--   [ ] Admin review status
--   [ ] Approval/rejection
--   [ ] Rejection reason
--   [ ] Seller activation/deactivation
+-   [x] Become-a-seller flow
+-   [x] Seller application model
+-   [x] Seller information
+-   [x] Verification status
+-   [x] Admin review status
+-   [x] Approval/rejection
+-   [x] Rejection reason
+-   [x] Seller activation/deactivation
 
 ### 4.2 Store
 
--   [ ] Store model
--   [ ] Store ownership
--   [ ] Store slug
--   [ ] Store name
--   [ ] Store logo
--   [ ] Store banner
--   [ ] Store description
--   [ ] Store policies
--   [ ] Store status
--   [ ] Public storefront
+-   [x] Store model
+-   [x] Store ownership
+-   [x] Store slug
+-   [x] Store name
+-   [x] Store logo
+-   [x] Store banner
+-   [x] Store description
+-   [x] Store policies
+-   [x] Store status
+-   [x] Public storefront
 
 ### 4.3 Seller settings
 
--   [ ] Store profile
--   [ ] Contact information
--   [ ] Shipping settings foundation
--   [ ] Return policy
--   [ ] Store settings
+-   [x] Store profile
+-   [x] Contact information
+-   [x] Shipping settings foundation
+-   [x] Return policy
+-   [x] Store settings
 
 ### Gate
 
--   [ ] Customer can apply as seller
--   [ ] Admin can approve/reject
--   [ ] Approved seller receives store
--   [ ] Seller can edit store
--   [ ] Public storefront works
--   [ ] Unauthorized users cannot modify another store
+-   [x] Customer can apply as seller
+-   [x] Admin can approve/reject
+-   [x] Approved seller receives store
+-   [x] Seller can edit store
+-   [x] Public storefront works
+-   [x] Unauthorized users cannot modify another store
 
 **Skills:** marketplace-sellers, security, backend-feature, frontend-feature
 
