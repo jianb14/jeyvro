@@ -17,6 +17,8 @@ Turn a customer's cart into trustworthy orders: server-computed totals, immutabl
 
 Cart is **live** (Phase 7): `apps/cart` (Cart / CartItem / WishlistItem) with session-keyed guest carts (merged into the account cart at login), prices/stock/totals recomputed server-side on every read, store-grouped payloads, and the `/cart` UI wired through `data/cart.js`. Checkout, order creation, and order-time reservation/decrement are next (Phase 8) — they consume `catalog.services.reserve_stock` / `commit_sale`; the cart holds quantities only.
 
+**Phase-8 rules are defined (PROJECT_CONTEXT §6 v1.7):** checkout is signed-in only with a validated shipping address; shipping is a per-store flat fee (`Store.shipping_flat_fee`) plus an optional per-store free-shipping threshold; totals are `Σ store subtotals + Σ store shipping fees`, computed server-side; order creation is one transaction that snapshots everything and reserves stock, writing one parent `Order` + one `SellerOrder` per store (reservations commit at `paid`, release on cancel).
+
 ## When to use
 
 - Cart data model + cart UI; checkout steps (address → shipping → payment → review)
