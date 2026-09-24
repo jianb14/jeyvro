@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { cx } from "../../lib/cx";
 import { ChevronRightIcon } from "./Icons";
 
@@ -13,6 +14,13 @@ export function Breadcrumb({ items = [], className }) {
               <span aria-current="page" className="font-medium text-sand-900 dark:text-sand-100">
                 {item.label}
               </span>
+            ) : item.to ? (
+              <Link
+                to={item.to}
+                className="text-sand-500 transition-colors hover:text-moss-700 dark:text-sand-400 dark:hover:text-moss-300"
+              >
+                {item.label}
+              </Link>
             ) : (
               <a href={item.href || "#"} className="text-sand-500 transition-colors hover:text-moss-700 dark:text-sand-400 dark:hover:text-moss-300">
                 {item.label}

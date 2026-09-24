@@ -97,6 +97,7 @@ class PublicProductSerializer(serializers.ModelSerializer):
     store_name = serializers.CharField(source='store.name', read_only=True)
     store_verified = serializers.BooleanField(source='store.user.is_seller', read_only=True)
     primary_image = serializers.SerializerMethodField()
+    images = ProductImageSerializer(many=True, read_only=True)
     variants = VariantSerializer(many=True, read_only=True)
     price = serializers.SerializerMethodField()
     originalPrice = serializers.SerializerMethodField()
@@ -106,14 +107,16 @@ class PublicProductSerializer(serializers.ModelSerializer):
     stock = serializers.SerializerMethodField()
     isNew = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
+    category_slug = serializers.SlugField(source='category.slug', read_only=True)
 
     class Meta:
         model = Product
         fields = [
             'id', 'slug', 'title', 'description',
             'price', 'originalPrice', 'discount', 'rating', 'sold',
-            'stock', 'isNew', 'category', 'store_name', 'store_slug',
-            'store_verified', 'primary_image', 'variants', 'created_at',
+            'stock', 'isNew', 'category', 'category_slug',
+            'store_name', 'store_slug', 'store_verified',
+            'primary_image', 'images', 'variants', 'created_at',
         ]
 
     # --- server-resolved display values (§6 v1.3) ---

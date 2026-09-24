@@ -4,9 +4,11 @@ Public browse runs server-side search/filter/sort with the {count, items}
 envelope (marketplace-catalog rule 3); seller endpoints are store-scoped
 (rule 6); staff review is audit-logged; image upload is validated (§8/§10).
 """
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
-from django.db.models import Min, Q
-from django.db.models.functions import Coalesce
+from django.db.models import ExpressionWrapper, F, FloatField, Min, Q
+from django.db.models.functions import Coalesce, NullIf
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
@@ -59,13 +61,22 @@ class PublicProductViewSet(viewsets.ReadOnlyModelViewSet):
         ).select_related('store', 'category').prefetch_related(
             'variants__inventory', 'images'
         )
-        # Display price as a SQL annotation so price filters/sorts hit the
-        # same server-resolved value the serializer returns (§6 v1.3).
+        # Display price + real discount as SQL annotations so price filters
+        # and sorts hit the same server-resolved values the serializer
+        # returns (§6 v1.3). discount_score is null when there is no
+        # reference price — those sort last under sort=discount (Phase 6
+        # customer discovery: Trending / deals ordering).
+        display_price = Coalesce(
+            Min('variants__price', filter=Q(variants__is_active=True)),
+            'base_price',
+        )
         queryset = queryset.annotate(
-            display_price=Coalesce(
-                Min('variants__price', filter=Q(variants__is_active=True)),
-                'base_price',
-            )
+            display_price=display_price,
+            discount_score=ExpressionWrapper(
+                (F('compare_at_price') - display_price)
+                / NullIf(F('compare_at_price'), Decimal('0')),
+                output_field=FloatField(),
+            ),
         )
         params = self.request.query_params
         needle = params.get('q')
@@ -86,7 +97,13 @@ class PublicProductViewSet(viewsets.ReadOnlyModelViewSet):
         if max_price:
             queryset = queryset.filter(display_price__lte=max_price)
         sort = params.get('sort')
-        if sort in SORT_MAP:
+        if sort == 'discount':
+            # Biggest real discount first; products with no reference price
+            # sort last (never a fake "deal" at the top).
+            queryset = queryset.order_by(
+                F('discount_score').desc(nulls_last=True), '-created_at'
+            )
+        elif sort in SORT_MAP:
             queryset = queryset.order_by(SORT_MAP[sort], '-created_at')
         else:
             # Stable default order — pagination must never be ambiguous.

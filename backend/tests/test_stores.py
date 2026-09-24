@@ -19,6 +19,7 @@ APPLY = '/api/v1/stores/apply'
 MY_STORE = '/api/v1/stores/my/store'
 APPLICATIONS = '/api/v1/stores/admin/applications/'
 PUBLIC = '/api/v1/stores/public/kalinga-crafts/'
+PUBLIC_LIST = '/api/v1/stores/public/'
 
 USER = {'email': 'seller@example.com', 'password': 'Str0ng!Passw0rd',
         'first_name': 'Sella', 'last_name': 'Seller'}
@@ -223,3 +224,27 @@ def test_staff_suspend_and_reactivate_store(client):
     reactivated = services.activate_store(staff_user, store)
     assert reactivated.status == Store.Status.ACTIVE
     assert client.get(PUBLIC).status_code == 200
+
+
+def test_public_store_directory_lists_active_stores_only(client):
+    """Phase 6 discovery: the public store directory ({count, items})
+    exposes active stores only — no owner/contact internals."""
+    application, staff_user = setup_approved_store(client)
+
+    # The directory is public — anonymous browsers can read it.
+    client.post(LOGOUT)
+    response = client.get(PUBLIC_LIST)
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body['count'] == 1
+    item = body['items'][0]
+    assert item['name'] == 'Kalinga Crafts'
+    for internal in ('user', 'contact_email', 'contact_phone', 'status'):
+        assert internal not in item
+
+    # Suspended stores drop out of the directory immediately.
+    from apps.stores import services
+    services.suspend_store(
+        staff_user, application.store, reason='Policy violation'
+    )
+    assert client.get(PUBLIC_LIST).json()['count'] == 0

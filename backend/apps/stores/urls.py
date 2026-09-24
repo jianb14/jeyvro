@@ -13,6 +13,7 @@ router.register(
 urlpatterns = [
     path('apply', views.ApplyView.as_view(), name='apply'),
     path('my/store', views.MyStoreView.as_view(), name='my-store'),
+    path('public/', views.PublicStoreListView.as_view(), name='public-stores'),
     path('public/<slug:slug>/', views.PublicStoreDetailView.as_view(), name='public-store'),
     path(
         'admin/applications/<int:pk>/review',

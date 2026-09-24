@@ -292,3 +292,43 @@ def test_image_upload_validates_content(client):
     assert bad.status_code == 400
     assert bad.json()['error'] == 'invalid_image'
     assert ProductImage.objects.filter(product=product).count() == 1
+
+
+def test_public_payload_carries_category_slug_and_images(client):
+    """Phase 6 discovery: the public shape feeds the detail gallery and
+    category links (images[] + category_slug)."""
+    _user, store = make_approved_seller_with_store(client)
+    category = Category.objects.create(name='Home & Living')
+    product, _variant = make_published_product(store, title='Gallery Item')
+    product.category = category
+    product.save(update_fields=['category'])
+    ProductImage.objects.create(product=product, image='products/gallery.png')
+
+    response = client.get(f'{CATALOG}{product.slug}/')
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body['category'] == 'Home & Living'
+    assert body['category_slug'] == 'home-living'
+    assert len(body['images']) == 1
+    assert body['images'][0]['image'].endswith('/media/products/gallery.png')
+    assert body['primary_image'].endswith('/media/products/gallery.png')
+
+
+def test_discount_sort_ranks_biggest_real_discount_first(client):
+    """Phase 6 discovery: sort=discount is truthful — products without a
+    reference price never rank as deals (nulls last)."""
+    _user, store = make_approved_seller_with_store(client)
+    make_published_product(store, title='No Deals', price='100.00', compare_at=None)
+    make_published_product(store, title='Half Off', price='50.00', compare_at='100.00')
+    make_published_product(store, title='Small Deal', price='90.00', compare_at='100.00')
+
+    response = client.get(f'{CATALOG}?sort=discount')
+    assert response.status_code == 200, response.content
+    titles = [item['title'] for item in response.json()['items']]
+    assert titles == ['Half Off', 'Small Deal', 'No Deals']
+
+    # Page-size/page params keep the {count, items} envelope intact —
+    # the browse UI paginates against `count`.
+    paged = client.get(f'{CATALOG}?sort=discount&page_size=1&page=2')
+    assert paged.json()['count'] == 3
+    assert [i['title'] for i in paged.json()['items']] == ['Small Deal']

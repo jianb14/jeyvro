@@ -3,6 +3,7 @@
 Endpoints (all under /api/v1/stores/):
 - POST apply                      any authenticated customer
 - GET/PATCH my/store              seller — own store only
+- GET public/                     public — active store directory ({count, items})
 - GET public/<slug>/              public — active stores only
 - GET admin/applications/         staff — review queue ({count, items})
 - POST admin/applications/<id>/review  staff — approve/reject
@@ -14,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import InStaffGroup, IsSeller
+from apps.common.pagination import CountItemsPagination
 
 from . import services
 from .models import SellerApplication, Store
@@ -72,6 +74,25 @@ class PublicStoreDetailView(APIView):
     def get(self, request, slug):
         store = get_object_or_404(Store, slug=slug, status=Store.Status.ACTIVE)
         return Response(PublicStoreSerializer(store).data)
+
+
+class PublicStoreListView(APIView):
+    """Public store directory (Phase 6 discovery) — active stores only.
+
+    Powers the customer-facing "Featured stores" sections. Same {count,
+    items} envelope and pagination as every other list endpoint (§8).
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        queryset = Store.objects.filter(
+            status=Store.Status.ACTIVE
+        ).order_by('name')
+        paginator = CountItemsPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = PublicStoreSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class StaffApplicationViewSet(viewsets.ReadOnlyModelViewSet):

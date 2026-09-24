@@ -35,12 +35,18 @@ function PageButton({ page, active, onClick, disabled, className }) {
   );
 }
 
-export function Pagination({ total = 10, initial = 1, siblingCount = 1, className, onChange }) {
-  const [current, setCurrent] = useState(Math.min(initial, total));
+export function Pagination({ total = 10, initial = 1, current: currentProp, siblingCount = 1, className, onChange }) {
+  const [internal, setInternal] = useState(Math.min(initial, total));
+
+  // Controlled like the other primitives (Rating/VariantPicker): pass
+  // `current` + `onChange` to drive it from the URL (frontend-state rule
+  // 6); leave `current` undefined for self-managed state.
+  const isControlled = currentProp !== undefined;
+  const current = Math.min(Math.max(isControlled ? currentProp : internal, 1), Math.max(total, 1));
 
   const go = (page) => {
     if (page < 1 || page > total || page === current) return;
-    setCurrent(page);
+    if (!isControlled) setInternal(page);
     onChange?.(page);
   };
 

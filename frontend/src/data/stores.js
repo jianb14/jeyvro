@@ -25,3 +25,19 @@ export async function updateMyStore(payload) {
 export function fetchPublicStore(slug) {
   return request(BASE, `/public/${encodeURIComponent(slug)}/`);
 }
+
+/**
+ * Public store directory (Phase 6 discovery) — active stores only,
+ * {count, items} envelope like every list endpoint.
+ */
+export async function fetchPublicStores({ page = "", pageSize = "" } = {}) {
+  const params = new URLSearchParams();
+  if (page) params.set("page", page);
+  if (pageSize) params.set("page_size", pageSize);
+  const query = params.toString();
+  const data = await request(BASE, `/public/${query ? `?${query}` : ""}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: data.items ?? [],
+  };
+}
