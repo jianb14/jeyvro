@@ -20,4 +20,9 @@ urlpatterns = [
     path('shipments/track/<str:tracking_number>/', views.ShipmentTrackView.as_view(), name='shipment-track'),
     path('shipments/<str:tracking_number>/events', views.ShipmentEventUpdateView.as_view(), name='shipment-event-update'),
 
+    # Phase 11: Customer account & order management (§11.2, §11.3)
+    path('orders/<str:number>/reorder', views.OrderReorderView.as_view(), name='order-reorder'),
+    path('orders/<str:number>/requests', views.OrderRequestCreateView.as_view(), name='order-request-create'),
+    path('orders/<str:number>/requests/<int:pk>/withdraw', views.OrderRequestWithdrawView.as_view(), name='order-request-withdraw'),
+
 ]

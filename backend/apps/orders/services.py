@@ -8,6 +8,7 @@ only place stock changes), and the cart is cleared. Views stay thin (§8).
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 
@@ -17,10 +18,18 @@ from apps.cart import services as cart_services
 from apps.cart.models import Cart
 from apps.catalog import services as catalog_services
 from apps.payments import services as payment_services
-from apps.payments.models import PaymentMethod
+from apps.payments.models import PaymentMethod, PaymentStatus
 
-from .models import Order, OrderItem, SellerOrder
-from .models import Order, OrderItem, OrderStatus, SellerOrder
+from .models import (
+    Order,
+    OrderItem,
+    OrderRequest,
+    OrderStatus,
+    RequestKind,
+    RequestStatus,
+    SellerOrder,
+    Shipment,
+)
 
 
 # Unambiguous alphabet for order numbers (no O/0, I/1, lookalikes).
@@ -218,13 +227,24 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD):
     return order
 
 
+def can_cancel(order):
+    """Cancellation eligibility — the one server-side verdict (§11.3).
+
+    Only pre-payment orders cancel here (the reservation is released
+    whole). Paid orders move through refunds/returns instead (Phase 17),
+    so the customer UI renders this flag rather than guessing.
+    """
+    return order.status in (Order.Status.PLACED, Order.Status.AWAITING_PAYMENT)
+
+
 def cancel_order(user, number):
     """Customer cancellation before payment — releases the reservations (§6).
 
-    Only `placed` / `awaiting_payment` orders can be cancelled here; after
-    payment, refunds are the path (Phase 17). Every line's reservation is
-    released through the row-locked catalog service, then both the parent
-    and the per-store orders are marked cancelled — one transaction.
+    Only `placed` / `awaiting_payment` orders can be cancelled here (see
+    `can_cancel`); after payment, refunds are the path (Phase 17). Every
+    line's reservation is released through the row-locked catalog service,
+    then both the parent and the per-store orders are marked cancelled —
+    one transaction.
     """
     with transaction.atomic():
         order = (
@@ -234,7 +254,7 @@ def cancel_order(user, number):
         )
         if order is None:
             raise Order.DoesNotExist(f'Order {number} not found.')
-        if order.status not in (Order.Status.PLACED, Order.Status.AWAITING_PAYMENT):
+        if not can_cancel(order):
             raise CheckoutError(
                 'This order can no longer be cancelled.', code='not_cancellable'
             )
@@ -565,4 +585,302 @@ def update_shipment_status(shipment, new_status, *, location='', description='',
         )
 
     return s
+
+
+# -----------------------------------------------------------------------------
+# Phase 11: Customer Account & Order Management Services (§11.1, §11.2, §11.3)
+# -----------------------------------------------------------------------------
+
+class RequestError(ValueError):
+    """Customer-safe post-purchase rejection — code + message, never a stack."""
+
+    def __init__(self, message, *, code='request_rejected'):
+        super().__init__(message)
+        self.code = code
+
+
+_FULFILLED_STATUSES = (OrderStatus.DELIVERED, OrderStatus.COMPLETED)
+
+
+# Customer-safe copy for the audit trail → order timeline (§11.2). Only
+# whitelisted actions are mapped, and only known keys are read out of
+# `detail` — raw audit payloads never cross to the client.
+_TIMELINE_STEPS = {
+    'order.placed': ('Order placed', 'success'),
+    'payment.captured': ('Payment received', 'success'),
+    'order.cancelled': ('Order cancelled', 'danger'),
+    'refund.settled': ('Refund completed', 'info'),
+}
+
+_SELLER_ORDER_STEPS = {
+    'seller_order.processing': ('Being prepared', 'info'),
+    'seller_order.packed': ('Packed and ready to ship', 'info'),
+}
+
+_SHIPMENT_STATUS_LABELS = {
+    'pending': 'Shipment created',
+    'packed': 'Packed and ready',
+    'picked_up': 'Picked up by the courier',
+    'in_transit': 'In transit',
+    'out_for_delivery': 'Out for delivery',
+    'delivered': 'Delivered',
+    'failed': 'Delivery attempt failed',
+    'cancelled': 'Shipment cancelled',
+}
+
+_SHIPMENT_TONES = {
+    'delivered': 'success',
+    'failed': 'danger',
+    'cancelled': 'neutral',
+}
+
+
+def _timeline_step(row):
+    """One audit row → one customer-safe timeline step (None = skip)."""
+    occurred_at = row.created_at.isoformat()
+    if row.action == 'shipment.status_updated':
+        status = row.detail.get('status', '')
+        description = ' · '.join(
+            part
+            for part in (
+                f"Tracking {row.detail.get('tracking_number', '')}".strip(),
+                row.detail.get('location', ''),
+            )
+            if part
+        )
+        return {
+            'title': _SHIPMENT_STATUS_LABELS.get(status, 'Shipment updated'),
+            'description': description,
+            'tone': _SHIPMENT_TONES.get(status, 'info'),
+            'occurred_at': occurred_at,
+        }
+    if row.action == 'shipment.created':
+        tracking = row.detail.get('tracking_number', '')
+        return {
+            'title': 'Parcel handed to the courier',
+            'description': f'Tracking {tracking}' if tracking else '',
+            'tone': 'info',
+            'occurred_at': occurred_at,
+        }
+    if row.action in _SELLER_ORDER_STEPS:
+        title, tone = _SELLER_ORDER_STEPS[row.action]
+        return {
+            'title': title,
+            'description': row.detail.get('store', ''),
+            'tone': tone,
+            'occurred_at': occurred_at,
+        }
+    if row.action in _TIMELINE_STEPS:
+        title, tone = _TIMELINE_STEPS[row.action]
+        return {
+            'title': title,
+            'description': '',
+            'tone': tone,
+            'occurred_at': occurred_at,
+        }
+    return None
+
+
+def build_order_timeline(order):
+    """Owner-facing lifecycle timeline assembled from the audit trail (§11.2).
+
+    Every lifecycle transition already writes an append-only AuditLog row
+    (Phases 8–10); this maps the whitelisted subset into customer-safe
+    steps. Unknown actions are skipped, never leaked.
+    """
+    from apps.audit.models import AuditLog
+    from apps.payments.models import Refund
+
+    targets = [
+        ('orders.order', [order.pk]),
+        (
+            'orders.sellerorder',
+            order.seller_orders.values_list('pk', flat=True),
+        ),
+        (
+            'orders.shipment',
+            Shipment.objects.filter(seller_order__order=order).values_list(
+                'pk', flat=True
+            ),
+        ),
+        (
+            'payments.refund',
+            Refund.objects.filter(payment__order=order).values_list('pk', flat=True),
+        ),
+    ]
+    payment = getattr(order, 'payment', None)
+    if payment is not None:
+        targets.append(('payments.payment', [payment.pk]))
+
+    query = Q()
+    for object_type, ids in targets:
+        ids = [str(pk) for pk in ids]
+        if ids:
+            query |= Q(object_type=object_type, object_id__in=ids)
+    if not query:
+        return []
+
+    steps = []
+    for row in AuditLog.objects.filter(query).order_by('created_at', 'id'):
+        step = _timeline_step(row)
+        if step:
+            steps.append(step)
+    return steps
+
+
+def reorder_into_cart(user, number):
+    """Adds every still-buyable line of an order back into the cart (§11.2).
+
+    Each line is re-validated against live catalog/stock truth through the
+    same cart service the buy flow uses; unavailable lines are reported,
+    never silently dropped, so the caller can tell the customer what was
+    skipped and why.
+    """
+    order = Order.objects.filter(number=number, user=user).first()
+    if order is None:
+        raise Order.DoesNotExist(f'Order {number} not found.')
+
+    cart = Cart.objects.get_or_create(user=user)[0]
+    items = OrderItem.objects.filter(seller_order__order=order).select_related(
+        'variant',
+        'variant__inventory',
+        'variant__product',
+        'variant__product__store',
+    )
+
+    added, skipped = [], []
+    for item in items:
+        try:
+            cart_services.add_item(cart, item.variant, item.quantity)
+        except ValueError as exc:
+            skipped.append({'title': item.product_title, 'reason': str(exc)})
+        else:
+            added.append({
+                'title': item.product_title,
+                'variant_name': item.variant_name,
+                'quantity': item.quantity,
+            })
+    return {
+        'added': added,
+        'skipped': skipped,
+        'cart_item_count': sum(cart.items.values_list('quantity', flat=True)),
+    }
+
+
+def _request_slices(order, seller_order_id):
+    """Resolves the target store slice(s) for a request, order-scoped."""
+    slices = list(order.seller_orders.all())
+    if seller_order_id is None:
+        return slices
+    target = next((so for so in slices if so.pk == seller_order_id), None)
+    if target is None:
+        raise RequestError(
+            'That store is not part of this order.', code='invalid_store'
+        )
+    return [target]
+
+
+def create_order_request(user, number, kind, reason, description='', seller_order_id=None):
+    """Records a customer request against their own order (§11.3).
+
+    Eligibility is server-verified: returns need a delivered slice, refund
+    requests need captured money, and issues need an order that is not
+    closed. The record is the intake — Phase 17 owns the adjudication.
+    """
+    if kind not in RequestKind.values:
+        raise RequestError('Unknown request type.', code='invalid_kind')
+    reason = (reason or '').strip()
+    if not reason:
+        raise RequestError('Please include a reason.', code='reason_required')
+
+    with transaction.atomic():
+        order = (
+            Order.objects.select_for_update()
+            .filter(number=number, user=user)
+            .prefetch_related('seller_orders')
+            .first()
+        )
+        if order is None:
+            raise Order.DoesNotExist(f'Order {number} not found.')
+
+        targets = _request_slices(order, seller_order_id)
+
+        if kind == RequestKind.RETURN:
+            fulfilled = all(
+                so.status in _FULFILLED_STATUSES for so in targets
+            )
+            if not targets or not fulfilled:
+                raise RequestError(
+                    'You can request a return once the items have been delivered.',
+                    code='not_delivered',
+                )
+        elif kind == RequestKind.REFUND:
+            payment = getattr(order, 'payment', None)
+            if payment is None or payment.status not in (
+                PaymentStatus.PAID,
+                PaymentStatus.PARTIALLY_REFUNDED,
+            ):
+                raise RequestError(
+                    'A refund request needs a completed payment.',
+                    code='nothing_to_refund',
+                )
+        else:  # issue
+            if order.status in (OrderStatus.CANCELLED, OrderStatus.REFUNDED):
+                raise RequestError('This order is already closed.', code='order_closed')
+
+        duplicate = OrderRequest.objects.filter(
+            order=order,
+            kind=kind,
+            seller_order_id=seller_order_id,
+            status=RequestStatus.PENDING,
+        ).exists()
+        if duplicate:
+            raise RequestError(
+                'You already have a pending request like this.',
+                code='request_exists',
+            )
+
+        request = OrderRequest.objects.create(
+            order=order,
+            seller_order_id=seller_order_id,
+            kind=kind,
+            reason=reason[:160],
+            description=(description or '').strip()[:2000],
+        )
+        audit_services.log_event(
+            user,
+            'order.request_created',
+            request,
+            detail={
+                'order': order.number,
+                'kind': kind,
+                'seller_order': seller_order_id,
+            },
+        )
+    return request
+
+
+def withdraw_order_request(user, number, request_id):
+    """Customer withdraws their own pending request (§11.3)."""
+    with transaction.atomic():
+        request = (
+            OrderRequest.objects.select_for_update()
+            .filter(pk=request_id, order__number=number, order__user=user)
+            .first()
+        )
+        if request is None:
+            raise OrderRequest.DoesNotExist('Request not found.')
+        if request.status != RequestStatus.PENDING:
+            raise RequestError(
+                'Only pending requests can be withdrawn.', code='not_withdrawable'
+            )
+        request.status = RequestStatus.WITHDRAWN
+        request.save(update_fields=['status', 'updated_at'])
+        audit_services.log_event(
+            user,
+            'order.request_withdrawn',
+            request,
+            detail={'order': request.order.number, 'kind': request.kind},
+        )
+    return request
 

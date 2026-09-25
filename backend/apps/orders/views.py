@@ -15,7 +15,7 @@ from apps.cart import services as cart_services
 from apps.common.pagination import CountItemsPagination
 
 from . import serializers, services
-from .models import Order, SellerOrder, Shipment
+from .models import Order, OrderRequest, SellerOrder, Shipment
 
 
 def _rejected(exc):
@@ -86,6 +86,7 @@ class OrderDetailView(APIView):
                 'seller_orders__items',
                 'seller_orders__shipments__items__order_item',
                 'seller_orders__shipments__tracking_events',
+                'requests__seller_order',
             ),
             number=number,
             user=request.user,
@@ -291,3 +292,70 @@ class ShipmentEventUpdateView(APIView):
             'items__order_item', 'tracking_events'
         ).get(pk=s.pk)
         return Response(serializers.serialize_shipment(s))
+
+
+# -----------------------------------------------------------------------------
+# Phase 11: Customer Account & Order Management Views (§11.2, §11.3)
+# -----------------------------------------------------------------------------
+
+class OrderReorderView(APIView):
+    """POST /api/v1/orders/<number>/reorder — buy the order again (§11.2).
+
+    Re-validates every line against live catalog/stock truth; unavailable
+    lines come back as `skipped`, never silently dropped.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, number):
+        try:
+            result = services.reorder_into_cart(request.user, number)
+        except Order.DoesNotExist:
+            return Response({'error': 'not_found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(result)
+
+
+class OrderRequestCreateView(APIView):
+    """POST /api/v1/orders/<number>/requests — record a customer request.
+
+    The intake only (§11.3): eligibility is server-verified, the record is
+    owner-scoped, and Phase 17 owns what happens to it next.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, number):
+        serializer = serializers.CreateOrderRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            order_request = services.create_order_request(
+                request.user,
+                number,
+                serializer.validated_data['kind'],
+                serializer.validated_data['reason'],
+                serializer.validated_data.get('description', ''),
+                serializer.validated_data.get('seller_order_id'),
+            )
+        except Order.DoesNotExist:
+            return Response({'error': 'not_found'}, status=status.HTTP_404_NOT_FOUND)
+        except services.RequestError as exc:
+            return _rejected(exc)
+        return Response(
+            serializers.serialize_order_request(order_request),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class OrderRequestWithdrawView(APIView):
+    """POST /api/v1/orders/<number>/requests/<id>/withdraw — customer withdraw."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, number, pk):
+        try:
+            order_request = services.withdraw_order_request(request.user, number, pk)
+        except OrderRequest.DoesNotExist:
+            return Response({'error': 'not_found'}, status=status.HTTP_404_NOT_FOUND)
+        except services.RequestError as exc:
+            return _rejected(exc)
+        return Response(serializers.serialize_order_request(order_request))

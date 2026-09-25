@@ -9,6 +9,8 @@ import { ProductDetail } from "./routes/ProductDetail";
 import { Cart } from "./routes/Cart";
 import { Checkout } from "./routes/Checkout";
 import { OrderDetail } from "./routes/OrderDetail";
+import { Orders } from "./routes/Orders";
+import { Receipt } from "./routes/Receipt";
 import { Wishlist } from "./routes/Wishlist";
 import { Login } from "./routes/Login";
 import { Register } from "./routes/Register";
@@ -37,10 +39,26 @@ function App() {
                 }
               />
               <Route
+                path="/orders"
+                element={
+                  <ProtectedRoute>
+                    <Orders />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/orders/:number"
                 element={
                   <ProtectedRoute>
                     <OrderDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/:number/receipt"
+                element={
+                  <ProtectedRoute>
+                    <Receipt />
                   </ProtectedRoute>
                 }
               />

@@ -356,3 +356,63 @@ class TrackingEvent(TimeStampedModel):
     def __str__(self):
         return f'{self.shipment.tracking_number} @ {self.occurred_at}: {self.description}'
 
+
+class RequestKind(models.TextChoices):
+    """What a customer is asking for after purchase (§11.3)."""
+
+    RETURN = 'return', 'Return'
+    REFUND = 'refund', 'Refund'
+    ISSUE = 'issue', 'Report an issue'
+
+
+class RequestStatus(models.TextChoices):
+    """Intake status — Phase 11 records the request; Phase 17 decides it."""
+
+    PENDING = 'pending', 'Pending'
+    WITHDRAWN = 'withdrawn', 'Withdrawn'
+
+
+class OrderRequest(TimeStampedModel):
+    """Customer post-purchase request intake (§11.3, Phase 11).
+
+    The customer states what they want and against which store slice;
+    approval/rejection, restocking, and any money movement belong to the
+    Phase 17 returns flow — this model is deliberately the intake record
+    only, and customers may withdraw their own pending request.
+    """
+
+    Kind = RequestKind
+    Status = RequestStatus
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='requests',
+    )
+    seller_order = models.ForeignKey(
+        SellerOrder,
+        on_delete=models.CASCADE,
+        related_name='requests',
+        null=True,
+        blank=True,
+        help_text='Null = the whole order (all stores).',
+    )
+    kind = models.CharField(max_length=16, choices=RequestKind.choices)
+    reason = models.CharField(max_length=160)
+    description = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=RequestStatus.choices,
+        default=RequestStatus.PENDING,
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['order'], name='orders_req_order_idx'),
+            models.Index(fields=['status'], name='orders_req_status_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.order.number} — {self.kind} ({self.status})'
+

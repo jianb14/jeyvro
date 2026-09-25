@@ -22,6 +22,7 @@ import {
   SettingsIcon,
   LogOutIcon,
   StoreIcon,
+  PackageIcon,
 } from "../ui/Icons";
 
 const navRailClass = ({ isActive }) =>
@@ -144,6 +145,7 @@ export function Navbar() {
               }
               items={[
                 { key: "profile", label: "My account", icon: UserIcon, onSelect: () => navigate("/account") },
+                { key: "orders", label: "My orders", icon: PackageIcon, onSelect: () => navigate("/orders") },
                 { key: "sell", label: "Sell on Jeyvro", icon: StoreIcon, onSelect: () => navigate("/sell") },
                 { key: "settings", label: "Settings", icon: SettingsIcon, onSelect: () => navigate("/account") },
                 { key: "sep", divider: true },
@@ -217,6 +219,13 @@ export function Navbar() {
               className="rounded-lg px-3 py-2.5 text-sm font-medium text-sand-700 hover:bg-sand-100 dark:text-sand-300 dark:hover:bg-night-800"
             >
               Wishlist
+            </Link>
+            <Link
+              to="/orders"
+              onClick={() => setMobileOpen(false)}
+              className="rounded-lg px-3 py-2.5 text-sm font-medium text-sand-700 hover:bg-sand-100 dark:text-sand-300 dark:hover:bg-night-800"
+            >
+              My orders
             </Link>
             <Link
               to="/products"

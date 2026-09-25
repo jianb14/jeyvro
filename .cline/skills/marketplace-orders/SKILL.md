@@ -15,9 +15,9 @@ Turn a customer's cart into trustworthy orders: server-computed totals, immutabl
 
 ## Current honest state
 
-Cart is **live** (Phase 7): `apps/cart` (Cart / CartItem / WishlistItem) with session-keyed guest carts (merged into the account cart at login), prices/stock/totals recomputed server-side on every read, store-grouped payloads, and the `/cart` UI wired through `data/cart.js`. Checkout, order creation, and order-time reservation/decrement are next (Phase 8) — they consume `catalog.services.reserve_stock` / `commit_sale`; the cart holds quantities only.
+Cart, checkout, orders, payments, and fulfillment are **live** (Phases 7–10): `apps/cart` (session-keyed guest carts merged into the account cart at login), server-computed checkout with per-store shipping and order-time reservation, `apps/orders` (Order / SellerOrder / OrderItem snapshots, fulfillment services, and the `carriers/` adapter registry with append-only tracking events), and `apps/payments` (adapter seam, ledger, webhooks). **Phase 11 added the customer post-purchase surface**: order history/detail endpoints with an audit-derived timeline, immutable receipt data, reorder re-validation, the server's `can_cancel` verdict, and return/refund/issue request intake (`OrderRequest` — adjudication lands with Phase 17). Frontend: `/orders`, `/orders/:number`, `/orders/:number/receipt`, all wired through `data/orders.js`.
 
-**Phase-8 rules are defined (PROJECT_CONTEXT §6 v1.7):** checkout is signed-in only with a validated shipping address; shipping is a per-store flat fee (`Store.shipping_flat_fee`) plus an optional per-store free-shipping threshold; totals are `Σ store subtotals + Σ store shipping fees`, computed server-side; order creation is one transaction that snapshots everything and reserves stock, writing one parent `Order` + one `SellerOrder` per store (reservations commit at `paid`, release on cancel).
+**Rules live in PROJECT_CONTEXT §6 (v1.9):** checkout is signed-in only with a validated shipping address; shipping is a per-store flat fee plus an optional threshold; totals are server-computed; order creation is one transaction that snapshots everything and reserves stock; fulfillment is per store with partial shipments, carrier adapters, append-only tracking, and COD captured at delivery; customer post-purchase reads and actions are owner-scoped, server-verdict-driven, and receipt data is immutable.
 
 ## When to use
 
@@ -49,6 +49,7 @@ Cart is **live** (Phase 7): `apps/cart` (Cart / CartItem / WishlistItem) with se
 5. Lifecycle transitions are explicit service functions per §6 states (placed → awaiting payment → paid → shipped → delivered → completed / cancelled / refunded) with an audit trail — no ad-hoc status writes.
 6. Cancelled/restocked flows restore inventory transactionally; never negative stock.
 7. Frontend checkout keeps input state per `frontend-state` (URL/step state), uses `Stepper`, and never computes displayed totals independently of the API.
+8. Post-purchase surfaces (history, timeline, receipt, reorder, request intake) are owner-scoped and driven by server verdicts — `can_cancel`, request eligibility, and live availability for reorder are never guessed client-side (§6 v1.9).
 
 ## Best practices
 
@@ -70,3 +71,4 @@ Cart is **live** (Phase 7): `apps/cart` (Cart / CartItem / WishlistItem) with se
 - [ ] Stock decrement/restore transactional; no negative stock (concurrency tested)
 - [ ] Lifecycle transitions explicit + audit-logged
 - [ ] Frontend uses API state only; all UX states wired (`ux-patterns`)
+- [ ] Post-purchase surfaces owner-scoped; receipt data immutable; reorder reports skipped lines

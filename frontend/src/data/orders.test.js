@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cancelOrder, fetchCheckout, fetchOrder, placeOrder } from "./orders";
+import {
+  cancelOrder,
+  createOrderRequest,
+  fetchCheckout,
+  fetchOrder,
+  fetchOrders,
+  placeOrder,
+  reorderOrder,
+  withdrawOrderRequest,
+} from "./orders";
 
 const CHECKOUT_PAYLOAD = {
   items: [
@@ -117,6 +126,76 @@ const ORDER_PAYLOAD = {
           line_total: 598,
         },
       ],
+      shipments: [
+        {
+          id: 7,
+          tracking_number: "JVTRK-20260925-ABCD2345",
+          carrier: "manual",
+          carrier_name: "Standard Delivery",
+          shipping_method: "standard",
+          shipping_fee: 49,
+          status: "in_transit",
+          shipped_at: "2026-09-25T10:00:00Z",
+          estimated_delivery: null,
+          delivered_at: null,
+          recipient_name: "Bianca Buyer",
+          recipient_phone: "09171234567",
+          items: [
+            {
+              id: 5,
+              order_item_id: 11,
+              product_title: "Woven Basket",
+              variant_name: "Default",
+              sku: "woven-basket",
+              quantity: 2,
+            },
+          ],
+          tracking_events: [
+            {
+              id: 1,
+              status: "picked_up",
+              location: "Kalinga Crafts",
+              description: "Parcel picked up by the courier.",
+              occurred_at: "2026-09-25T10:00:00Z",
+            },
+            {
+              id: 2,
+              status: "in_transit",
+              location: "Manila hub",
+              description: "In transit to destination sorting hub.",
+              occurred_at: "2026-09-25T12:00:00Z",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  can_cancel: false,
+  timeline: [
+    {
+      title: "Order placed",
+      description: "",
+      tone: "success",
+      occurred_at: "2026-09-25T08:00:00Z",
+    },
+    {
+      title: "In transit",
+      description: "Tracking JVTRK-20260925-ABCD2345 · Manila hub",
+      tone: "info",
+      occurred_at: "2026-09-25T12:00:00Z",
+    },
+  ],
+  requests: [
+    {
+      id: 4,
+      kind: "issue",
+      kind_label: "Report an issue",
+      status: "pending",
+      reason: "Delivery is late",
+      description: "",
+      seller_order_id: 3,
+      store_name: "Kalinga Crafts",
+      created_at: "2026-09-26T09:00:00Z",
     },
   ],
 };
@@ -230,5 +309,121 @@ describe("order accessors", () => {
       status: 400,
       message: "Basket: only 1 left in stock.",
     });
+  });
+
+  it("maps order history rows from the {count, items} envelope", async () => {
+    const { fetchMock } = mockFetch({
+      count: 1,
+      items: [
+        {
+          number: "JV-20260925-ABCD2345",
+          status: "delivered",
+          created_at: "2026-09-25T08:00:00Z",
+          item_count: 2,
+          grand_total: 647,
+          store_names: ["Kalinga Crafts"],
+          can_cancel: false,
+        },
+      ],
+    });
+    const page = await fetchOrders({ page: 2, pageSize: 10 });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/v1/orders/?page=2&page_size=10"
+    );
+    expect(page.count).toBe(1);
+    expect(page.items[0]).toEqual({
+      number: "JV-20260925-ABCD2345",
+      status: "delivered",
+      placedAt: "2026-09-25T08:00:00Z",
+      itemCount: 2,
+      grandTotal: 647,
+      storeNames: ["Kalinga Crafts"],
+      canCancel: false,
+    });
+  });
+
+  it("maps shipments, tracking events, timeline and requests on the order", async () => {
+    mockFetch(ORDER_PAYLOAD);
+    const order = await fetchOrder("JV-20260925-ABCD2345");
+
+    const shipment = order.sellerOrders[0].shipments[0];
+    expect(shipment.trackingNumber).toBe("JVTRK-20260925-ABCD2345");
+    expect(shipment.carrierName).toBe("Standard Delivery");
+    expect(shipment.status).toBe("in_transit");
+    expect(shipment.events.map((event) => event.status)).toEqual([
+      "picked_up",
+      "in_transit",
+    ]);
+    expect(shipment.events[1].occurredAt).toBe("2026-09-25T12:00:00Z");
+
+    expect(order.canCancel).toBe(false);
+    expect(order.timeline.map((step) => step.title)).toEqual([
+      "Order placed",
+      "In transit",
+    ]);
+    expect(order.timeline[1].time).toBe("2026-09-25T12:00:00Z");
+
+    expect(order.requests[0]).toMatchObject({
+      id: 4,
+      kind: "issue",
+      kindLabel: "Report an issue",
+      status: "pending",
+      reason: "Delivery is late",
+      sellerOrderId: 3,
+      storeName: "Kalinga Crafts",
+    });
+  });
+
+  it("reorder posts to the reorder endpoint and returns added/skipped lines", async () => {
+    const { callWith } = mockFetch({
+      added: [{ title: "Woven Basket", variant_name: "Default", quantity: 2 }],
+      skipped: [{ title: "Dead Item", reason: "This item is out of stock." }],
+      cart_item_count: 2,
+    });
+    const result = await reorderOrder("JV-20260925-ABCD2345");
+
+    const post = callWith("POST");
+    expect(post[0]).toBe("/api/v1/orders/JV-20260925-ABCD2345/reorder");
+    expect(result.added).toHaveLength(1);
+    expect(result.skipped[0].reason).toBe("This item is out of stock.");
+    expect(result.cartItemCount).toBe(2);
+  });
+
+  it("creates and withdraws order requests with the server's shape", async () => {
+    const { fetchMock, callWith } = mockFetch({
+      id: 9,
+      kind: "return",
+      kind_label: "Return",
+      status: "pending",
+      reason: "Changed my mind",
+      description: "Unopened",
+      seller_order_id: null,
+      store_name: "",
+      created_at: "2026-09-26T09:00:00Z",
+    });
+    const created = await createOrderRequest("JV-20260925-ABCD2345", {
+      kind: "return",
+      reason: "Changed my mind",
+      description: "Unopened",
+    });
+
+    const post = callWith("POST");
+    expect(post[0]).toBe("/api/v1/orders/JV-20260925-ABCD2345/requests");
+    expect(JSON.parse(post[1].body)).toEqual({
+      kind: "return",
+      reason: "Changed my mind",
+      description: "Unopened",
+    });
+    expect(created.kindLabel).toBe("Return");
+    expect(created.status).toBe("pending");
+
+    await withdrawOrderRequest("JV-20260925-ABCD2345", 9);
+    const posts = fetchMock.mock.calls.filter(
+      ([, options]) => options?.method === "POST"
+    );
+    expect(posts[1][0]).toBe(
+      "/api/v1/orders/JV-20260925-ABCD2345/requests/9/withdraw"
+    );
   });
 });

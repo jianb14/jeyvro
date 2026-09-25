@@ -307,21 +307,34 @@ export function Account() {
   const { user } = useAuth();
   const [tab, setTab] = useState("profile");
   const isSeller = Boolean(user.is_seller);
+  const memberSince = user.date_joined
+    ? new Date(user.date_joined).toLocaleDateString("en-PH", { dateStyle: "medium" })
+    : null;
 
   return (
     <div className="min-h-screen bg-sand-50 dark:bg-night-950">
       <Navbar />
       <main className="mx-auto max-w-4xl px-4 py-12">
-        <div className="mb-8 flex items-center gap-4">
+        <div className="mb-8 flex flex-wrap items-center gap-4">
           <div>
             <h1 className="font-display text-2xl font-semibold text-sand-900 dark:text-sand-100">
               {user.first_name ? `Hello, ${user.first_name}` : "Your account"}
             </h1>
             <p className="text-sm text-sand-500 dark:text-sand-400">{user.email}</p>
+            <p className="mt-1 text-xs text-sand-500 dark:text-sand-400">
+              Account status:{" "}
+              {user.account_status === "suspended" ? "Suspended" : "Active"}
+              {memberSince ? ` · Member since ${memberSince}` : ""}
+            </p>
           </div>
           <Badge tone={user.email_verified ? "success" : "warning"} variant="soft">
             {user.email_verified ? "Verified" : "Unverified"}
           </Badge>
+          <Link to="/orders" className="ml-auto">
+            <Button variant="outline" size="sm">
+              My orders
+            </Button>
+          </Link>
         </div>
         <Tabs tabs={TABS} defaultTab="profile" onChange={setTab} />
         {tab === "profile" && (

@@ -16,6 +16,7 @@ from apps.payments.serializers import serialize_payment
 from apps.stores.models import Store
 
 from . import services
+from .models import RequestKind
 
 
 class CreateOrderSerializer(serializers.Serializer):
@@ -29,6 +30,24 @@ class CreateOrderSerializer(serializers.Serializer):
     address_id = serializers.IntegerField(min_value=1)
     payment_method = serializers.ChoiceField(
         choices=PaymentMethod.choices, default=PaymentMethod.COD
+    )
+
+
+class CreateOrderRequestSerializer(serializers.Serializer):
+    """POST /orders/<number>/requests body (§11.3).
+
+    The client states what it wants; eligibility (delivered slice, captured
+    payment, open order) is re-checked server-side in the service — this
+    shape only validates the shape.
+    """
+
+    kind = serializers.ChoiceField(choices=RequestKind.choices)
+    seller_order_id = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True, default=None
+    )
+    reason = serializers.CharField(max_length=160)
+    description = serializers.CharField(
+        required=False, allow_blank=True, default='', max_length=2000
     )
 
 
@@ -262,15 +281,41 @@ def serialize_order(order):
         'seller_orders': [
             serialize_seller_order(seller_order) for seller_order in seller_orders
         ],
+        'can_cancel': services.can_cancel(order),
+        'timeline': services.build_order_timeline(order),
+        'requests': [serialize_order_request(r) for r in order.requests.all()],
     }
 
 
 def serialize_order_summary(order):
-    """List row — enough to render the orders index (Phase 11 builds on it)."""
+    """List row for the orders index (Phase 11.2) — snapshot values only."""
     return {
         'number': order.number,
         'status': order.status,
         'created_at': order.created_at.isoformat(),
+        'item_count': sum(
+            item.quantity
+            for seller_order in order.seller_orders.all()
+            for item in seller_order.items.all()
+        ),
         'grand_total': _money(order.grand_total),
         'store_names': [so.store_name for so in order.seller_orders.all()],
+        'can_cancel': services.can_cancel(order),
+    }
+
+
+def serialize_order_request(request):
+    """One post-purchase request record (§11.3)."""
+    return {
+        'id': request.id,
+        'kind': request.kind,
+        'kind_label': request.get_kind_display(),
+        'status': request.status,
+        'reason': request.reason,
+        'description': request.description,
+        'seller_order_id': request.seller_order_id,
+        'store_name': (
+            request.seller_order.store_name if request.seller_order_id else ''
+        ),
+        'created_at': request.created_at.isoformat(),
     }

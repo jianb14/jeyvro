@@ -31,8 +31,8 @@
 | 7 | Cart & Wishlist | ✅ Done — server-side `apps/cart` (Cart/CartItem/WishlistItem with exactly-one-owner + one-row-per-(cart,variant)/(user,product) DB constraints): session-keyed guest carts merged at login, quantity-only lines with price/stock/totals re-resolved server-side on every read, store-grouped payloads, private product-level wishlist; `/cart` + `/wishlist` pages with cart/wishlist data accessors, CartContext/WishlistContext, wishlist heart + quick-add variant resolution on every ProductCard; 15/15 cart tests, 44/44 backend tests, 5 files/15 frontend tests, lint/build green. On this machine `npm run test` must run through a space-free path (`subst X:`) — see the testing skill |
 | 8 | Checkout, Shipping Calculation & Order Creation | ✅ Done — `apps/orders` live (Order/SellerOrder/OrderItem snapshots, server-side flat fee + threshold shipping, transactional stock reservation & release on cancel), /checkout + /orders/:number frontend routes, 27 backend tests + race condition gate passed, Vitest (63/63) & build green |
 | 9 | Payments & Financial Transactions | ✅ Done — `apps/payments` domain (Payment, PaymentAttempt, Refund, append-only PaymentTransaction ledger, WebhookEvent), gateway adapter interface (COD live, generic hosted-gateway seam for PayMongo/GCash/Maya), signature-verified idempotent webhooks, online payment expiry cron command, full & partial stock-restoring refunds, Checkout step 3 + OrderDetail payment cards; 89/89 backend tests (45 tests for money flows + race gates) & 27/27 frontend tests passed, lint & build green |
-| 10 | Order Fulfillment & Delivery | ⬜ Not started |
-| 11 | Customer Account & Order Management | ⬜ Not started |
+| 10 | Order Fulfillment & Delivery | ✅ Done — `apps/orders` shipments (carrier adapter registry, tracking numbers, append-only tracking events), seller process/pack/ship endpoints, partial shipments + parent-order status aggregation, COD capture on delivery; 7/7 fulfillment tests passed (commit `2afb1cf`) |
+| 11 | Customer Account & Order Management | 🔄 In progress — 11.1 panels live since Phase 3; order history, timeline, tracking UI, receipt, reorder and request intake landing now |
 | 12 | Seller Operations & Seller Dashboard | ⬜ Not started |
 | 13 | Admin, Staff & Platform Operations | ⬜ Not started |
 | 14 | Reviews, Ratings & Trust | ⬜ Not started |
@@ -933,37 +933,46 @@ Complete the customer post-purchase experience.
 
 ### 11.1 Account
 
--   [ ] Profile
--   [ ] Addresses
--   [ ] Security
--   [ ] Notification preferences
--   [ ] Account status
+-   [x] Profile
+-   [x] Addresses
+-   [x] Security
+-   [x] Notification preferences
+-   [x] Account status
 
 ### 11.2 Orders
 
--   [ ] Order history
--   [ ] Order detail
--   [ ] Seller-order detail
--   [ ] Shipment tracking
--   [ ] Order timeline
--   [ ] Receipt
--   [ ] Download/print receipt
--   [ ] Reorder
+-   [x] Order history
+-   [x] Order detail
+-   [x] Seller-order detail
+-   [x] Shipment tracking
+-   [x] Order timeline
+-   [x] Receipt
+-   [x] Download/print receipt
+-   [x] Reorder
 
 ### 11.3 Customer actions
 
--   [ ] Cancel eligible order
--   [ ] Request return
--   [ ] Request refund
--   [ ] Report issue
--   [ ] Contact seller
--   [ ] Contact support
+-   [x] Cancel eligible order
+-   [x] Request return
+-   [x] Request refund
+-   [x] Report issue
+-   [ ] Contact seller — arrives with Phase 15 (Messaging & Notifications)
+-   [ ] Contact support — arrives with Phase 15 (Messaging & Notifications)
+
+> 11.3 returns/refunds/issues are **intake records** (`OrderRequest`):
+> owner-scoped, server-verified eligibility (delivered slice / captured
+> payment / open order), duplicates refused, and customers may withdraw
+> pending requests. Adjudication, restocking, and any money movement belong
+> to the Phase 17 returns flow. Receipt "download" is the browser print
+> dialog (Save as PDF) — no extra dependency. The order timeline is
+> derived from the append-only AuditLog with whitelisted customer-safe
+> copy; raw audit payloads never cross the wire.
 
 ### Gate
 
--   [ ] Customer can fully manage post-purchase lifecycle
--   [ ] Unauthorized orders cannot be accessed
--   [ ] Receipt contains correct immutable data
+-   [x] Customer can fully manage post-purchase lifecycle
+-   [x] Unauthorized orders cannot be accessed
+-   [x] Receipt contains correct immutable data
 
 **Skills:** frontend-feature, marketplace-orders
 

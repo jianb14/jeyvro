@@ -35,6 +35,54 @@ function mapItem(item) {
   };
 }
 
+function mapTrackingEvent(event) {
+  return {
+    id: event.id,
+    status: event.status,
+    location: event.location,
+    description: event.description,
+    occurredAt: event.occurred_at,
+  };
+}
+
+function mapShipment(shipment) {
+  return {
+    id: shipment.id,
+    trackingNumber: shipment.tracking_number,
+    carrier: shipment.carrier,
+    carrierName: shipment.carrier_name,
+    shippingMethod: shipment.shipping_method,
+    shippingFee: shipment.shipping_fee ?? 0,
+    status: shipment.status,
+    shippedAt: shipment.shipped_at ?? null,
+    estimatedDelivery: shipment.estimated_delivery ?? null,
+    deliveredAt: shipment.delivered_at ?? null,
+    items: (shipment.items ?? []).map((entry) => ({
+      id: entry.id,
+      orderItemId: entry.order_item_id,
+      title: entry.product_title,
+      variant: entry.variant_name,
+      sku: entry.sku,
+      quantity: entry.quantity,
+    })),
+    events: (shipment.tracking_events ?? []).map(mapTrackingEvent),
+  };
+}
+
+function mapOrderRequest(request) {
+  return {
+    id: request.id,
+    kind: request.kind,
+    kindLabel: request.kind_label,
+    status: request.status,
+    reason: request.reason,
+    description: request.description,
+    sellerOrderId: request.seller_order_id,
+    storeName: request.store_name,
+    createdAt: request.created_at,
+  };
+}
+
 function mapSellerOrder(sellerOrder) {
   return {
     id: sellerOrder.id,
@@ -45,6 +93,7 @@ function mapSellerOrder(sellerOrder) {
     shippingFee: sellerOrder.shipping_fee,
     total: sellerOrder.total,
     items: (sellerOrder.items ?? []).map(mapItem),
+    shipments: (sellerOrder.shipments ?? []).map(mapShipment),
   };
 }
 
@@ -87,6 +136,16 @@ function mapOrder(order) {
       grandTotal: order.totals?.grand_total ?? 0,
     },
     sellerOrders: (order.seller_orders ?? []).map(mapSellerOrder),
+    canCancel: Boolean(order.can_cancel),
+    // Timeline steps come pre-mapped from the server's audit trail — the
+    // client renders copy + tone, never interprets raw events (§11.2).
+    timeline: (order.timeline ?? []).map((step) => ({
+      title: step.title,
+      description: step.description,
+      tone: step.tone,
+      time: step.occurred_at,
+    })),
+    requests: (order.requests ?? []).map(mapOrderRequest),
   };
 }
 
@@ -155,5 +214,85 @@ export async function cancelOrder(number) {
       method: "POST",
       csrf,
     })
+  );
+}
+
+/**
+ * Order history (Phase 11.2) — the {count, items} envelope; rows carry only
+ * the server's snapshot values.
+ */
+function mapOrderSummary(order) {
+  return {
+    number: order.number,
+    status: order.status,
+    placedAt: order.created_at,
+    itemCount: order.item_count ?? 0,
+    grandTotal: order.grand_total ?? 0,
+    storeNames: order.store_names ?? [],
+    canCancel: Boolean(order.can_cancel),
+  };
+}
+
+export async function fetchOrders({ page, pageSize } = {}) {
+  const params = new URLSearchParams();
+  if (page) params.set("page", page);
+  if (pageSize) params.set("page_size", pageSize);
+  const query = params.toString();
+  const data = await request(BASE, `/orders/${query ? `?${query}` : ""}`);
+  return {
+    count: data.count ?? 0,
+    items: (data.items ?? []).map(mapOrderSummary),
+  };
+}
+
+/**
+ * Reorder (Phase 11.2) — re-adds still-buyable lines through the cart
+ * service; `skipped` explains every line the live catalog refused.
+ */
+export async function reorderOrder(number) {
+  const csrf = await ensureCsrfToken();
+  const data = await request(
+    BASE,
+    `/orders/${encodeURIComponent(number)}/reorder`,
+    { method: "POST", csrf }
+  );
+  return {
+    added: data.added ?? [],
+    skipped: data.skipped ?? [],
+    cartItemCount: data.cart_item_count ?? 0,
+  };
+}
+
+/**
+ * Post-purchase request intake (Phase 11.3) — the server decides whether
+ * the order is eligible; the UI only submits what the customer chose.
+ */
+export async function createOrderRequest(
+  number,
+  { kind, reason, description = "", sellerOrderId = null }
+) {
+  const csrf = await ensureCsrfToken();
+  return mapOrderRequest(
+    await request(BASE, `/orders/${encodeURIComponent(number)}/requests`, {
+      method: "POST",
+      body: {
+        kind,
+        reason,
+        description,
+        ...(sellerOrderId ? { seller_order_id: sellerOrderId } : {}),
+      },
+      csrf,
+    })
+  );
+}
+
+export async function withdrawOrderRequest(number, requestId) {
+  const csrf = await ensureCsrfToken();
+  return mapOrderRequest(
+    await request(
+      BASE,
+      `/orders/${encodeURIComponent(number)}/requests/${requestId}/withdraw`,
+      { method: "POST", csrf }
+    )
   );
 }
