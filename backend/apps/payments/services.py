@@ -221,9 +221,13 @@ def mark_paid(payment, *, gateway_reference='', source='manual', actor=None,
                 currency=payment.currency,
                 note=f'capture {source}',
             )
-        order.status = Order.Status.PAID
-        order.save(update_fields=['status', 'updated_at'])
-        order.seller_orders.update(status=SellerOrder.Status.PAID, updated_at=now)
+        # Only advance non-fulfillment statuses to PAID
+        if order.status in (Order.Status.PLACED, Order.Status.AWAITING_PAYMENT):
+            order.status = Order.Status.PAID
+            order.save(update_fields=['status', 'updated_at'])
+        order.seller_orders.filter(
+            status__in=[SellerOrder.Status.PLACED, SellerOrder.Status.AWAITING_PAYMENT]
+        ).update(status=SellerOrder.Status.PAID, updated_at=now)
         audit_services.log_event(
             actor,
             'payment.captured',

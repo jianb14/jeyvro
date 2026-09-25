@@ -32,6 +32,30 @@ class CreateOrderSerializer(serializers.Serializer):
     )
 
 
+class CreateShipmentSerializer(serializers.Serializer):
+    """POST /seller/orders/<id>/ship body (§10.2)."""
+
+    carrier = serializers.CharField(max_length=32, required=False, default='manual')
+    package_notes = serializers.CharField(required=False, allow_blank=True, default='')
+    package_weight_grams = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
+    items = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+        help_text='Optional list of {"order_item_id": int, "quantity": int} for partial shipments.',
+    )
+
+
+class UpdateShipmentStatusSerializer(serializers.Serializer):
+    """POST /shipments/<tracking_number>/events body (§10.2)."""
+
+    status = serializers.ChoiceField(choices=['pending', 'packed', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'failed', 'cancelled'])
+    location = serializers.CharField(max_length=128, required=False, allow_blank=True, default='')
+    description = serializers.CharField(max_length=256, required=False, allow_blank=True, default='')
+
+
+
 def build_checkout_preview(cart, request=None):
     """Checkout read shape: cart truth + per-store shipping + totals (§6).
 
@@ -133,6 +157,7 @@ def serialize_order_item(item):
 
 def serialize_seller_order(seller_order):
     """One store's slice of the order — the seller's fulfillment unit."""
+    shipments = list(seller_order.shipments.all())
     return {
         'id': seller_order.id,
         'store_slug': seller_order.store.slug,
@@ -142,7 +167,65 @@ def serialize_seller_order(seller_order):
         'shipping_fee': _money(seller_order.shipping_fee),
         'total': _money(seller_order.total),
         'items': [serialize_order_item(item) for item in seller_order.items.all()],
+        'shipments': [serialize_shipment(s) for s in shipments],
     }
+
+
+def serialize_tracking_event(event):
+    """Tracking event timeline entry (§10.2)."""
+    return {
+        'id': event.id,
+        'status': event.status,
+        'location': event.location,
+        'description': event.description,
+        'occurred_at': event.occurred_at.isoformat(),
+    }
+
+
+def serialize_shipment_item(shipment_item):
+    """Item row inside a shipment (§10.2)."""
+    return {
+        'id': shipment_item.id,
+        'order_item_id': shipment_item.order_item_id,
+        'product_title': shipment_item.order_item.product_title,
+        'variant_name': shipment_item.order_item.variant_name,
+        'sku': shipment_item.order_item.sku,
+        'quantity': shipment_item.quantity,
+    }
+
+
+def serialize_shipment(shipment):
+    """Full shipment record with events and items (§10.2)."""
+    return {
+        'id': shipment.id,
+        'tracking_number': shipment.tracking_number,
+        'carrier': shipment.carrier,
+        'carrier_name': shipment.carrier_name,
+        'shipping_method': shipment.shipping_method,
+        'shipping_fee': _money(shipment.shipping_fee),
+        'status': shipment.status,
+        'package_weight_grams': shipment.package_weight_grams,
+        'package_notes': shipment.package_notes,
+        'shipped_at': shipment.shipped_at.isoformat() if shipment.shipped_at else None,
+        'estimated_delivery': (
+            shipment.estimated_delivery.isoformat()
+            if shipment.estimated_delivery
+            else None
+        ),
+        'delivered_at': (
+            shipment.delivered_at.isoformat()
+            if shipment.delivered_at
+            else None
+        ),
+        'recipient_name': shipment.recipient_name,
+        'recipient_phone': shipment.recipient_phone,
+        'shipping_address_text': shipment.shipping_address_text,
+        'items': [serialize_shipment_item(si) for si in shipment.items.all()],
+        'tracking_events': [
+            serialize_tracking_event(evt) for evt in shipment.tracking_events.all()
+        ],
+    }
+
 
 
 def serialize_order(order):

@@ -878,48 +878,48 @@ Build the operational lifecycle after an order is created.
 
 ### 10.1 Order lifecycle
 
--   [ ] Pending
--   [ ] Awaiting payment
--   [ ] Paid
--   [ ] Processing
--   [ ] Packed
--   [ ] Shipped
--   [ ] In transit
--   [ ] Out for delivery
--   [ ] Delivered
--   [ ] Completed
--   [ ] Cancelled
--   [ ] Refund pending
--   [ ] Refunded
+-   [x] Pending
+-   [x] Awaiting payment
+-   [x] Paid
+-   [x] Processing
+-   [x] Packed
+-   [x] Shipped
+-   [x] In transit
+-   [x] Out for delivery
+-   [x] Delivered
+-   [x] Completed
+-   [x] Cancelled
+-   [x] Refund pending
+-   [x] Refunded
 
 ### 10.2 Shipment
 
--   [ ] Shipment model
--   [ ] Shipment items
--   [ ] Shipping method
--   [ ] Shipping fee
--   [ ] Package information
--   [ ] Tracking number
--   [ ] Carrier abstraction
--   [ ] Shipment status
--   [ ] Tracking history
--   [ ] Delivery confirmation
+-   [x] Shipment model
+-   [x] Shipment items
+-   [x] Shipping method
+-   [x] Shipping fee
+-   [x] Package information
+-   [x] Tracking number
+-   [x] Carrier abstraction
+-   [x] Shipment status
+-   [x] Tracking history
+-   [x] Delivery confirmation
 
 ### 10.3 Multi-seller fulfillment
 
--   [ ] Separate seller fulfillment
--   [ ] Separate shipments
--   [ ] Partial shipment handling
--   [ ] Parent order status aggregation
+-   [x] Separate seller fulfillment
+-   [x] Separate shipments
+-   [x] Partial shipment handling
+-   [x] Parent order status aggregation
 
 ### Gate
 
--   [ ] Seller can process orders
--   [ ] Shipment can be created
--   [ ] Tracking is visible
--   [ ] Delivered state is recorded
--   [ ] Parent order correctly aggregates seller shipments
--   [ ] Backend tests for money flows pass (PROJECT_CONTEXT §11)
+-   [x] Seller can process orders
+-   [x] Shipment can be created
+-   [x] Tracking is visible
+-   [x] Delivered state is recorded
+-   [x] Parent order correctly aggregates seller shipments
+-   [x] Backend tests for money flows pass (PROJECT_CONTEXT §11)
 
 **Skills:** marketplace-orders, backend-feature
 

@@ -20,6 +20,8 @@ from apps.payments import services as payment_services
 from apps.payments.models import PaymentMethod
 
 from .models import Order, OrderItem, SellerOrder
+from .models import Order, OrderItem, OrderStatus, SellerOrder
+
 
 # Unambiguous alphabet for order numbers (no O/0, I/1, lookalikes).
 ORDER_NUMBER_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -252,4 +254,315 @@ def cancel_order(user, number):
             user, 'order.cancelled', order, detail={'number': order.number}
         )
     return order
+
+
+
+# -----------------------------------------------------------------------------
+# Phase 10: Order Fulfillment & Delivery Services (§10.1, §10.2, §10.3)
+# -----------------------------------------------------------------------------
+
+class FulfillmentError(ValueError):
+    """Customer/Seller-safe fulfillment rejection — code + message, never a stack."""
+
+    def __init__(self, message, *, code='fulfillment_rejected'):
+        super().__init__(message)
+        self.code = code
+
+
+def aggregate_order_status(order):
+    """Derives and saves parent Order status from its SellerOrders (§10.3)."""
+    seller_statuses = set(order.seller_orders.values_list('status', flat=True))
+    if not seller_statuses:
+        return order.status
+
+    target_status = None
+    if seller_statuses == {OrderStatus.CANCELLED}:
+        target_status = OrderStatus.CANCELLED
+    elif seller_statuses == {OrderStatus.REFUNDED}:
+        target_status = OrderStatus.REFUNDED
+    elif seller_statuses.issubset({OrderStatus.DELIVERED, OrderStatus.COMPLETED}):
+        target_status = OrderStatus.DELIVERED
+    elif any(s in (OrderStatus.SHIPPED, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED) for s in seller_statuses):
+        target_status = OrderStatus.SHIPPED
+    elif any(s in (OrderStatus.PACKED, OrderStatus.PROCESSING) for s in seller_statuses):
+        target_status = OrderStatus.PROCESSING
+    elif seller_statuses == {OrderStatus.PAID}:
+        target_status = OrderStatus.PAID
+    elif seller_statuses == {OrderStatus.AWAITING_PAYMENT}:
+        target_status = OrderStatus.AWAITING_PAYMENT
+
+    if target_status and order.status != target_status:
+        order.status = target_status
+        order.save(update_fields=['status', 'updated_at'])
+        audit_services.log_event(
+            None,
+            'order.status_aggregated',
+            order,
+            detail={'number': order.number, 'status': order.status},
+        )
+    return order.status
+
+
+def mark_seller_order_processing(seller_order, *, actor=None):
+    """Seller marks order as being processed/prepared (§10.1)."""
+    with transaction.atomic():
+        so = SellerOrder.objects.select_for_update().get(pk=seller_order.pk)
+        valid_initial = (OrderStatus.PAID, OrderStatus.AWAITING_PAYMENT, OrderStatus.PLACED)
+        if so.status not in valid_initial:
+            raise FulfillmentError(
+                f'Order cannot move to processing from {so.status}.',
+                code='invalid_status_transition',
+            )
+        so.status = OrderStatus.PROCESSING
+        so.save(update_fields=['status', 'updated_at'])
+        audit_services.log_event(
+            actor,
+            'seller_order.processing',
+            so,
+            detail={'id': so.id, 'store': so.store_name},
+        )
+        aggregate_order_status(so.order)
+    return so
+
+
+def mark_seller_order_packed(seller_order, *, actor=None):
+    """Seller marks order items as packed and ready for dispatch (§10.1)."""
+    with transaction.atomic():
+        so = SellerOrder.objects.select_for_update().get(pk=seller_order.pk)
+        if so.status not in (OrderStatus.PROCESSING, OrderStatus.PAID, OrderStatus.AWAITING_PAYMENT):
+            raise FulfillmentError(
+                f'Order cannot be marked packed from {so.status}.',
+                code='invalid_status_transition',
+            )
+        so.status = OrderStatus.PACKED
+        so.save(update_fields=['status', 'updated_at'])
+        audit_services.log_event(
+            actor,
+            'seller_order.packed',
+            so,
+            detail={'id': so.id, 'store': so.store_name},
+        )
+        aggregate_order_status(so.order)
+    return so
+
+
+def create_shipment(seller_order, *, items_data=None, carrier_code='manual',
+                    package_notes='', package_weight_grams=None, actor=None):
+    """Creates a Shipment parcel for a SellerOrder (§10.2, §10.3)."""
+    from .carriers import get_carrier
+    from .models import Shipment, ShipmentItem, ShipmentStatus, TrackingEvent
+
+    carrier = get_carrier(carrier_code)
+    parent_order = seller_order.order
+
+    with transaction.atomic():
+        so = SellerOrder.objects.select_for_update().get(pk=seller_order.pk)
+        if so.status in (OrderStatus.CANCELLED, OrderStatus.REFUNDED, OrderStatus.DELIVERED, OrderStatus.COMPLETED):
+            raise FulfillmentError(
+                f'Cannot create shipment for order in {so.status} status.',
+                code='order_closed',
+            )
+
+        order_items = {item.id: item for item in so.items.all()}
+        if not order_items:
+            raise FulfillmentError('No items in this seller order.', code='empty_order')
+
+        existing_shipped = {}
+        for s in so.shipments.exclude(status=ShipmentStatus.CANCELLED):
+            for si in s.items.all():
+                existing_shipped[si.order_item_id] = existing_shipped.get(si.order_item_id, 0) + si.quantity
+
+        pack_plan = []
+        if not items_data:
+            for item_id, item in order_items.items():
+                shipped = existing_shipped.get(item_id, 0)
+                remaining = item.quantity - shipped
+                if remaining > 0:
+                    pack_plan.append((item, remaining))
+        else:
+            for line in items_data:
+                item_id = line.get('order_item_id')
+                qty = int(line.get('quantity', 0))
+                if item_id not in order_items:
+                    raise FulfillmentError(
+                        f'Item {item_id} does not belong to this seller order.',
+                        code='invalid_item',
+                    )
+                if qty <= 0:
+                    raise FulfillmentError('Quantity must be at least 1.', code='invalid_quantity')
+                item = order_items[item_id]
+                already_shipped = existing_shipped.get(item_id, 0)
+                available = item.quantity - already_shipped
+                if qty > available:
+                    raise FulfillmentError(
+                        f'Cannot pack {qty} for {item.product_title}; only {available} unfulfilled.',
+                        code='excess_quantity',
+                    )
+                pack_plan.append((item, qty))
+
+        if not pack_plan:
+            raise FulfillmentError('All items have already been shipped.', code='already_fulfilled')
+
+        address_parts = [
+            parent_order.shipping_line1,
+            parent_order.shipping_line2,
+            parent_order.shipping_city,
+            parent_order.shipping_province,
+            parent_order.shipping_postal_code,
+        ]
+        address_text = ', '.join([p for p in address_parts if p])
+
+        tracking_number = carrier.generate_tracking_number()
+        while Shipment.objects.filter(tracking_number=tracking_number).exists():
+            tracking_number = carrier.generate_tracking_number()
+
+        now = timezone.now()
+        shipment = Shipment.objects.create(
+            seller_order=so,
+            tracking_number=tracking_number,
+            carrier=carrier.carrier_code,
+            carrier_name=carrier.carrier_name,
+            shipping_method='standard',
+            shipping_fee=so.shipping_fee,
+            status=ShipmentStatus.PICKED_UP,
+            shipped_at=now,
+            package_weight_grams=package_weight_grams,
+            package_notes=package_notes,
+            recipient_name=parent_order.ship_to_name,
+            recipient_phone=parent_order.ship_to_phone,
+            shipping_address_text=address_text,
+        )
+
+        for item, qty in pack_plan:
+            ShipmentItem.objects.create(
+                shipment=shipment,
+                order_item=item,
+                quantity=qty,
+            )
+
+        TrackingEvent.objects.create(
+            shipment=shipment,
+            status=ShipmentStatus.PICKED_UP,
+            location=so.store_name,
+            description=f'Parcel picked up by {carrier.carrier_name}.',
+            occurred_at=now,
+        )
+
+        all_fulfilled = True
+        for item_id, item in order_items.items():
+            shipped_total = existing_shipped.get(item_id, 0) + sum(
+                qty for itm, qty in pack_plan if itm.id == item_id
+            )
+            if shipped_total < item.quantity:
+                all_fulfilled = False
+                break
+
+        if all_fulfilled:
+            so.status = OrderStatus.SHIPPED
+        else:
+            so.status = OrderStatus.PROCESSING
+        so.save(update_fields=['status', 'updated_at'])
+
+        audit_services.log_event(
+            actor,
+            'shipment.created',
+            shipment,
+            detail={
+                'tracking_number': shipment.tracking_number,
+                'carrier': carrier.carrier_code,
+                'items_count': len(pack_plan),
+                'all_fulfilled': all_fulfilled,
+            },
+        )
+
+        aggregate_order_status(parent_order)
+    return shipment
+
+
+def update_shipment_status(shipment, new_status, *, location='', description='', actor=None):
+    """Transitions a shipment status and appends a TrackingEvent (§10.2).
+
+    When delivered:
+    - Sets delivered_at on the shipment
+    - If all shipments of the SellerOrder are delivered, sets SellerOrder to DELIVERED
+    - Aggregates parent order status
+    - If order is DELIVERED and payment is COD (pending), triggers COD collection capture!
+    """
+    from apps.payments import services as payment_services
+    from apps.payments.models import PaymentMethod
+    from .models import Shipment, ShipmentStatus, TrackingEvent
+
+    with transaction.atomic():
+        s = Shipment.objects.select_for_update().get(pk=shipment.pk)
+        so = SellerOrder.objects.select_for_update().get(pk=s.seller_order_id)
+        parent_order = Order.objects.select_for_update().get(pk=so.order_id)
+
+        valid_statuses = [c[0] for c in ShipmentStatus.choices]
+        if new_status not in valid_statuses:
+            raise FulfillmentError(f'Unknown shipment status {new_status}.', code='invalid_status')
+
+        now = timezone.now()
+        s.status = new_status
+        if new_status == ShipmentStatus.DELIVERED and not s.delivered_at:
+            s.delivered_at = now
+
+        update_fields = ['status', 'updated_at']
+        if s.delivered_at:
+            update_fields.append('delivered_at')
+        s.save(update_fields=update_fields)
+
+        default_desc = {
+            ShipmentStatus.PENDING: 'Shipment created.',
+            ShipmentStatus.PACKED: 'Shipment packed and ready.',
+            ShipmentStatus.PICKED_UP: 'Parcel picked up by courier.',
+            ShipmentStatus.IN_TRANSIT: 'In transit to destination sorting hub.',
+            ShipmentStatus.OUT_FOR_DELIVERY: 'Out for delivery with courier rider.',
+            ShipmentStatus.DELIVERED: 'Parcel successfully delivered.',
+            ShipmentStatus.FAILED: 'Delivery attempt failed.',
+            ShipmentStatus.CANCELLED: 'Shipment cancelled.',
+        }.get(new_status, f'Status updated to {new_status}')
+
+        TrackingEvent.objects.create(
+            shipment=s,
+            status=new_status,
+            location=location or '',
+            description=description or default_desc,
+            occurred_at=now,
+        )
+
+        if new_status == ShipmentStatus.DELIVERED:
+            all_delivered = not so.shipments.exclude(status=ShipmentStatus.DELIVERED).exists()
+            if all_delivered:
+                so.status = OrderStatus.DELIVERED
+                so.save(update_fields=['status', 'updated_at'])
+        elif new_status == ShipmentStatus.IN_TRANSIT:
+            if so.status in (OrderStatus.SHIPPED, OrderStatus.PACKED, OrderStatus.PROCESSING):
+                so.status = OrderStatus.IN_TRANSIT
+                so.save(update_fields=['status', 'updated_at'])
+        elif new_status == ShipmentStatus.OUT_FOR_DELIVERY:
+            if so.status in (OrderStatus.SHIPPED, OrderStatus.IN_TRANSIT, OrderStatus.PACKED, OrderStatus.PROCESSING):
+                so.status = OrderStatus.OUT_FOR_DELIVERY
+                so.save(update_fields=['status', 'updated_at'])
+
+        aggregate_order_status(parent_order)
+
+        # Delivery COD Collection Hook (§9.2, Phase 10 seam):
+        payment = getattr(parent_order, 'payment', None)
+        if (parent_order.status == OrderStatus.DELIVERED and
+                payment and payment.method == PaymentMethod.COD and
+                payment.status == 'pending'):
+            payment_services.mark_paid(payment, source='cod_delivery', actor=actor)
+
+        audit_services.log_event(
+            actor,
+            'shipment.status_updated',
+            s,
+            detail={
+                'tracking_number': s.tracking_number,
+                'status': new_status,
+                'location': location,
+            },
+        )
+
+    return s
 

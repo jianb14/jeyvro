@@ -15,7 +15,7 @@ from apps.common.models import TimeStampedModel
 
 
 class OrderStatus(models.TextChoices):
-    """Shared order lifecycle (§6 v1.7) — parent and per-store orders.
+    """Shared order lifecycle (§6 v1.7, Phase 10) — parent and per-store orders.
 
     Transitions happen only in service functions (CONVENTIONS.md — Status
     fields): Phase 8 owns placed/cancelled, Phase 9 sets awaiting_payment at
@@ -26,11 +26,29 @@ class OrderStatus(models.TextChoices):
     PLACED = 'placed', 'Placed'
     AWAITING_PAYMENT = 'awaiting_payment', 'Awaiting payment'
     PAID = 'paid', 'Paid'
+    PROCESSING = 'processing', 'Processing'
+    PACKED = 'packed', 'Packed'
     SHIPPED = 'shipped', 'Shipped'
+    IN_TRANSIT = 'in_transit', 'In transit'
+    OUT_FOR_DELIVERY = 'out_for_delivery', 'Out for delivery'
     DELIVERED = 'delivered', 'Delivered'
     COMPLETED = 'completed', 'Completed'
     CANCELLED = 'cancelled', 'Cancelled'
+    REFUND_PENDING = 'refund_pending', 'Refund pending'
     REFUNDED = 'refunded', 'Refunded'
+
+
+class ShipmentStatus(models.TextChoices):
+    """Fulfillment parcel lifecycle states (§10.2)."""
+
+    PENDING = 'pending', 'Pending'
+    PACKED = 'packed', 'Packed'
+    PICKED_UP = 'picked_up', 'Picked up'
+    IN_TRANSIT = 'in_transit', 'In transit'
+    OUT_FOR_DELIVERY = 'out_for_delivery', 'Out for delivery'
+    DELIVERED = 'delivered', 'Delivered'
+    FAILED = 'failed', 'Delivery failed'
+    CANCELLED = 'cancelled', 'Cancelled'
 
 
 class Order(TimeStampedModel):
@@ -204,3 +222,137 @@ class OrderItem(TimeStampedModel):
 
     def __str__(self):
         return f'{self.product_title} x {self.quantity}'
+
+
+class Shipment(TimeStampedModel):
+    """A fulfillment parcel dispatched by a store for a SellerOrder (§10.2).
+
+    Multi-vendor scoping: one SellerOrder can have one or more shipments
+    (for partial shipments). Each shipment has a tracking number, carrier,
+    weight, snapshots of the shipping address, and an append-only tracking timeline.
+    """
+
+    Status = ShipmentStatus
+
+    seller_order = models.ForeignKey(
+        SellerOrder,
+        on_delete=models.CASCADE,
+        related_name='shipments',
+    )
+    tracking_number = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        help_text='Carrier tracking number (e.g. JVTRK-20260925-...).',
+    )
+    carrier = models.CharField(
+        max_length=32,
+        default='manual',
+        help_text='Carrier code: manual, jtexpress, lbc, ninjavan.',
+    )
+    carrier_name = models.CharField(
+        max_length=128,
+        default='Standard Delivery',
+        help_text='Display name of the carrier.',
+    )
+    shipping_method = models.CharField(
+        max_length=64,
+        default='standard',
+        help_text='Standard, Express, Same Day, etc.',
+    )
+    shipping_fee = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text='Shipping fee portion assigned to this parcel.',
+    )
+    status = models.CharField(
+        max_length=24,
+        choices=ShipmentStatus.choices,
+        default=ShipmentStatus.PENDING,
+    )
+    package_weight_grams = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='Package weight in grams if recorded.',
+    )
+    package_notes = models.TextField(
+        blank=True,
+        help_text='Handling notes or instructions.',
+    )
+    shipped_at = models.DateTimeField(null=True, blank=True)
+    estimated_delivery = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    # Address snapshot from parent order
+    recipient_name = models.CharField(max_length=128)
+    recipient_phone = models.CharField(max_length=32)
+    shipping_address_text = models.TextField()
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['seller_order'], name='shipment_seller_order_idx'),
+            models.Index(fields=['status'], name='shipment_status_idx'),
+            models.Index(fields=['carrier'], name='shipment_carrier_idx'),
+            models.Index(fields=['tracking_number'], name='shipment_tracking_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.tracking_number} ({self.status})'
+
+
+class ShipmentItem(TimeStampedModel):
+    """One OrderItem (or slice thereof) packed inside a Shipment (§10.2)."""
+
+    shipment = models.ForeignKey(
+        Shipment,
+        on_delete=models.CASCADE,
+        related_name='items',
+    )
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.PROTECT,
+        related_name='shipment_items',
+    )
+    quantity = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=1),
+                name='shipment_item_quantity_positive',
+            ),
+            models.UniqueConstraint(
+                fields=['shipment', 'order_item'],
+                name='shipment_one_entry_per_order_item',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.order_item.product_title} x {self.quantity} in {self.shipment.tracking_number}'
+
+
+class TrackingEvent(TimeStampedModel):
+    """Append-only audit trail / event log for a shipment (§10.2)."""
+
+    shipment = models.ForeignKey(
+        Shipment,
+        on_delete=models.CASCADE,
+        related_name='tracking_events',
+    )
+    status = models.CharField(max_length=32)
+    location = models.CharField(max_length=128, blank=True)
+    description = models.CharField(max_length=256)
+    occurred_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ['occurred_at', 'id']
+        indexes = [
+            models.Index(fields=['shipment', 'occurred_at'], name='tracking_shipment_time_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.shipment.tracking_number} @ {self.occurred_at}: {self.description}'
+
