@@ -86,6 +86,31 @@ export const HeartSolidIcon = ({ size = 18, className }) => (
   </svg>
 );
 
+/**
+ * Circular verified seal — 10 evenly spaced spikes (the "tusok-tusok" rosette).
+ * The path alternates outer tips (radius 10.2) and inner valleys (radius 7.8)
+ * every 18° around the exact center (12, 12), so the bounding box stays a
+ * perfect 20.4 × 20.4 square and the seal never renders oblong at any size.
+ */
+export function VerifiedBadgeIcon({ size = 14, className }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 1.8 14.4 4.6 18 3.7 18.3 7.4 21.7 8.8 19.8 12 21.7 15.2 18.3 16.6 18 20.3 14.4 19.4 12 22.2 9.6 19.4 6 20.3 5.7 16.6 2.3 15.2 4.2 12 2.3 8.8 5.7 7.4 6 3.7 9.6 4.6Z"
+      />
+      <path
+        d="m8.1 12.4 2.8 2.8 5.5-5.7"
+        fill="none"
+        className="stroke-white"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function LogoMark({ size = 28, className }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">

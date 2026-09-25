@@ -12,6 +12,7 @@ import { Input } from "../../components/ui/Input";
 import { StoreIcon } from "../../components/ui/Icons";
 import { Textarea } from "../../components/ui/Textarea";
 import * as storesApi from "../../data/stores";
+import { useRequiredFields } from "../../lib/formErrors";
 
 export function BecomeSellerForm() {
   const [existingStore, setExistingStore] = useState(undefined); // undefined = checking
@@ -22,8 +23,11 @@ export function BecomeSellerForm() {
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [fieldErrors, setFieldErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
+  const { fieldErrors, validate, clearField, setFieldErrors } = useRequiredFields(
+    { store_name: form.store_name },
+    ["store_name"]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -40,13 +44,18 @@ export function BecomeSellerForm() {
     };
   }, []);
 
-  const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((f) => ({ ...f, [key]: event.target.value }));
+    clearField(key);
+  };
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setBusy(true);
     setError(null);
-    setFieldErrors({});
+    // noValidate: required fields render our red inline messages, never the
+    // browser's native bubble (server stays the gate, §10.1).
+    if (!validate()) return;
+    setBusy(true);
     try {
       await storesApi.applyAsSeller(form);
       setSubmitted(true);
@@ -125,9 +134,10 @@ export function BecomeSellerForm() {
             {error}
           </Alert>
         )}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
           <Input
             label="Store name"
+            name="store_name"
             required
             maxLength={128}
             value={form.store_name}
@@ -136,6 +146,7 @@ export function BecomeSellerForm() {
           />
           <Textarea
             label="Store description"
+            name="store_description"
             hint="What do you sell? What makes your shop special?"
             rows={4}
             value={form.store_description}
@@ -144,6 +155,7 @@ export function BecomeSellerForm() {
           />
           <Input
             label="Contact phone"
+            name="contact_phone"
             type="tel"
             autoComplete="tel"
             placeholder="+63 9xx xxx xxxx"

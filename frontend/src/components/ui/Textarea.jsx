@@ -14,12 +14,16 @@ export const Textarea = forwardRef(function Textarea(
 ) {
   const generatedId = useId();
   const areaId = id || generatedId;
+  const errorId = `${areaId}-error`;
+  const hintId = `${areaId}-hint`;
   return (
     <div className="flex w-full flex-col gap-1.5">
       {label && <Label htmlFor={areaId}>{label}</Label>}
       <textarea
         ref={ref}
         id={areaId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : hint ? hintId : undefined}
         className={cx(
           "w-full resize-y border bg-white px-3.5 py-2.5 text-sand-900 transition-[border-color] placeholder:text-sand-400 disabled:cursor-not-allowed disabled:bg-sand-100 disabled:opacity-70 dark:bg-night-900 dark:text-sand-100 dark:placeholder:text-sand-500 dark:disabled:bg-night-800",
           SIZES[size],
@@ -31,12 +35,17 @@ export const Textarea = forwardRef(function Textarea(
         {...props}
       />
       {error ? (
-        <p className="flex items-center gap-1.5 text-xs font-medium text-danger-600 dark:text-danger-400">
+        <p
+          id={errorId}
+          className="flex items-center gap-1.5 text-xs font-medium text-danger-600 dark:text-danger-400"
+        >
           <AlertCircleIcon size={14} className="shrink-0" />
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-sand-500 dark:text-sand-400">{hint}</p>
+        <p id={hintId} className="text-xs text-sand-500 dark:text-sand-400">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

@@ -12,6 +12,7 @@ import { Input } from "../../components/ui/Input";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { Textarea } from "../../components/ui/Textarea";
 import * as storesApi from "../../data/stores";
+import { useRequiredFields } from "../../lib/formErrors";
 
 const STATUS_TONES = {
   active: "success",
@@ -25,6 +26,10 @@ export function StoreSettingsPanel() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
+  const { fieldErrors, validate, clearField, setFieldErrors } = useRequiredFields(
+    { name: store?.name },
+    ["name"]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -58,13 +63,17 @@ export function StoreSettingsPanel() {
     const { value } = event.target;
     setStore((s) => ({ ...s, [key]: value }));
     setSaved(false);
+    clearField(key);
   };
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setBusy(true);
     setError(null);
     setSaved(false);
+    // noValidate: required fields render our red inline messages, never the
+    // browser's native bubble (server stays the gate, §10.1).
+    if (!validate()) return;
+    setBusy(true);
     try {
       const updated = await storesApi.updateMyStore({
         name: store.name,
@@ -79,6 +88,7 @@ export function StoreSettingsPanel() {
       setSaved(true);
     } catch (err) {
       setError(err.data?.detail || err.data?.error || err.message);
+      setFieldErrors(err.data?.field_errors || {});
     } finally {
       setBusy(false);
     }
@@ -101,10 +111,11 @@ export function StoreSettingsPanel() {
       </div>
       {saved && <Alert tone="success" title="Store settings saved" className="mb-4" />}
       {error && <Alert tone="danger" title="Could not save store" className="mb-4">{error}</Alert>}
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Input label="Store name" required maxLength={128} value={store.name} onChange={set("name")} />
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <Input label="Store name" name="name" required maxLength={128} value={store.name} onChange={set("name")} error={fieldErrors.name?.[0]} />
         <Textarea
           label="Description"
+          name="description"
           rows={3}
           value={store.description}
           onChange={set("description")}
@@ -112,6 +123,7 @@ export function StoreSettingsPanel() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             label="Logo URL"
+            name="logo_url"
             type="url"
             hint="File upload arrives with the media phase."
             value={store.logo_url}
@@ -119,6 +131,7 @@ export function StoreSettingsPanel() {
           />
           <Input
             label="Banner URL"
+            name="banner_url"
             type="url"
             hint="File upload arrives with the media phase."
             value={store.banner_url}
@@ -127,18 +140,21 @@ export function StoreSettingsPanel() {
         </div>
         <Input
           label="Contact phone"
+          name="contact_phone"
           type="tel"
           value={store.contact_phone}
           onChange={set("contact_phone")}
         />
         <Textarea
           label="Return policy"
+          name="return_policy"
           rows={3}
           value={store.return_policy}
           onChange={set("return_policy")}
         />
         <Textarea
           label="Shipping policy"
+          name="shipping_policy"
           rows={3}
           value={store.shipping_policy}
           onChange={set("shipping_policy")}

@@ -10,6 +10,7 @@ import { Badge } from "../components/ui/Badge";
 import { useAuth } from "../features/auth/AuthContext";
 import { StoreSettingsPanel } from "../features/seller/StoreSettingsPanel";
 import * as authApi from "../data/auth";
+import { useRequiredFields } from "../lib/formErrors";
 
 function ProfilePanel() {
   const { user, setUser } = useAuth();
@@ -57,21 +58,28 @@ function ProfilePanel() {
   );
 }
 
+const SECURITY_FIELDS = ["current", "next", "confirm"];
+
 function SecurityPanel() {
   const [form, setForm] = useState({ current: "", next: "", confirm: "" });
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
-  const [fieldErrors, setFieldErrors] = useState({});
   const [busy, setBusy] = useState(false);
+  const { fieldErrors, validate, clearField, setFieldErrors } = useRequiredFields(form, SECURITY_FIELDS);
 
-  const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((f) => ({ ...f, [key]: event.target.value }));
+    clearField(key);
+  };
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setBusy(true);
     setError(null);
     setSaved(false);
-    setFieldErrors({});
+    // noValidate: required fields render our red inline messages, never the
+    // browser's native bubble (server stays the gate, §10.1).
+    if (!validate()) return;
+    setBusy(true);
     try {
       if (form.next !== form.confirm) throw { data: { detail: "New passwords do not match." } };
       await authApi.changePassword(form.current, form.next);
@@ -89,10 +97,10 @@ function SecurityPanel() {
     <div className="max-w-md">
       {saved && <Alert tone="success" title="Password changed" className="mb-4" />}
       {error && <Alert tone="danger" title="Could not change password" className="mb-4">{error}</Alert>}
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Input label="Current password" type="password" autoComplete="current-password" required value={form.current} onChange={set("current")} error={fieldErrors.current_password?.[0]} />
-        <Input label="New password" type="password" autoComplete="new-password" required value={form.next} onChange={set("next")} error={fieldErrors.new_password?.[0]} />
-        <Input label="Confirm new password" type="password" autoComplete="new-password" required value={form.confirm} onChange={set("confirm")} />
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <Input label="Current password" type="password" name="current" autoComplete="current-password" required value={form.current} onChange={set("current")} error={fieldErrors.current?.[0] || fieldErrors.current_password?.[0]} />
+        <Input label="New password" type="password" name="next" autoComplete="new-password" required value={form.next} onChange={set("next")} error={fieldErrors.next?.[0] || fieldErrors.new_password?.[0]} />
+        <Input label="Confirm new password" type="password" name="confirm" autoComplete="new-password" required value={form.confirm} onChange={set("confirm")} error={fieldErrors.confirm?.[0]} />
         <div>
           <Button type="submit" loading={busy}>Change password</Button>
         </div>
@@ -101,13 +109,20 @@ function SecurityPanel() {
   );
 }
 
+const ADDRESS_FIELDS = ["full_name", "phone", "line1", "city", "province", "postal_code"];
+const EMPTY_ADDRESS = { full_name: "", phone: "", line1: "", city: "", province: "", postal_code: "" };
+
 function AddressesPanel() {
   const [addresses, setAddresses] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ full_name: "", phone: "", line1: "", city: "", province: "", postal_code: "" });
+  const [form, setForm] = useState(EMPTY_ADDRESS);
+  const { fieldErrors, validate, clearField, setFieldErrors } = useRequiredFields(form, ADDRESS_FIELDS);
 
-  const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((f) => ({ ...f, [key]: event.target.value }));
+    clearField(key);
+  };
 
   async function load() {
     try {
@@ -135,14 +150,18 @@ function AddressesPanel() {
 
   async function handleAdd(event) {
     event.preventDefault();
-    setBusy(true);
     setError(null);
+    // noValidate: required fields render our red inline messages, never the
+    // browser's native bubble (server stays the gate, §10.1).
+    if (!validate()) return;
+    setBusy(true);
     try {
       await authApi.createAddress(form);
-      setForm({ full_name: "", phone: "", line1: "", city: "", province: "", postal_code: "" });
+      setForm(EMPTY_ADDRESS);
       await load();
     } catch (err) {
       setError(err.data?.detail || err.message);
+      setFieldErrors(err.data?.field_errors || {});
     } finally {
       setBusy(false);
     }
@@ -184,16 +203,16 @@ function AddressesPanel() {
           ))}
         </ul>
       )}
-      <form onSubmit={handleAdd} className="flex flex-col gap-3">
+      <form onSubmit={handleAdd} noValidate className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Full name" required value={form.full_name} onChange={set("full_name")} />
-          <Input label="Phone" required value={form.phone} onChange={set("phone")} />
+          <Input label="Full name" name="full_name" required value={form.full_name} onChange={set("full_name")} error={fieldErrors.full_name?.[0]} />
+          <Input label="Phone" name="phone" required value={form.phone} onChange={set("phone")} error={fieldErrors.phone?.[0]} />
         </div>
-        <Input label="Street address" required value={form.line1} onChange={set("line1")} />
+        <Input label="Street address" name="line1" required value={form.line1} onChange={set("line1")} error={fieldErrors.line1?.[0]} />
         <div className="grid grid-cols-3 gap-3">
-          <Input label="City" required value={form.city} onChange={set("city")} />
-          <Input label="Province" required value={form.province} onChange={set("province")} />
-          <Input label="Postal code" required value={form.postal_code} onChange={set("postal_code")} />
+          <Input label="City" name="city" required value={form.city} onChange={set("city")} error={fieldErrors.city?.[0]} />
+          <Input label="Province" name="province" required value={form.province} onChange={set("province")} error={fieldErrors.province?.[0]} />
+          <Input label="Postal code" name="postal_code" required value={form.postal_code} onChange={set("postal_code")} error={fieldErrors.postal_code?.[0]} />
         </div>
         <div>
           <Button type="submit" variant="secondary" loading={busy}>Add address</Button>

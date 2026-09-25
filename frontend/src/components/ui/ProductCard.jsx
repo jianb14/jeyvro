@@ -9,7 +9,7 @@ import { Badge } from "./Badge";
 import { ProductArt } from "./ProductArt";
 import { StockIndicator } from "./StockIndicator";
 import { useToast } from "./ToastProvider";
-import { HeartIcon, HeartSolidIcon, ShoppingCartIcon, StoreIcon } from "./Icons";
+import { HeartIcon, HeartSolidIcon, ShoppingCartIcon, StoreIcon, VerifiedBadgeIcon } from "./Icons";
 
 export function ProductCard({ product, onAddToCart, className }) {
   const { user } = useAuth();
@@ -121,10 +121,7 @@ function StoreLine({ product }) {
       <span className="truncate">{product.store}</span>
       {product.verified && (
         <span title="Verified seller" className="shrink-0 text-moss-600 dark:text-moss-400">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
-            <path d="M12 2 9.8 4.6l-3.4-.5-.6 3.4L3 9.6l1.5 3.1L3 15.8l2.8 2.1.6 3.4 3.4-.5L12 23.4l2.2-2.6 3.4.5.6-3.4 2.8-2.1-1.5-3.1L21 9.6l-2.8-2.1-.6-3.4-3.4.5z" />
-            <path d="m10.7 14.3-2-2-1.1 1.1 3.1 3.1 5.7-5.7-1.1-1.1z" fill="#ffffff" />
-          </svg>
+          <VerifiedBadgeIcon size={14} />
         </span>
       )}
     </>

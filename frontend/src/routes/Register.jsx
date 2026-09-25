@@ -6,6 +6,9 @@ import { Input } from "../components/ui/Input";
 import { Alert } from "../components/ui/Alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { useAuth } from "../features/auth/AuthContext";
+import { useRequiredFields } from "../lib/formErrors";
+
+const REQUIRED_FIELDS = ["email", "password", "confirm"];
 
 export function Register() {
   const { register } = useAuth();
@@ -18,16 +21,21 @@ export function Register() {
     password: "",
     confirm: "",
   });
-  const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const { fieldErrors, validate, clearField, setFieldErrors } = useRequiredFields(form, REQUIRED_FIELDS);
 
-  const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((f) => ({ ...f, [key]: event.target.value }));
+    clearField(key);
+  };
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError(null);
-    setFieldErrors({});
+    // noValidate: required fields render our red inline messages, never the
+    // browser's native bubble (server stays the gate, §10.1).
+    if (!validate()) return;
     if (form.password !== form.confirm) {
       setFieldErrors({ confirm: ["Passwords do not match."] });
       return;
@@ -68,10 +76,11 @@ export function Register() {
                 {error}
               </Alert>
             )}
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
               <Input
                 label="Email"
                 type="email"
+                name="email"
                 autoComplete="email"
                 required
                 value={form.email}
@@ -79,12 +88,27 @@ export function Register() {
                 error={fieldErrors.email?.[0]}
               />
               <div className="grid grid-cols-2 gap-3">
-                <Input label="First name" autoComplete="given-name" value={form.first_name} onChange={set("first_name")} />
-                <Input label="Last name" autoComplete="family-name" value={form.last_name} onChange={set("last_name")} />
+                <Input
+                  label="First name"
+                  name="first_name"
+                  autoComplete="given-name"
+                  value={form.first_name}
+                  onChange={set("first_name")}
+                  error={fieldErrors.first_name?.[0]}
+                />
+                <Input
+                  label="Last name"
+                  name="last_name"
+                  autoComplete="family-name"
+                  value={form.last_name}
+                  onChange={set("last_name")}
+                  error={fieldErrors.last_name?.[0]}
+                />
               </div>
               <Input
                 label="Password"
                 type="password"
+                name="password"
                 autoComplete="new-password"
                 required
                 value={form.password}
@@ -95,6 +119,7 @@ export function Register() {
               <Input
                 label="Confirm password"
                 type="password"
+                name="confirm"
                 autoComplete="new-password"
                 required
                 value={form.confirm}

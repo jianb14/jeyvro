@@ -28,6 +28,8 @@ export const Select = forwardRef(function Select(
 ) {
   const generatedId = useId();
   const selectId = id || generatedId;
+  const errorId = `${selectId}-error`;
+  const hintId = `${selectId}-hint`;
   const rootRef = useRef(null);
   const triggerRef = useRef(null);
   const listRef = useRef(null);
@@ -134,6 +136,8 @@ export const Select = forwardRef(function Select(
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls={`${selectId}-listbox`}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : hint ? hintId : undefined}
           onClick={() => (open ? setOpen(false) : openDropdown())}
           onKeyDown={onTriggerKeyDown}
           className={cx(
@@ -190,12 +194,17 @@ export const Select = forwardRef(function Select(
         )}
       </div>
       {error ? (
-        <p className="flex items-center gap-1.5 text-xs font-medium text-danger-600 dark:text-danger-400">
+        <p
+          id={errorId}
+          className="flex items-center gap-1.5 text-xs font-medium text-danger-600 dark:text-danger-400"
+        >
           <AlertCircleIcon size={14} className="shrink-0" />
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-sand-500 dark:text-sand-400">{hint}</p>
+        <p id={hintId} className="text-xs text-sand-500 dark:text-sand-400">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

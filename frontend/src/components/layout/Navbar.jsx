@@ -41,9 +41,9 @@ function ThemeToggle() {
     <button
       onClick={toggle}
       aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      className="inline-flex size-10 items-center justify-center rounded-xl border border-sand-300 bg-white text-sand-600 transition-all hover:border-moss-400 hover:text-moss-700 dark:border-night-700 dark:bg-night-900 dark:text-sand-300 dark:hover:border-moss-600 dark:hover:text-moss-300"
+      className="inline-flex size-10 items-center justify-center rounded-lg text-sand-600 transition-colors hover:text-moss-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 dark:text-sand-300 dark:hover:text-moss-300 dark:focus-visible:outline-moss-400"
     >
-      {theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+      {theme === "dark" ? <SunIcon size={20} /> : <MoonIcon size={20} />}
     </button>
   );
 }
@@ -113,18 +113,18 @@ export function Navbar() {
             to="/wishlist"
             aria-label="Wishlist"
             title="Wishlist"
-            className="hidden size-10 items-center justify-center rounded-xl border border-sand-300 bg-white text-sand-600 transition-all hover:border-moss-400 hover:text-moss-700 sm:inline-flex dark:border-night-700 dark:bg-night-900 dark:text-sand-300 dark:hover:border-moss-600 dark:hover:text-moss-300"
+            className="hidden size-10 items-center justify-center rounded-lg text-sand-600 transition-colors hover:text-moss-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 sm:inline-flex dark:text-sand-300 dark:hover:text-moss-300 dark:focus-visible:outline-moss-400"
           >
-            <HeartIcon size={17} />
+            <HeartIcon size={20} />
           </Link>
 
           <Link
             to="/cart"
             aria-label={itemCount > 0 ? `Cart, ${itemCount} items` : "Cart"}
             title="Cart"
-            className="relative inline-flex size-10 items-center justify-center rounded-xl border border-sand-300 bg-white text-sand-600 transition-all hover:border-moss-400 hover:text-moss-700 dark:border-night-700 dark:bg-night-900 dark:text-sand-300 dark:hover:border-moss-600 dark:hover:text-moss-300"
+            className="relative inline-flex size-10 items-center justify-center rounded-lg text-sand-600 transition-colors hover:text-moss-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 dark:text-sand-300 dark:hover:text-moss-300 dark:focus-visible:outline-moss-400"
           >
-            <ShoppingCartIcon size={17} />
+            <ShoppingCartIcon size={20} />
             {itemCount > 0 && (
               <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-moss-600 px-1 text-[10px] font-semibold text-white dark:bg-moss-500">
                 {itemCount > 99 ? "99+" : itemCount}
@@ -166,9 +166,9 @@ export function Navbar() {
           onClick={() => setMobileOpen((o) => !o)}
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
           aria-expanded={mobileOpen}
-          className="inline-flex size-10 items-center justify-center rounded-xl border border-sand-300 bg-white text-sand-600 dark:border-night-700 dark:bg-night-900 dark:text-sand-300 md:hidden"
+          className="inline-flex size-10 items-center justify-center rounded-lg text-sand-600 transition-colors hover:text-moss-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 dark:text-sand-300 dark:hover:text-moss-300 dark:focus-visible:outline-moss-400 md:hidden"
         >
-          {mobileOpen ? <XIcon size={18} /> : <MenuIcon size={18} />}
+          {mobileOpen ? <XIcon size={20} /> : <MenuIcon size={20} />}
           </button>
         </div>
       </nav>
