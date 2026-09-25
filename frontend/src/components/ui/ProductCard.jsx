@@ -73,9 +73,12 @@ export function ProductCard({ product, onAddToCart, className }) {
             <ProductArt seed={product.seed} className="aspect-square w-full" />
           )}
         </Link>
-        <div className="absolute left-3 top-3 flex flex-col gap-1.5">
-          {product.isNew && <Badge tone="moss" variant="solid" size="sm">NEW</Badge>}
-          {soldOut && <Badge tone="neutral" variant="solid" size="sm">SOLD OUT</Badge>}
+        <div className="absolute left-3 top-3 flex items-center">
+          {soldOut ? (
+            <Badge tone="neutral" variant="solid" size="sm">SOLD OUT</Badge>
+          ) : product.isNew ? (
+            <Badge tone="moss" variant="solid" size="sm">NEW</Badge>
+          ) : null}
         </div>
         <button
           type="button"

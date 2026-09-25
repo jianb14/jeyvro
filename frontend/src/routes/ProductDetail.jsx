@@ -273,14 +273,15 @@ export function ProductDetail() {
               </div>
 
               <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  {product.isNew && (
-                    <Badge tone="moss" variant="soft">NEW</Badge>
-                  )}
-                  {soldOut && (
-                    <Badge tone="neutral" variant="soft">SOLD OUT</Badge>
-                  )}
-                </div>
+                {(soldOut || product.isNew) && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {soldOut ? (
+                      <Badge tone="neutral" variant="soft">SOLD OUT</Badge>
+                    ) : (
+                      <Badge tone="moss" variant="soft">NEW</Badge>
+                    )}
+                  </div>
+                )}
                 <h1 className="font-display text-2xl font-semibold tracking-tight text-sand-900 dark:text-sand-100 sm:text-3xl">
                   {product.title}
                 </h1>
@@ -406,7 +407,7 @@ export function ProductDetail() {
                     <TruckIcon size={14} /> Shipping computed at checkout
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <CheckCircleIcon size={14} /> Checkout arrives in Phase 8
+                    <CheckCircleIcon size={14} /> Checkout and orders are live
                   </span>
                 </div>
               </div>

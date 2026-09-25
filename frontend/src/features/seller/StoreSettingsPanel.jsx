@@ -27,8 +27,8 @@ export function StoreSettingsPanel() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
   const { fieldErrors, validate, clearField, setFieldErrors } = useRequiredFields(
-    { name: store?.name },
-    ["name"]
+    { name: store?.name, shipping_flat_fee: store?.shipping_flat_fee },
+    ["name", "shipping_flat_fee"]
   );
 
   useEffect(() => {
@@ -83,6 +83,12 @@ export function StoreSettingsPanel() {
         contact_phone: store.contact_phone,
         return_policy: store.return_policy,
         shipping_policy: store.shipping_policy,
+        shipping_flat_fee: store.shipping_flat_fee,
+        free_shipping_threshold:
+          store.free_shipping_threshold === "" ||
+          store.free_shipping_threshold == null
+            ? null
+            : store.free_shipping_threshold,
       });
       setStore(updated);
       setSaved(true);
@@ -159,6 +165,31 @@ export function StoreSettingsPanel() {
           value={store.shipping_policy}
           onChange={set("shipping_policy")}
         />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Shipping flat fee (₱)"
+            name="shipping_flat_fee"
+            type="number"
+            min="0"
+            step="0.01"
+            required
+            hint="Charged once per order from your store."
+            value={store.shipping_flat_fee}
+            onChange={set("shipping_flat_fee")}
+            error={fieldErrors.shipping_flat_fee?.[0]}
+          />
+          <Input
+            label="Free shipping over (₱)"
+            name="free_shipping_threshold"
+            type="number"
+            min="0"
+            step="0.01"
+            hint="Subtotal from your store. Leave blank to always charge the flat fee."
+            value={store.free_shipping_threshold ?? ""}
+            onChange={set("free_shipping_threshold")}
+            error={fieldErrors.free_shipping_threshold?.[0]}
+          />
+        </div>
         <div>
           <Button type="submit" loading={busy}>Save store settings</Button>
         </div>

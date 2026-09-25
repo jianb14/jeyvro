@@ -5,7 +5,7 @@
  * prompt; checkout itself arrives with Phase 8.
  */
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Navbar } from "../components/layout/Navbar";
 import { Alert } from "../components/ui/Alert";
 import { Breadcrumb } from "../components/ui/Breadcrumb";
@@ -27,6 +27,7 @@ export function Cart() {
   const { cart, loading, updateItem, removeItem, clear } = useCart();
   const { user } = useAuth();
   const { push } = useToast();
+  const navigate = useNavigate();
   const [busyId, setBusyId] = useState(null);
   const [confirmClear, setConfirmClear] = useState(false);
 
@@ -86,12 +87,15 @@ export function Cart() {
     }
   };
 
-  const checkout = () =>
-    push({
-      tone: "info",
-      title: "Checkout arrives in Phase 8",
-      description: "Address, shipping, and order creation are the next build step.",
-    });
+  // Guests go to sign-in first — their session cart merges into the account
+  // cart at login, then checkout continues from there (§6 v1.7).
+  const checkout = () => {
+    if (user) {
+      navigate("/checkout");
+      return;
+    }
+    navigate("/login", { state: { from: "/checkout" } });
+  };
 
   return (
     <div className="min-h-dvh bg-sand-50 dark:bg-night-950">
@@ -200,7 +204,7 @@ export function Cart() {
                 checkoutNote={
                   hasIssues
                     ? "Fix the highlighted lines before checking out."
-                    : "Shipping and payment methods are chosen at checkout (Phase 8)."
+                    : "Shipping is charged per store and shown at checkout."
                 }
               />
             </aside>

@@ -52,6 +52,8 @@ INSTALLED_APPS = [
     'apps.stores',
     'apps.catalog',
     'apps.cart',
+    'apps.orders',
+    'apps.payments',
 ]
 
 MIDDLEWARE = [
@@ -143,6 +145,18 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Upload safety net (per-file validation also runs in services — §10.1).
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
+
+# Payments (Phase 9) — COD ships now; the online-gateway seam is configured
+# by environment when PayMongo/GCash/Maya land (§17). Sandbox mode enables
+# the generic adapter's fake checkout so the webhook flow is testable.
+PAYMENTS_PAYMENT_EXPIRY_HOURS = int(env('PAYMENTS_PAYMENT_EXPIRY_HOURS', '24'))
+PAYMENTS_GATEWAY_WEBHOOK_SECRET = env('PAYMENTS_GATEWAY_WEBHOOK_SECRET', '')
+PAYMENTS_GATEWAY_CHECKOUT_URL = env('PAYMENTS_GATEWAY_CHECKOUT_URL', '')
+PAYMENTS_GATEWAY_SANDBOX = env('PAYMENTS_GATEWAY_SANDBOX', 'False').lower() in {
+    '1',
+    'true',
+    'yes',
+}
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -5,11 +5,12 @@ there is no parallel seller-account model. Store media is URL-based for
 now, consistent with `accounts.User.avatar_url`; validated file upload
 arrives with the media phase (CONVENTIONS.md — Media).
 """
+from decimal import Decimal
+
 from django.db import models
 from django.utils import timezone
 
 from apps.common.models import TimeStampedModel
-from apps.common.utils import slugify_unique
 from apps.common.utils import slugify_unique
 
 
@@ -40,6 +41,25 @@ class Store(TimeStampedModel):
     contact_phone = models.CharField(max_length=32, blank=True)
     return_policy = models.TextField(blank=True)
     shipping_policy = models.TextField(blank=True)
+    shipping_flat_fee = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text=(
+            'Per-store flat shipping fee (PHP) charged once per order from '
+            'this store (§6 v1.7).'
+        ),
+    )
+    free_shipping_threshold = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text=(
+            'Optional: this store ships free when its subtotal reaches this '
+            'amount (§6 v1.7).'
+        ),
+    )
     status = models.CharField(
         max_length=16,
         choices=Status.choices,

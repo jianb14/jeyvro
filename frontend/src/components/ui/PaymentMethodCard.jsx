@@ -7,19 +7,22 @@ const LOGOS = {
   cod: { text: "COD", cls: "bg-warning-400 text-night-950" },
 };
 
-export function PaymentMethodCard({ method, label, description, selected = false, onSelect, className }) {
+export function PaymentMethodCard({ method, label, description, selected = false, onSelect, disabled = false, className }) {
   const logo = LOGOS[method] || LOGOS.card;
 
   return (
     <button
       type="button"
       onClick={() => onSelect?.(method)}
+      disabled={disabled}
       aria-pressed={selected}
       className={cx(
         "flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all outline-offset-2 outline-moss-600/60 focus-visible:outline-2",
-        selected
-          ? "border-moss-600 bg-moss-50 ring-1 ring-moss-600 dark:border-moss-500 dark:bg-moss-950/40 dark:ring-moss-500"
-          : "border-sand-300 bg-white hover:border-moss-400 dark:border-night-700 dark:bg-night-900 dark:hover:border-moss-600",
+        disabled
+          ? "cursor-not-allowed border-sand-200 bg-sand-100/70 opacity-60 dark:border-night-800 dark:bg-night-900/60"
+          : selected
+            ? "border-moss-600 bg-moss-50 ring-1 ring-moss-600 dark:border-moss-500 dark:bg-moss-950/40 dark:ring-moss-500"
+            : "border-sand-300 bg-white hover:border-moss-400 dark:border-night-700 dark:bg-night-900 dark:hover:border-moss-600",
         className
       )}
     >

@@ -80,7 +80,7 @@ frontend/
 Layout/primitives: Button, Card (+CardHeader/Title/Description/Content/Footer), Divider, Kbd, Label, Icons (the only icon source).
 Forms: Input, Textarea, Select, Checkbox, Radio, Switch, FileUpload (+FileList), VariantPicker.
 Navigation: Tabs (+TabPanel), Breadcrumb, Pagination, DropdownMenu (+MenuButton), CommandPalette.
-Data display: Table (+THead/TH/TBody/TR/TD), Badge, Avatar (+AvatarGroup), Chip, Rating, Price, ProductCard (+ProductGrid), ProductShelf, ProductArt, StockIndicator, StoreCard, ReviewCard, OrderStatusBadge, PaymentMethodCard, AddressCard (+AddressList), CartItem, CartSummary, QuantityStepper, Accordion, Tooltip, Timeline.
+Data display: Table (+THead/TH/TBody/TR/TD), Badge, Avatar (+AvatarGroup), Chip, Rating, Price, ProductCard (+ProductGrid), ProductShelf, ProductArt, StockIndicator, StoreCard, ReviewCard, OrderStatusBadge, PaymentMethodCard, PaymentStatusBadge, AddressCard (+AddressList), CartItem, CartSummary, QuantityStepper, Accordion, Tooltip, Timeline.
 Feedback/overlays: Alert, Toast (+ToastViewport), ToastProvider, Progress, Spinner, Skeleton, Modal, Drawer, EmptyState, Stepper.
 
 ## Routes and primitives

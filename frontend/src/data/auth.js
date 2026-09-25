@@ -74,6 +74,11 @@ export async function deleteAddress(id) {
   return request(BASE, `/addresses/${id}/`, { method: "DELETE", csrf });
 }
 
+export async function updateAddress(id, payload) {
+  const csrf = await ensureCsrfToken();
+  return request(BASE, `/addresses/${id}/`, { method: "PATCH", body: payload, csrf });
+}
+
 export function fetchNotificationPreferences() {
   return request(BASE, "/notification-preferences");
 }

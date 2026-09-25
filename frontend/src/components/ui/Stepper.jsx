@@ -54,26 +54,27 @@ export function Stepper({ steps = [], current = 0, orientation = "horizontal", c
   }
 
   return (
-    <ol className={cx("flex w-full", className)}>
+    <ol className={cx("flex w-full items-start", className)}>
       {steps.map((step, i) => {
         const done = i < current;
         const isCurrent = i === current;
         const isLast = i === steps.length - 1;
         return (
-          <li key={step.label} className={cx("flex flex-col items-center", !isLast && "flex-1")}>
+          <li key={step.label} className="relative flex flex-1 flex-col items-center">
             <div className="relative flex w-full items-center justify-center">
-              {i > 0 && (
+              {/* Connector line extending to the right step center */}
+              {!isLast && (
                 <span
                   aria-hidden="true"
                   className={cx(
-                    "absolute right-1/2 top-1/2 h-0.5 w-full -translate-y-1/2 rounded-full",
-                    done ? "bg-moss-500" : "bg-sand-200 dark:bg-night-800"
+                    "absolute left-1/2 top-1/2 h-0.5 w-full -translate-y-1/2 rounded-full",
+                    i < current ? "bg-moss-500" : "bg-sand-200 dark:bg-night-800"
                   )}
                 />
               )}
               <Marker done={done} current={isCurrent} index={i} />
             </div>
-            <div className="mt-2 max-w-32 text-center">
+            <div className="mt-2 w-full max-w-28 px-1 text-center">
               <p
                 className={cx(
                   "text-sm font-medium",

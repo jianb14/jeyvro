@@ -3,7 +3,12 @@ from .models import AuditLog
 
 
 def log_event(actor, action, obj, detail=None):
-    """Records one staff/critical action. `obj` is any model instance."""
+    """Records one critical action. `obj` is any model instance.
+
+    `actor` may be None for system transitions (gateway webhooks, cron):
+    the AuditLog row then reads as system-driven, never as pretending a
+    human did it.
+    """
     return AuditLog.objects.create(
         actor=actor,
         action=action,

@@ -11,11 +11,18 @@ from apps.common.models import TimeStampedModel
 
 
 class AuditLog(TimeStampedModel):
-    """Who did what, to which object, when (§10.7)."""
+    """Who did what, to which object, when (§10.7).
+
+    `actor` is null for system-driven transitions (gateway webhooks, the
+    payment-expiry cron): the row still records the action, the object, and
+    the reason — Phase 9 money flows need that trail even without a human.
+    """
 
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='audit_events',
     )
     action = models.CharField(max_length=64)
@@ -35,4 +42,7 @@ class AuditLog(TimeStampedModel):
         ]
 
     def __str__(self):
-        return f'{self.actor} — {self.action} — {self.object_type}#{self.object_id}'
+        return (
+            f'{self.actor or "system"} — {self.action} — '
+            f'{self.object_type}#{self.object_id}'
+        )

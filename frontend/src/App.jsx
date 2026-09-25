@@ -7,6 +7,8 @@ import { Home } from "./routes/Home";
 import { Browse } from "./routes/Browse";
 import { ProductDetail } from "./routes/ProductDetail";
 import { Cart } from "./routes/Cart";
+import { Checkout } from "./routes/Checkout";
+import { OrderDetail } from "./routes/OrderDetail";
 import { Wishlist } from "./routes/Wishlist";
 import { Login } from "./routes/Login";
 import { Register } from "./routes/Register";
@@ -26,6 +28,22 @@ function App() {
               <Route path="/category/:slug" element={<Browse />} />
               <Route path="/product/:slug" element={<ProductDetail />} />
               <Route path="/cart" element={<Cart />} />
+              <Route
+                path="/checkout"
+                element={
+                  <ProtectedRoute>
+                    <Checkout />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/:number"
+                element={
+                  <ProtectedRoute>
+                    <OrderDetail />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/store/:slug" element={<Storefront />} />

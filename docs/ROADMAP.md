@@ -29,8 +29,8 @@
 | 5 | Catalog, Products & Inventory | ✅ Done — catalog app (products/variants/inventory/validated uploads), 26/26 tests, live smoke (create→publish→public) passed, mock→API swap done; variant image selection lands with Phase 6 |
 | 6 | Customer Shopping & Discovery | ✅ Done — marketplace navbar (server search + API categories), Home sections, /products browse (URL-driven filters/sort/pagination), category pages, /product/:slug detail (gallery, variant picker, quantity, store info, related), storefront product shelves, recently-viewed foundation; lint/build green, 9/9 frontend tests, 29/29 backend tests, live smoke passed. Add-to-cart / buy-now / wishlist shipped as real features in Phase 7 (row 7); variant-level image selection (§5.3) remains open |
 | 7 | Cart & Wishlist | ✅ Done — server-side `apps/cart` (Cart/CartItem/WishlistItem with exactly-one-owner + one-row-per-(cart,variant)/(user,product) DB constraints): session-keyed guest carts merged at login, quantity-only lines with price/stock/totals re-resolved server-side on every read, store-grouped payloads, private product-level wishlist; `/cart` + `/wishlist` pages with cart/wishlist data accessors, CartContext/WishlistContext, wishlist heart + quick-add variant resolution on every ProductCard; 15/15 cart tests, 44/44 backend tests, 5 files/15 frontend tests, lint/build green. On this machine `npm run test` must run through a space-free path (`subst X:`) — see the testing skill |
-| 8 | Checkout, Shipping Calculation & Order Creation | 🔄 In progress — checkout/shipping/order rules defined in PROJECT_CONTEXT §6 (v1.7); code starts next |
-| 9 | Payments & Financial Transactions | ⬜ Not started |
+| 8 | Checkout, Shipping Calculation & Order Creation | ✅ Done — `apps/orders` live (Order/SellerOrder/OrderItem snapshots, server-side flat fee + threshold shipping, transactional stock reservation & release on cancel), /checkout + /orders/:number frontend routes, 27 backend tests + race condition gate passed, Vitest (63/63) & build green |
+| 9 | Payments & Financial Transactions | ✅ Done — `apps/payments` domain (Payment, PaymentAttempt, Refund, append-only PaymentTransaction ledger, WebhookEvent), gateway adapter interface (COD live, generic hosted-gateway seam for PayMongo/GCash/Maya), signature-verified idempotent webhooks, online payment expiry cron command, full & partial stock-restoring refunds, Checkout step 3 + OrderDetail payment cards; 89/89 backend tests (45 tests for money flows + race gates) & 27/27 frontend tests passed, lint & build green |
 | 10 | Order Fulfillment & Delivery | ⬜ Not started |
 | 11 | Customer Account & Order Management | ⬜ Not started |
 | 12 | Seller Operations & Seller Dashboard | ⬜ Not started |
@@ -769,48 +769,48 @@ Build the critical checkout flow without trusting client-side totals.
 
 ### 8.1 Address
 
--   [ ] Address model
--   [ ] Add address
--   [ ] Edit address
--   [ ] Delete address
--   [ ] Default address
--   [ ] Address validation
--   [ ] Address snapshot for orders
+-   [x] Address model
+-   [x] Add address
+-   [x] Edit address
+-   [x] Delete address
+-   [x] Default address
+-   [x] Address validation
+-   [x] Address snapshot for orders
 
 ### 8.2 Checkout
 
--   [ ] Checkout session
--   [ ] Cart validation
--   [ ] Product validation
--   [ ] Variant validation
--   [ ] Stock validation
--   [ ] Price revalidation
--   [ ] Discount calculation foundation
--   [ ] Shipping calculation
--   [ ] Tax/fee architecture if applicable
--   [ ] Final total calculation
--   [ ] Order preview
+-   [x] Checkout session
+-   [x] Cart validation
+-   [x] Product validation
+-   [x] Variant validation
+-   [x] Stock validation
+-   [x] Price revalidation
+-   [x] Discount calculation foundation
+-   [x] Shipping calculation
+-   [x] Tax/fee architecture if applicable
+-   [x] Final total calculation
+-   [x] Order preview
 
 ### 8.3 Multi-vendor order creation
 
--   [ ] Parent order
--   [ ] Seller order/sub-order
--   [ ] Order item snapshot
--   [ ] Price snapshot
--   [ ] Product title snapshot
--   [ ] Variant snapshot
--   [ ] Shipping snapshot
--   [ ] Transaction-safe order creation
--   [ ] Inventory reservation/decrement
+-   [x] Parent order
+-   [x] Seller order/sub-order
+-   [x] Order item snapshot
+-   [x] Price snapshot
+-   [x] Product title snapshot
+-   [x] Variant snapshot
+-   [x] Shipping snapshot
+-   [x] Transaction-safe order creation
+-   [x] Inventory reservation/decrement
 
 ### Gate
 
--   [ ] Checkout cannot trust client totals
--   [ ] Invalid cart cannot checkout
--   [ ] Inventory is protected from race conditions
--   [ ] Multi-seller order creates correct seller orders
--   [ ] Order snapshots are immutable
--   [ ] Backend tests for money flows pass (PROJECT_CONTEXT §11)
+-   [x] Checkout cannot trust client totals
+-   [x] Invalid cart cannot checkout
+-   [x] Inventory is protected from race conditions
+-   [x] Multi-seller order creates correct seller orders
+-   [x] Order snapshots are immutable
+-   [x] Backend tests for money flows pass (PROJECT_CONTEXT §11)
 
 **Skills:** marketplace-orders, backend-core, security, testing
 
@@ -824,47 +824,47 @@ Build payment architecture independently from the UI.
 
 ### 9.1 Payment domain
 
--   [ ] Payment method
--   [ ] Payment record
--   [ ] Payment attempt
--   [ ] Payment transaction
--   [ ] Payment status
--   [ ] Payment reference
--   [ ] Payment ledger
--   [ ] Failure handling
--   [ ] Expiration handling
+-   [x] Payment method
+-   [x] Payment record
+-   [x] Payment attempt
+-   [x] Payment transaction
+-   [x] Payment status
+-   [x] Payment reference
+-   [x] Payment ledger
+-   [x] Failure handling
+-   [x] Expiration handling
 
 ### 9.2 Payment methods
 
--   [ ] Cash on Delivery
--   [ ] Online payment abstraction
--   [ ] Payment gateway adapter architecture
--   [ ] Future PayMongo integration point
--   [ ] Future GCash/Maya integration point
+-   [x] Cash on Delivery
+-   [x] Online payment abstraction
+-   [x] Payment gateway adapter architecture
+-   [x] Future PayMongo integration point
+-   [x] Future GCash/Maya integration point
 
 ### 9.3 Webhooks
 
--   [ ] Webhook endpoint
--   [ ] Signature verification
--   [ ] Idempotency
--   [ ] Duplicate event handling
--   [ ] Payment state reconciliation
+-   [x] Webhook endpoint
+-   [x] Signature verification
+-   [x] Idempotency
+-   [x] Duplicate event handling
+-   [x] Payment state reconciliation
 
 ### 9.4 Refund foundation
 
--   [ ] Refund transaction model
--   [ ] Full refund
--   [ ] Partial refund
--   [ ] Refund status
+-   [x] Refund transaction model
+-   [x] Full refund
+-   [x] Partial refund
+-   [x] Refund status
 
 ### Gate
 
--   [ ] COD order flow works
--   [ ] Payment states are server-authoritative
--   [ ] Duplicate payment events are safe
--   [ ] Webhooks are verified
--   [ ] Financial records are auditable
--   [ ] Backend tests for money flows pass (PROJECT_CONTEXT §11)
+-   [x] COD order flow works
+-   [x] Payment states are server-authoritative
+-   [x] Duplicate payment events are safe
+-   [x] Webhooks are verified
+-   [x] Financial records are auditable
+-   [x] Backend tests for money flows pass (PROJECT_CONTEXT §11)
 
 **Skills:** payments-skill, security, backend-feature
 

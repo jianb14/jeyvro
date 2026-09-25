@@ -15,7 +15,7 @@ Every peso has a record: payments are ledger entries with explicit status, verif
 
 ## Current honest state
 
-No backend yet; payments follow `orders` in the build order (`backend-feature`). Start with COD (no gateway needed) behind the adapter interface, so PayMongo/GCash/Maya plug in later without domain changes (§6, §17).
+Live since Phase 9: `apps/payments` ships the domain (`Payment`/`PaymentAttempt`/`Refund`/`PaymentTransaction` ledger/`WebhookEvent`), the adapter registry (`adapters/` — COD first, a generic hosted-gateway seam for the future PayMongo/GCash/Maya integrations), signed idempotent webhooks, and the `expire_payments` cron command. Commissions/payout aggregation (§13) build on the per-store capture ledger rows that already exist.
 
 ## When to use
 
