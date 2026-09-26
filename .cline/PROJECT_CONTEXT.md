@@ -53,6 +53,21 @@ Rules:
 - Staff permissions are group-based (e.g. support, moderator, admin) — not all-or-nothing.
 - Role and ownership checks are enforced by the backend on every request, never by the UI alone.
 
+### Staff Permission Matrix (Phase 13, §13.1)
+
+Staff power is group-based and least-privileged (rule 1 of `marketplace-admin` & `security` rule 3). Superusers bypass group checks; all other staff require membership in the named Django `Group`.
+
+| Group | Key | Responsibilities & Authorized Actions |
+|---|---|---|
+| **Support** | `support` | Read-only oversight across users, orders, payments, shipments, and customer inquiries; intake-request review. Cannot approve sellers, moderate products, suspend stores, or issue refunds. |
+| **Moderator** | `moderator` | Seller application review (`approve` / `reject`), store suspension & reactivation, product review & moderation (publish / reject / unpublish), review moderation (Phase 14). |
+| **Finance** | `finance` | Payment oversight, manual refund settlement (Phase 9/13), payout records & settlement, commission adjustments, financial reporting. |
+| **Operations** | `operations` | Shipment carrier overrides, logistics status reconciliation, fulfillment dispute mediation, category & brand management. |
+| **Administrator** | `administrator` | Full operational control: all powers of support + moderator + finance + operations, plus staff role assignment, user suspension, and marketplace settings. |
+| **Super Administrator** | `super_administrator` | Technical governance: raw database administration, secret rotation, disaster recovery, emergency locks (`is_superuser=True`). |
+
+Every sensitive action (application review, store suspension, product moderation, refunds, settings edits, role changes) writes an `AuditLog` row: `(actor, action, object_type, object_id, detail, timestamp)`.
+
 ## 5. Core Features
 
 ### Customer

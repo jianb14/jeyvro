@@ -17,6 +17,18 @@ import { Register } from "./routes/Register";
 import { Account } from "./routes/Account";
 import { BecomeSeller } from "./routes/BecomeSeller";
 import { Storefront } from "./routes/Storefront";
+import { SellerLayout } from "./routes/seller/SellerLayout";
+import { SellerDashboard } from "./routes/seller/SellerDashboard";
+import { SellerProducts } from "./routes/seller/SellerProducts";
+import { SellerProductEdit } from "./routes/seller/SellerProductEdit";
+import { SellerInventory } from "./routes/seller/SellerInventory";
+import { SellerOrders } from "./routes/seller/SellerOrders";
+import { SellerOrderDetail } from "./routes/seller/SellerOrderDetail";
+import { SellerStoreSettings } from "./routes/seller/SellerStoreSettings";
+import { StaffLayout } from "./routes/staff/StaffLayout";
+import { StaffSellerApplications } from "./routes/staff/StaffSellerApplications";
+import { StaffStores } from "./routes/staff/StaffStores";
+import { StaffAuditLog } from "./routes/staff/StaffAuditLog";
 
 function App() {
   return (
@@ -89,6 +101,35 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/seller"
+                element={
+                  <ProtectedRoute>
+                    <SellerLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<SellerDashboard />} />
+                <Route path="products" element={<SellerProducts />} />
+                <Route path="products/new" element={<SellerProductEdit />} />
+                <Route path="products/:id" element={<SellerProductEdit />} />
+                <Route path="inventory" element={<SellerInventory />} />
+                <Route path="orders" element={<SellerOrders />} />
+                <Route path="orders/:id" element={<SellerOrderDetail />} />
+                <Route path="settings" element={<SellerStoreSettings />} />
+              </Route>
+              <Route
+                path="/staff"
+                element={
+                  <ProtectedRoute>
+                    <StaffLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<StaffSellerApplications />} />
+                <Route path="stores" element={<StaffStores />} />
+                <Route path="audit" element={<StaffAuditLog />} />
+              </Route>
               <Route path="*" element={<Home />} />
             </Routes>
           </WishlistProvider>

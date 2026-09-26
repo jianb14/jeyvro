@@ -8,6 +8,23 @@ from rest_framework import serializers
 from .models import Address, NotificationPreference, User
 
 
+class StaffRolesField(serializers.Field):
+    """Exposes group names ONLY to authenticated staff/superusers.
+
+    For regular customers, returns an empty list so staff roles/privileges
+    never leak across the wire (PROJECT_CONTEXT §10, security skill).
+    """
+
+    def to_representation(self, user):
+        request = self.context.get('request')
+        caller = getattr(request, 'user', None)
+        if not (caller and caller.is_authenticated and (caller.is_staff or caller.is_superuser)):
+            return []
+        if user.is_superuser:
+            return ['super_administrator', 'administrator']
+        return list(user.groups.values_list('name', flat=True))
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True, style={'input_type': 'password'}
@@ -28,15 +45,18 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     """Read/update own profile. Email is the identity — never edited here."""
 
+    staff_roles = StaffRolesField(source='*', read_only=True)
+
     class Meta:
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'phone', 'avatar_url',
-            'is_seller', 'email_verified', 'account_status', 'date_joined',
+            'is_seller', 'is_staff', 'staff_roles', 'email_verified',
+            'account_status', 'date_joined',
         ]
         read_only_fields = [
-            'id', 'email', 'avatar_url', 'is_seller', 'email_verified',
-            'account_status', 'date_joined',
+            'id', 'email', 'avatar_url', 'is_seller', 'is_staff',
+            'staff_roles', 'email_verified', 'account_status', 'date_joined',
         ]
 
 

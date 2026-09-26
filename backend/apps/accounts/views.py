@@ -49,7 +49,8 @@ class RegisterView(APIView):
         user = serializer.save()
         services.send_verification_email(request, user)
         return Response(
-            UserSerializer(user).data, status=status.HTTP_201_CREATED
+            UserSerializer(user, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -90,7 +91,7 @@ class LoginView(APIView):
         guest_session_key = request.session.session_key
         login(request, user)
         cart_services.merge_guest_cart(user, guest_session_key)
-        return Response(UserSerializer(user).data)
+        return Response(UserSerializer(user, context={'request': request}).data)
 
 
 class LogoutView(APIView):
@@ -105,11 +106,14 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response(UserSerializer(request.user).data)
+        return Response(UserSerializer(request.user, context={'request': request}).data)
 
     def patch(self, request):
         serializer = UserSerializer(
-            request.user, data=request.data, partial=True
+            request.user,
+            data=request.data,
+            partial=True,
+            context={'request': request},
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
