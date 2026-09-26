@@ -118,4 +118,11 @@
   }
   ::selection { background: var(--color-moss-200); color: var(--color-moss-950); }
   .dark ::selection { background: var(--color-moss-700); color: #ffffff; }
+  /* Search fields ship their own clear button (SearchInput) — suppress the
+     browser's native cancel glyph so only one X is ever shown. */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }

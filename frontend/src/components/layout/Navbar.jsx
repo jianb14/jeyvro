@@ -33,8 +33,14 @@ const navRailClass = ({ isActive }) =>
       : "text-sand-600 hover:bg-sand-100 hover:text-sand-900 dark:text-sand-400 dark:hover:bg-night-800 dark:hover:text-sand-100"
   );
 
-const searchInputClass =
-  "h-10 w-full rounded-xl border border-sand-300 bg-white pl-10 pr-3.5 text-sm text-sand-900 transition-[border-color] placeholder:text-sand-400 focus:border-moss-500 focus:outline-2 focus:outline-offset-2 focus:outline-moss-500 dark:border-night-700 dark:bg-night-900 dark:text-sand-100 dark:focus:border-moss-400";
+const searchInputClass = (hasClear) =>
+  cx(
+    "h-10 w-full rounded-xl border border-sand-300 bg-white pl-10 text-sm text-sand-900 transition-[border-color] placeholder:text-sand-400 focus:border-moss-500 focus:outline-2 focus:outline-offset-2 focus:outline-moss-500 dark:border-night-700 dark:bg-night-900 dark:text-sand-100 dark:focus:border-moss-400",
+    hasClear ? "pr-10" : "pr-3.5"
+  );
+
+const searchClearClass =
+  "absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-sand-400 transition-colors hover:bg-sand-100 hover:text-sand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 dark:hover:bg-night-800 dark:hover:text-sand-200";
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme();
@@ -105,8 +111,18 @@ export function Navbar() {
             onChange={(event) => setInput(event.target.value)}
             aria-label="Search products"
             placeholder="Search products…"
-            className={searchInputClass}
+            className={searchInputClass(Boolean(input))}
           />
+          {input && (
+            <button
+              type="button"
+              onClick={() => setInput("")}
+              aria-label="Clear search"
+              className={searchClearClass}
+            >
+              <XIcon size={15} />
+            </button>
+          )}
         </form>
 
         <div className="ml-auto flex items-center gap-2">
@@ -201,8 +217,18 @@ export function Navbar() {
               onChange={(event) => setInput(event.target.value)}
               aria-label="Search products"
               placeholder="Search products…"
-              className={searchInputClass}
+              className={searchInputClass(Boolean(input))}
             />
+            {input && (
+              <button
+                type="button"
+                onClick={() => setInput("")}
+                aria-label="Clear search"
+                className={searchClearClass}
+              >
+                <XIcon size={15} />
+              </button>
+            )}
           </form>
 
           <div className="mt-3 flex flex-col gap-1">

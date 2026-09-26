@@ -13,9 +13,9 @@ import { Alert } from "../../components/ui/Alert";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 import { Pagination } from "../../components/ui/Pagination";
+import { SearchInput } from "../../components/ui/SearchInput";
 import { Select } from "../../components/ui/Select";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { Table, TBody, TD, TH, THead, TR } from "../../components/ui/Table";
@@ -169,11 +169,15 @@ export function StaffTeam() {
         }}
       >
         <div className="min-w-52 flex-1">
-          <Input
+          <SearchInput
             label="Search staff"
             placeholder="Email or name…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <Button type="submit" variant="outline">

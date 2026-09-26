@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cx } from "../../lib/cx";
-import { SearchIcon } from "./Icons";
+import { SearchIcon, XIcon } from "./Icons";
 import { Kbd } from "./Kbd";
 
 export function CommandPalette({ open, onClose, groups = [], placeholder = "Type a command or search..." }) {
@@ -94,6 +94,19 @@ export function CommandPalette({ open, onClose, groups = [], placeholder = "Type
             placeholder={placeholder}
             className="h-12 w-full bg-transparent text-sm text-sand-900 outline-none placeholder:text-sand-400 dark:text-sand-100"
           />
+          {query && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setActiveIndex(0);
+              }}
+              aria-label="Clear search"
+              className="shrink-0 rounded-md p-1 text-sand-400 transition-colors hover:bg-sand-100 hover:text-sand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 dark:hover:bg-night-800 dark:hover:text-sand-200"
+            >
+              <XIcon size={15} />
+            </button>
+          )}
           <Kbd>Esc</Kbd>
         </div>
 

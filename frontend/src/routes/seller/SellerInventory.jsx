@@ -15,6 +15,7 @@ import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 import { Pagination } from "../../components/ui/Pagination";
 import { Price } from "../../components/ui/Price";
+import { SearchInput } from "../../components/ui/SearchInput";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { StockIndicator } from "../../components/ui/StockIndicator";
 import { Switch } from "../../components/ui/Switch";
@@ -220,11 +221,15 @@ export function SellerInventory() {
         }}
       >
         <div className="min-w-52 flex-1">
-          <Input
+          <SearchInput
             label="Search inventory"
             placeholder="Product, variant, or SKU…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="pb-1">
