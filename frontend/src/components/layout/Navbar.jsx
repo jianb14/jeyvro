@@ -163,6 +163,11 @@ export function Navbar() {
                 { key: "profile", label: "My account", icon: UserIcon, onSelect: () => navigate("/account") },
                 { key: "orders", label: "My orders", icon: PackageIcon, onSelect: () => navigate("/orders") },
                 { key: "sell", label: "Sell on Jeyvro", icon: StoreIcon, onSelect: () => navigate("/sell") },
+                // Existing sellers get a direct door into their studio; the
+                // backend re-checks the role, this is UX only (Phase 12).
+                ...(user?.is_seller
+                  ? [{ key: "studio", label: "Seller studio", icon: StoreIcon, onSelect: () => navigate("/seller") }]
+                  : []),
                 { key: "settings", label: "Settings", icon: SettingsIcon, onSelect: () => navigate("/account") },
                 { key: "sep", divider: true },
                 { key: "logout", label: "Log out", icon: LogOutIcon, tone: "danger", onSelect: handleLogout },
@@ -253,6 +258,15 @@ export function Navbar() {
             >
               My orders
             </Link>
+            {user?.is_seller && (
+              <Link
+                to="/seller"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-sand-700 hover:bg-sand-100 dark:text-sand-300 dark:hover:bg-night-800"
+              >
+                Seller studio
+              </Link>
+            )}
             <Link
               to="/products"
               onClick={() => setMobileOpen(false)}

@@ -15,6 +15,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { ProductShelf } from "../components/ui/ProductShelf";
 import { Skeleton } from "../components/ui/Skeleton";
 import { useQuickAdd } from "../features/cart/useQuickAdd";
+import { useAuth } from "../features/auth/AuthContext";
 import {
   ArrowRightIcon,
   LeafIcon,
@@ -84,6 +85,7 @@ function FeaturedStoreCard({ store }) {
 
 export function Home() {
   const addToCart = useQuickAdd();
+  const { user } = useAuth();
   const [categories, setCategories] = useState(null);
   const [featured, setFeatured] = useState(null);
   const [featuredError, setFeaturedError] = useState(null);
@@ -171,8 +173,12 @@ export function Home() {
             <Link to="/products">
               <Button size="lg" trailingIcon={ArrowRightIcon}>Browse products</Button>
             </Link>
-            <Link to="/sell">
-              <Button size="lg" variant="outline">Sell on Jeyvro</Button>
+            {/* Sellers jump straight to the studio; everyone else starts the
+                apply flow (ProtectedRoute handles logged-out visitors). */}
+            <Link to={user?.is_seller ? "/seller" : "/sell"}>
+              <Button size="lg" variant="outline">
+                {user?.is_seller ? "Open Seller studio" : "Sell on Jeyvro"}
+              </Button>
             </Link>
           </div>
         </section>
