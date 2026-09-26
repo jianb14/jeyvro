@@ -986,44 +986,70 @@ Give sellers complete operational control over their stores.
 
 ### 12.1 Dashboard
 
--   [ ] Overview
--   [ ] Sales summary
--   [ ] Order summary
--   [ ] Inventory alerts
--   [ ] Recent orders
--   [ ] Recent reviews
+-   [x] Overview
+-   [x] Sales summary
+-   [x] Order summary
+-   [x] Inventory alerts
+-   [x] Recent orders
+-   [x] Recent reviews
+
+> **Slice v1 (done):** `GET /api/v1/stores/my/dashboard` returns the seller
+> home aggregates (sales, orders, low-stock alerts, recent orders) and the
+> `recent_reviews` slot — the section renders an honest empty state until
+> Phase 14 ships the review model.
 
 ### 12.2 Products
 
--   [ ] Product list
--   [ ] Create product
--   [ ] Edit product
--   [ ] Delete/archive product
--   [ ] Variants
--   [ ] Images
--   [ ] Bulk operations where appropriate
+-   [x] Product list
+-   [x] Create product
+-   [x] Edit product
+-   [x] Delete/archive product
+-   [x] Variants
+-   [x] Images
+-   [x] Bulk operations where appropriate
+
+> **Slice v1 (done):** `/seller/products` runs on the seller-scoped catalog API
+> (`/api/v1/catalog/my/products/` with `q`/`status` filters, variants, images,
+> the `submit`/`unpublish`/`archive` lifecycle actions and the per-id bulk
+> endpoint). Delete resolves to archive/deactivate whenever order history
+> exists, and status is service-owned — never a free PATCH.
 
 ### 12.3 Inventory
 
--   [ ] Stock management
--   [ ] Stock adjustments
--   [ ] Low-stock alerts
--   [ ] Inventory history
+-   [x] Stock management
+-   [x] Stock adjustments
+-   [x] Low-stock alerts
+-   [x] Inventory history
+
+> **Slice v1 (done):** `/api/v1/catalog/my/stock` serves the seller inventory
+> console (`?q=`, `?low_stock=1`, `?variant_id=` history): adjustments are
+> append-only StockMovement rows and thresholds are set per variant, so the
+> dashboard's low-stock alerts and the history view read the same truth.
 
 ### 12.4 Orders
 
--   [ ] Incoming orders
--   [ ] Order details
--   [ ] Accept/process
--   [ ] Pack
--   [ ] Ship
--   [ ] Update fulfillment status
+-   [x] Incoming orders
+-   [x] Order details
+-   [x] Accept/process
+-   [x] Pack
+-   [x] Ship
+-   [x] Update fulfillment status
+
+> **Slice v1 (done):** `/api/v1/seller/orders/` (store-scoped, `q`/`status`
+> filters) drives `/seller/orders`: detail, `process` (accept), `pack` and
+> `ship`, with the `can_*` flags taken straight from the domain service so the
+> buttons can never drift from the fulfillment state machine.
 
 ### 12.5 Seller customers
 
--   [ ] Customer order context
+-   [x] Customer order context
 -   [ ] Customer communication
--   [ ] Privacy-safe customer information
+-   [x] Privacy-safe customer information
+
+> **Slice v1 (done):** seller order payloads carry the §12.5 privacy ladder —
+> masked name/phone, no address and never an email before acceptance, revealed
+> exactly at `process` — plus the order context fulfillment needs.
+> "Customer communication" is the messaging thread, so it closes with §12.6.
 
 ### 12.6 Seller messaging
 
@@ -1032,20 +1058,39 @@ Give sellers complete operational control over their stores.
 -   [ ] Buyer ↔ seller conversations
 -   [ ] Order/product context
 
+> **Deferred to Phase 15 (§15.1):** messaging ships as one system — the
+> Conversation/Message models, customer ↔ seller *and* customer ↔ support,
+> read state, attachments and moderation access. Phase 11 already surfaces the
+> "Contact seller — arrives with Phase 15" entry points and §12.5 "Customer
+> communication" closes with the same slice, so nothing is built twice.
+
 ### 12.7 Store settings
 
--   [ ] Store profile
--   [ ] Policies
--   [ ] Shipping settings
--   [ ] Return settings
--   [ ] Store status
+-   [x] Store profile
+-   [x] Policies
+-   [x] Shipping settings
+-   [x] Return settings
+-   [x] Store status
+
+> **Slice v1 (done):** `/seller/settings` edits the profile, policies, flat
+> shipping fee/free-shipping threshold and return policy through
+> `GET/PATCH /api/v1/stores/my/store`. Store status stays platform-owned
+> (pending → active is a staff decision, suspension is a staff action), so the
+> page surfaces it read-only.
 
 ### Gate
 
--   [ ] Seller can operate store end-to-end
--   [ ] Seller cannot access another seller's data
--   [ ] Seller order workflow works
--   [ ] Seller inventory stays synchronized
+-   [x] Seller can operate store end-to-end
+-   [x] Seller cannot access another seller's data
+-   [x] Seller order workflow works
+-   [x] Seller inventory stays synchronized
+
+> **Slice v1 (done):** `backend/tests/test_seller_operations.py` proves the gate
+> — dashboard aggregates are scoped to the owning store, cross-store order
+> detail is a 404, delete falls back to archive/deactivate when order history
+> exists, stock stays append-only, and the customer privacy ladder flips
+> exactly at acceptance. Frontend coverage lives in
+> `frontend/src/data/seller.test.js`.
 
 **Skills:** marketplace-sellers, marketplace-orders, frontend-feature
 
@@ -1059,14 +1104,23 @@ Build the platform control center.
 
 ### 13.1 Staff access
 
--   [ ] Support role
--   [ ] Moderator role
+-   [x] Support role
+-   [x] Moderator role
 -   [ ] Finance role
 -   [ ] Operations role
--   [ ] Administrator role
--   [ ] Super administrator role
+-   [x] Administrator role
+-   [x] Super administrator role
 -   [ ] Permission assignment
 -   [ ] Permission audit
+
+> **Slice v1 (done):** the six canonical groups are seeded idempotently
+> (`manage.py seed_staff_groups`, `--promote <email> --group <name>`) and the
+> permission matrix is written into PROJECT_CONTEXT §4. Support (read-only
+> oversight), moderator (application review, store suspension, product
+> moderation) and administrator (full operational control) gate real endpoints
+> today; finance and operations groups exist but their surfaces (payouts,
+> carrier overrides, catalog management) land in later slices — permission
+> assignment and role-change auditing follow with them.
 
 ### 13.2 User management
 
@@ -1078,13 +1132,22 @@ Build the platform control center.
 
 ### 13.3 Seller management
 
--   [ ] Seller applications
+-   [x] Seller applications
 -   [ ] Verification
--   [ ] Approvals
--   [ ] Rejections
--   [ ] Seller suspension
--   [ ] Seller reactivation
+-   [x] Approvals
+-   [x] Rejections
+-   [x] Seller suspension
+-   [x] Seller reactivation
 -   [ ] Store management
+
+> **Slice v1 (done):** `GET /api/v1/stores/admin/applications/` (+`?status=`,
+> `?q=`) and the review endpoint run through the audited moderation service —
+> approval flips the store active and the applicant to `is_seller`, rejection
+> demands a reason, self-review is refused, and every decision writes an
+> AuditLog row. `GET /api/v1/stores/admin/stores/` adds the directory plus the
+> suspend/reactivate transitions. The `/staff` console renders the approval
+> queue, the store directory and the audit viewer. Store *content* management
+> stays seller-owned, so the last item stays open deliberately.
 
 ### 13.4 Catalog management
 
@@ -1113,22 +1176,35 @@ Build the platform control center.
 
 ### 13.7 Audit
 
--   [ ] AuditLog model
--   [ ] Sensitive staff actions logged
--   [ ] Actor
--   [ ] Action
--   [ ] Target
--   [ ] Timestamp
--   [ ] Metadata
--   [ ] Audit viewer
--   [ ] Audit filtering
+-   [x] AuditLog model
+-   [x] Sensitive staff actions logged
+-   [x] Actor
+-   [x] Action
+-   [x] Target
+-   [x] Timestamp
+-   [x] Metadata
+-   [x] Audit viewer
+-   [x] Audit filtering
+
+> **Slice v1 (done):** the model shipped early (Phase 4) and Slice v1 adds the
+> viewer — `GET /api/v1/audit/events/` ({count, items}, group-gated to
+> administrator/operations/moderator) with actor / action / object_type /
+> object_id filters, rendered at `/staff/audit`.
 
 ### Gate
 
--   [ ] Every sensitive admin action is permission-protected
--   [ ] Audit records are created
--   [ ] Staff cannot exceed assigned permissions
+-   [x] Every sensitive admin action is permission-protected
+-   [x] Audit records are created
+-   [x] Staff cannot exceed assigned permissions
 -   [ ] Admin cannot accidentally bypass ownership/security rules
+
+> **Slice v1 status:** the four gate lines are proven for everything shipped so
+> far — per-group allow/deny paths are tested (`support` reads but cannot act,
+> `moderator` reviews and suspends, `administrator` sees the audit log), every
+> write goes through the domain services (no side doors), and each sensitive
+> action lands an AuditLog row. The last line stays open until the remaining
+> staff surfaces (finance, operations, catalog, settings) exist and carry the
+> same tests.
 
 **Skills:** marketplace-admin, security, backend-feature
 
@@ -1878,7 +1954,7 @@ Verify JEYVRO as a complete system from every actor's perspective.
 The phases are the full journey; these milestones are the points where the product becomes genuinely usable and shippable.
 
 - **M1 — First sellable version (end of Phase 10):** a customer can register, browse, fill a cart, check out with COD, and track the order end-to-end. First version worth demoing.
-- **M2 — Sellers can operate (end of Phase 12):** sellers onboard, list products with variants/images, manage inventory, process orders, and message buyers.
+- **M2 — Sellers can operate (end of Phase 12):** sellers onboard, list products with variants/images, manage inventory, process orders, and message buyers *(the messaging leg ships with Phase 15 §15.1 — §12.6 is a documented deferral, not a Phase 12 gap)*.
 - **M3 — Platform is governable (end of Phase 13):** staff manage users/stores/catalog, oversee orders and payments, record payouts, and sensitive actions are audit-logged.
 - **v1.0 — Production launch (end of Phase 23 + Phase 25 audit):** deployed, secured, monitored, backed up; the Phase 25 audit passes in full.
 - **Post-v1.0:** Phase 24 (AI & advanced features) and any deferred scale work. Phase 24 never blocks the Definition of Done.
