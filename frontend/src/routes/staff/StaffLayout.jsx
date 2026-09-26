@@ -13,9 +13,11 @@ import { useAuth } from "../../features/auth/AuthContext";
 import { cx } from "../../lib/cx";
 import {
   ClockIcon,
+  CreditCardIcon,
   InboxIcon,
   PackageIcon,
   ShieldCheckIcon,
+  ShoppingBagIcon,
   StoreIcon,
   TagIcon,
   UserIcon,
@@ -26,6 +28,18 @@ import {
 const NAV = [
   { to: "/staff", label: "Seller approvals", icon: InboxIcon, end: true },
   { to: "/staff/stores", label: "Stores", icon: StoreIcon },
+  {
+    to: "/staff/orders",
+    label: "Orders",
+    icon: ShoppingBagIcon,
+    groups: ["support", "finance", "operations", "administrator"],
+  },
+  {
+    to: "/staff/payments",
+    label: "Payments",
+    icon: CreditCardIcon,
+    groups: ["support", "finance", "administrator"],
+  },
   {
     to: "/staff/catalog",
     label: "Catalog",

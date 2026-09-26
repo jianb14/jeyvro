@@ -5,13 +5,14 @@ cart at login and guests are prompted to sign in — no anonymous orders.
 Requests can only choose an address; prices, fees, and totals are always
 recomputed and snapshotted server-side.
 """
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.permissions import InStaffGroup
 from apps.cart import services as cart_services
 from apps.common.pagination import CountItemsPagination
 
@@ -377,3 +378,148 @@ class OrderRequestWithdrawView(APIView):
         except services.RequestError as exc:
             return _rejected(exc)
         return Response(serializers.serialize_order_request(order_request))
+
+
+# -----------------------------------------------------------------------------
+# Phase 13.5: Staff oversight views (§4 groups — read-only console)
+# -----------------------------------------------------------------------------
+
+class StaffOrderListView(APIView):
+    """GET /api/v1/orders/admin/orders/ — order oversight (13.5).
+
+    Support, finance and operations read every order; the console never
+    mutates state — cancellation and money movement stay on the existing
+    owner/staff services (§4).
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['support', 'finance', 'operations', 'administrator']
+
+    def get(self, request):
+        queryset = (
+            Order.objects.select_related('user', 'payment')
+            .prefetch_related('seller_orders__items')
+            .order_by('-created_at')
+        )
+        params = request.query_params
+        needle = params.get('q')
+        if needle:
+            queryset = queryset.filter(
+                Q(number__icontains=needle)
+                | Q(user__email__icontains=needle)
+                | Q(ship_to_name__icontains=needle)
+            )
+        status_param = params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        store = params.get('store')
+        if store:
+            queryset = (
+                queryset.filter(seller_orders__store_id=store)
+                if store.isdigit()
+                else queryset.filter(seller_orders__store__slug=store)
+            ).distinct()
+        payment = params.get('payment')
+        if payment:
+            queryset = queryset.filter(payment__status=payment)
+        paginator = CountItemsPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        return paginator.get_paginated_response(
+            [serializers.serialize_staff_order_row(order) for order in page]
+        )
+
+
+class StaffOrderDetailView(APIView):
+    """GET /api/v1/orders/admin/orders/<number>/ — full snapshot for staff."""
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['support', 'finance', 'operations', 'administrator']
+
+    def get(self, request, number):
+        order = get_object_or_404(
+            Order.objects.select_related('payment', 'user').prefetch_related(
+                'seller_orders__items',
+                'seller_orders__shipments__items__order_item',
+                'seller_orders__shipments__tracking_events',
+                'requests__seller_order',
+            ),
+            number=number,
+        )
+        payload = serializers.serialize_order(order)
+        payload['customer_email'] = order.user.email
+        return Response(payload)
+
+
+class StaffShipmentListView(APIView):
+    """GET /api/v1/orders/admin/shipments/ — parcel oversight (13.5).
+
+    Support oversees shipments and operations reconciles logistics (§4);
+    carrier mutations are not part of this slice.
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['support', 'operations', 'administrator']
+
+    def get(self, request):
+        queryset = (
+            Shipment.objects.select_related(
+                'seller_order__order', 'seller_order__store'
+            )
+            .annotate(event_count=Count('tracking_events'))
+            .order_by('-created_at')
+        )
+        params = request.query_params
+        needle = params.get('q')
+        if needle:
+            queryset = queryset.filter(
+                Q(tracking_number__icontains=needle)
+                | Q(seller_order__order__number__icontains=needle)
+                | Q(seller_order__store__name__icontains=needle)
+            )
+        status_param = params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        carrier = params.get('carrier')
+        if carrier:
+            queryset = queryset.filter(carrier=carrier)
+        paginator = CountItemsPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        return paginator.get_paginated_response(
+            [serializers.serialize_staff_shipment_row(shipment) for shipment in page]
+        )
+
+
+class StaffOrderRequestListView(APIView):
+    """GET /api/v1/orders/admin/requests/ — return/refund/dispute intake (13.5).
+
+    Read-only oversight of the Phase 11 intake queue: support reviews it,
+    finance watches refunds, operations watches issues — Phase 17 adjudicates.
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['support', 'finance', 'operations', 'administrator']
+
+    def get(self, request):
+        queryset = (
+            OrderRequest.objects.select_related('order__user', 'seller_order')
+            .order_by('-created_at')
+        )
+        params = request.query_params
+        needle = params.get('q')
+        if needle:
+            queryset = queryset.filter(
+                Q(order__number__icontains=needle)
+                | Q(order__user__email__icontains=needle)
+                | Q(reason__icontains=needle)
+            )
+        kind = params.get('kind')
+        if kind:
+            queryset = queryset.filter(kind=kind)
+        status_param = params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        paginator = CountItemsPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        return paginator.get_paginated_response(
+            [serializers.serialize_staff_request_row(item) for item in page]
+        )

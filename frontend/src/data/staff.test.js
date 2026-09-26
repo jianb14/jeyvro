@@ -13,6 +13,12 @@ import {
   fetchApplicationQueue,
   fetchAuditEvents,
   fetchStaffMembers,
+  fetchStaffOrderDetail,
+  fetchStaffOrders,
+  fetchStaffPayments,
+  fetchStaffRefunds,
+  fetchStaffRequests,
+  fetchStaffShipments,
   fetchStaffStores,
   reviewApplication,
   reviewProduct,
@@ -303,6 +309,263 @@ describe("staff accessors", () => {
     const { callWith: callWith2 } = mockFetch(STAFF_MEMBER_PAYLOAD);
     await changeStaffRole(3, "remove", "support");
     expect(callWith2("POST")[0]).toBe("/api/v1/auth/admin/staff/3/roles/remove");
+  });
+});
+
+describe("order & payment oversight accessors (13.5)", () => {
+  it("maps order rows and forwards the server-side filters", async () => {
+    const { fetchMock } = mockFetch({
+      count: 1,
+      items: [
+        {
+          number: "JV-20260926-ABCD2345",
+          status: "shipped",
+          created_at: "2026-09-26T02:00:00Z",
+          customer_email: "buyer@example.com",
+          ship_to_city: "Cebu City",
+          ship_to_province: "Cebu",
+          grand_total: 349,
+          item_count: 2,
+          store_names: ["JianShop"],
+          payment_method: "cod",
+          payment_status: "pending",
+        },
+      ],
+    });
+    const data = await fetchStaffOrders({
+      q: "JV-2026",
+      status: "shipped",
+      store: "jianshop",
+      payment: "pending",
+      page: 2,
+      pageSize: 10,
+    });
+
+    expect(data.count).toBe(1);
+    const [order] = data.items;
+    expect(order.number).toBe("JV-20260926-ABCD2345");
+    expect(order.customerEmail).toBe("buyer@example.com");
+    expect(order.grandTotal).toBe(349);
+    expect(order.storeNames).toEqual(["JianShop"]);
+    expect(order.paymentMethod).toBe("cod");
+    expect(order.paymentStatus).toBe("pending");
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/admin/orders/?");
+    expect(url).toContain("q=JV-2026");
+    expect(url).toContain("status=shipped");
+    expect(url).toContain("store=jianshop");
+    expect(url).toContain("payment=pending");
+    expect(url).toContain("page=2");
+    expect(url).toContain("page_size=10");
+  });
+
+  it("maps the staff order detail snapshot", async () => {
+    const { fetchMock } = mockFetch({
+      number: "JV-20260926-ABCD2345",
+      status: "paid",
+      created_at: "2026-09-26T02:00:00Z",
+      item_count: 1,
+      customer_email: "buyer@example.com",
+      can_cancel: false,
+      payment: {
+        reference: "JVPAY-20260926-8F3K2Q7A",
+        method: "cod",
+        status: "paid",
+        amount: 349,
+        currency: "PHP",
+        provider: "",
+        refunded_total: 50,
+        paid_at: "2026-09-26T03:00:00Z",
+      },
+      shipping_address: {
+        full_name: "Bea Buyer",
+        phone: "+63 917 111 2222",
+        line1: "12 Mabini Street",
+        line2: "",
+        city: "Cebu City",
+        province: "Cebu",
+        postal_code: "6000",
+      },
+      totals: {
+        subtotal: 299,
+        shipping_total: 50,
+        savings_total: 0,
+        tax_total: 0,
+        grand_total: 349,
+      },
+      seller_orders: [
+        {
+          id: 8,
+          store_name: "JianShop",
+          status: "shipped",
+          subtotal: 299,
+          shipping_fee: 50,
+          total: 349,
+          items: [
+            {
+              id: 15,
+              title: "Handmade Basket",
+              variant_name: "Large",
+              sku: "BASKET-L",
+              quantity: 1,
+              line_total: 299,
+            },
+          ],
+        },
+      ],
+      requests: [
+        {
+          id: 4,
+          kind: "return",
+          kind_label: "Return",
+          status: "pending",
+          reason: "Wrong size",
+          store_name: "JianShop",
+          created_at: "2026-09-26T04:00:00Z",
+        },
+      ],
+    });
+    const detail = await fetchStaffOrderDetail("JV-20260926-ABCD2345");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/v1/admin/orders/JV-20260926-ABCD2345/"
+    );
+    expect(detail.customerEmail).toBe("buyer@example.com");
+    expect(detail.canCancel).toBe(false);
+    expect(detail.payment.refundedTotal).toBe(50);
+    expect(detail.totals.grandTotal).toBe(349);
+    expect(detail.stores[0].storeName).toBe("JianShop");
+    expect(detail.stores[0].items[0].title).toBe("Handmade Basket");
+    expect(detail.requests[0].kindLabel).toBe("Return");
+  });
+
+  it("maps shipment rows and forwards status/carrier filters", async () => {
+    const { fetchMock } = mockFetch({
+      count: 1,
+      items: [
+        {
+          tracking_number: "JVTRK-20260926-0001",
+          order_number: "JV-20260926-ABCD2345",
+          store_name: "JianShop",
+          carrier: "jtex",
+          carrier_name: "J&T Express",
+          status: "in_transit",
+          shipped_at: "2026-09-26T05:00:00Z",
+          delivered_at: null,
+          event_count: 3,
+          created_at: "2026-09-26T04:30:00Z",
+        },
+      ],
+    });
+    const data = await fetchStaffShipments({
+      status: "in_transit",
+      carrier: "jtex",
+      q: "JVTRK",
+    });
+
+    const [shipment] = data.items;
+    expect(shipment.trackingNumber).toBe("JVTRK-20260926-0001");
+    expect(shipment.orderNumber).toBe("JV-20260926-ABCD2345");
+    expect(shipment.eventCount).toBe(3);
+    expect(shipment.deliveredAt).toBeNull();
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/admin/shipments/?");
+    expect(url).toContain("status=in_transit");
+    expect(url).toContain("carrier=jtex");
+    expect(url).toContain("q=JVTRK");
+  });
+
+  it("maps request rows and forwards kind/status filters", async () => {
+    const { fetchMock } = mockFetch({
+      count: 1,
+      items: [
+        {
+          id: 4,
+          kind: "refund",
+          kind_label: "Refund",
+          status: "pending",
+          reason: "Item arrived broken",
+          description: "",
+          store_name: "JianShop",
+          order_number: "JV-20260926-ABCD2345",
+          customer_email: "buyer@example.com",
+          created_at: "2026-09-26T06:00:00Z",
+        },
+      ],
+    });
+    const data = await fetchStaffRequests({ kind: "refund", status: "pending" });
+
+    const [request] = data.items;
+    expect(request.orderNumber).toBe("JV-20260926-ABCD2345");
+    expect(request.customerEmail).toBe("buyer@example.com");
+    expect(request.kindLabel).toBe("Refund");
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/admin/requests/?");
+    expect(url).toContain("kind=refund");
+    expect(url).toContain("status=pending");
+  });
+
+  it("maps payment rows and forwards method/status filters", async () => {
+    const { fetchMock } = mockFetch({
+      count: 1,
+      items: [
+        {
+          reference: "JVPAY-20260926-8F3K2Q7A",
+          order_number: "JV-20260926-ABCD2345",
+          customer_email: "buyer@example.com",
+          method: "gcash",
+          status: "partially_refunded",
+          amount: 349,
+          currency: "PHP",
+          provider: "paymongo",
+          refunded_total: 50,
+          paid_at: "2026-09-26T03:00:00Z",
+          created_at: "2026-09-26T02:05:00Z",
+        },
+      ],
+    });
+    const data = await fetchStaffPayments({ method: "gcash", status: "paid" });
+
+    const [payment] = data.items;
+    expect(payment.reference).toBe("JVPAY-20260926-8F3K2Q7A");
+    expect(payment.refundedTotal).toBe(50);
+    expect(payment.orderNumber).toBe("JV-20260926-ABCD2345");
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/payments/admin/payments/?");
+    expect(url).toContain("method=gcash");
+    expect(url).toContain("status=paid");
+  });
+
+  it("maps refund rows with the issuing staff member", async () => {
+    const { fetchMock } = mockFetch({
+      count: 1,
+      items: [
+        {
+          reference: "JVREF-20260926-2M8XW4QP",
+          payment_reference: "JVPAY-20260926-8F3K2Q7A",
+          order_number: "JV-20260926-ABCD2345",
+          amount: 50,
+          status: "succeeded",
+          reason: "Goodwill credit",
+          issued_by: "finance@jeyvro.ph",
+          created_at: "2026-09-26T07:00:00Z",
+        },
+      ],
+    });
+    const data = await fetchStaffRefunds({ status: "succeeded" });
+
+    const [refund] = data.items;
+    expect(refund.reference).toBe("JVREF-20260926-2M8XW4QP");
+    expect(refund.paymentReference).toBe("JVPAY-20260926-8F3K2Q7A");
+    expect(refund.issuedBy).toBe("finance@jeyvro.ph");
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/payments/admin/refunds/?");
+    expect(url).toContain("status=succeeded");
   });
 });
 

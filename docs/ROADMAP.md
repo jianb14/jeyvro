@@ -34,7 +34,7 @@
 | 10 | Order Fulfillment & Delivery | ✅ Done — `apps/orders` shipments (carrier adapter registry, tracking numbers, append-only tracking events), seller process/pack/ship endpoints, partial shipments + parent-order status aggregation, COD capture on delivery; 7/7 fulfillment tests passed (commit `2afb1cf`) |
 | 11 | Customer Account & Order Management | ✅ Done — owner-scoped history/detail/receipt, audit-derived timeline with whitelisted copy, reorder + cancel verdicts, return/refund/issue intake (`OrderRequest`; Phase 17 adjudicates); 11.1 panels live since Phase 3; Contact seller/support deferred to Phase 15 (documented) |
 | 12 | Seller Operations & Seller Dashboard | ✅ Done — seller dashboard aggregates (sales/orders/low-stock), product/variant editor with lifecycle + bulk ops, inventory console (append-only movements), seller order flow (process/pack/ship) with the §12.5 privacy ladder, store settings; gate tests `backend/tests/test_seller_operations.py` + `frontend/src/data/seller.test.js`; §12.6 messaging deferred to Phase 15 (documented) |
-| 13 | Admin, Staff & Platform Operations | 🔄 In progress — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Remaining: order/payment oversight (13.5), platform settings (13.6), finance/operations surfaces |
+| 13 | Admin, Staff & Platform Operations | 🔄 In progress — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Slice v4: read-only order/payment operations console (order & shipment oversight, return/refund/dispute intake, payment/refund trail) with refund issuance tightened to finance/administrator. Remaining: platform settings (13.6), finance/operations surfaces |
 | 14 | Reviews, Ratings & Trust | ⬜ Not started |
 | 15 | Messaging & Notifications | ⬜ Not started |
 | 16 | Promotions, Vouchers & Campaigns | ⬜ Not started |
@@ -1192,12 +1192,29 @@ Build the platform control center.
 
 ### 13.5 Order/payment operations
 
--   [ ] Order oversight
--   [ ] Payment oversight
--   [ ] Shipment oversight
--   [ ] Refund oversight
--   [ ] Return oversight
--   [ ] Dispute oversight
+-   [x] Order oversight
+-   [x] Payment oversight
+-   [x] Shipment oversight
+-   [x] Refund oversight
+-   [x] Return oversight
+-   [x] Dispute oversight
+
+> **Slice v4 (done):** the read-only operations console. `/staff/orders`
+> lists every order (`GET /api/v1/admin/orders/` — q / status / payment /
+> store filters) with the full snapshot at `GET /api/v1/admin/orders/<number>/`
+> (customer email, line items, per-store slices), plus parcel oversight
+> (`GET /api/v1/admin/shipments/` — q / status / carrier with tracking-event
+> counts) and the Phase 11 intake queue (`GET /api/v1/admin/requests/` —
+> q / kind / status: the return, refund, and dispute queues). `/staff/payments`
+> carries the money view: `GET /api/v1/payments/admin/payments/` (q / status /
+> method, refunded totals) and `GET /api/v1/payments/admin/refunds/` (the
+> refund trail with the issuing staff member). Every surface is §4
+> group-gated (orders/requests: support/finance/operations/administrator,
+> shipments: support/operations/administrator, payments/refunds read:
+> support/finance/administrator) and nothing mutates state — refund
+> *issuance* stays a payments-service action, now tightened to
+> finance/administrator. Gate tests: `backend/tests/test_staff_orders.py`;
+> accessor coverage in `frontend/src/data/staff.test.js`.
 
 ### 13.6 Platform settings
 

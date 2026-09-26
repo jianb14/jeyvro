@@ -414,3 +414,61 @@ def serialize_order_request(request):
         ),
         'created_at': request.created_at.isoformat(),
     }
+
+
+# --- Staff oversight shapes (13.5 — /staff/orders console) ------------------
+
+
+def serialize_staff_order_row(order):
+    """One oversight row — customer, money, payment state, store slices."""
+    payment = getattr(order, 'payment', None)
+    return {
+        'number': order.number,
+        'status': order.status,
+        'created_at': order.created_at.isoformat(),
+        'customer_email': order.user.email,
+        'ship_to_city': order.shipping_city,
+        'ship_to_province': order.shipping_province,
+        'grand_total': _money(order.grand_total),
+        'item_count': sum(
+            item.quantity
+            for seller_order in order.seller_orders.all()
+            for item in seller_order.items.all()
+        ),
+        'store_names': [so.store_name for so in order.seller_orders.all()],
+        'payment_method': payment.method if payment else None,
+        'payment_status': payment.status if payment else None,
+    }
+
+
+def serialize_staff_shipment_row(shipment):
+    """One parcel row for shipment oversight (13.5).
+
+    `event_count` is annotated in the view — the list never N+1s the
+    append-only tracking timeline.
+    """
+    return {
+        'tracking_number': shipment.tracking_number,
+        'order_number': shipment.seller_order.order.number,
+        'store_name': shipment.seller_order.store_name,
+        'carrier': shipment.carrier,
+        'carrier_name': shipment.carrier_name,
+        'status': shipment.status,
+        'shipped_at': (
+            shipment.shipped_at.isoformat() if shipment.shipped_at else None
+        ),
+        'delivered_at': (
+            shipment.delivered_at.isoformat() if shipment.delivered_at else None
+        ),
+        'event_count': shipment.event_count,
+        'created_at': shipment.created_at.isoformat(),
+    }
+
+
+def serialize_staff_request_row(request):
+    """One request row with its order context (13.5 return/refund/dispute oversight)."""
+    return {
+        **serialize_order_request(request),
+        'order_number': request.order.number,
+        'customer_email': request.order.user.email,
+    }

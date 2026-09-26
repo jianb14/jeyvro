@@ -61,3 +61,37 @@ def serialize_payment_detail(payment):
         serialize_refund(refund) for refund in payment.refunds.all()
     ]
     return payload
+
+
+# --- Staff oversight shapes (13.5 — /staff/payments console) ----------------
+
+
+def serialize_staff_payment_row(payment):
+    """One payment row — order context, money state, refund total."""
+    return {
+        'reference': payment.reference,
+        'order_number': payment.order.number,
+        'customer_email': payment.order.user.email,
+        'method': payment.method,
+        'status': payment.status,
+        'amount': _money(payment.amount),
+        'currency': payment.currency,
+        'provider': payment.provider,
+        'refunded_total': _money(payment.refunded_total),
+        'paid_at': payment.paid_at.isoformat() if payment.paid_at else None,
+        'created_at': payment.created_at.isoformat(),
+    }
+
+
+def serialize_staff_refund_row(refund):
+    """One refund row — who issued it (finance, §4) and against which order."""
+    return {
+        'reference': refund.reference,
+        'payment_reference': refund.payment.reference,
+        'order_number': refund.payment.order.number,
+        'amount': _money(refund.amount),
+        'status': refund.status,
+        'reason': refund.reason,
+        'issued_by': refund.actor.email if refund.actor else None,
+        'created_at': refund.created_at.isoformat(),
+    }

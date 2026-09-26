@@ -437,3 +437,239 @@ export async function deleteBrand(id) {
   await request(CATALOG, `/admin/brands/${id}/`, { method: "DELETE", csrf });
 }
 
+// --- 13.5 Order & payment operations (read-only oversight, §4 groups) ------
+
+const OPERATIONS = "/api/v1";
+const PAYMENTS = "/api/v1/payments";
+
+export function mapStaffOrderRow(row) {
+  return {
+    number: row.number,
+    status: row.status,
+    placedAt: row.created_at,
+    customerEmail: row.customer_email ?? "",
+    shipToCity: row.ship_to_city ?? "",
+    shipToProvince: row.ship_to_province ?? "",
+    grandTotal: row.grand_total ?? 0,
+    itemCount: row.item_count ?? 0,
+    storeNames: row.store_names ?? [],
+    paymentMethod: row.payment_method ?? null,
+    paymentStatus: row.payment_status ?? null,
+  };
+}
+
+export function mapStaffShipmentRow(row) {
+  return {
+    trackingNumber: row.tracking_number,
+    orderNumber: row.order_number,
+    storeName: row.store_name ?? "",
+    carrier: row.carrier,
+    carrierName: row.carrier_name ?? "",
+    status: row.status,
+    shippedAt: row.shipped_at ?? null,
+    deliveredAt: row.delivered_at ?? null,
+    eventCount: row.event_count ?? 0,
+    createdAt: row.created_at,
+  };
+}
+
+export function mapStaffRequestRow(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    kindLabel: row.kind_label ?? "",
+    status: row.status,
+    reason: row.reason ?? "",
+    description: row.description ?? "",
+    storeName: row.store_name ?? "",
+    orderNumber: row.order_number,
+    customerEmail: row.customer_email ?? "",
+    createdAt: row.created_at,
+  };
+}
+
+export function mapStaffPaymentRow(row) {
+  return {
+    reference: row.reference,
+    orderNumber: row.order_number,
+    customerEmail: row.customer_email ?? "",
+    method: row.method,
+    status: row.status,
+    amount: row.amount ?? 0,
+    currency: row.currency ?? "PHP",
+    provider: row.provider ?? "",
+    refundedTotal: row.refunded_total ?? 0,
+    paidAt: row.paid_at ?? null,
+    createdAt: row.created_at,
+  };
+}
+
+export function mapStaffRefundRow(row) {
+  return {
+    reference: row.reference,
+    paymentReference: row.payment_reference,
+    orderNumber: row.order_number,
+    amount: row.amount ?? 0,
+    status: row.status,
+    reason: row.reason ?? "",
+    issuedBy: row.issued_by ?? "",
+    createdAt: row.created_at,
+  };
+}
+
+function buildQuery(entries) {
+  const params = new URLSearchParams();
+  Object.entries(entries).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export function mapStaffOrderDetail(payload) {
+  return {
+    number: payload.number,
+    status: payload.status,
+    placedAt: payload.created_at,
+    itemCount: payload.item_count ?? 0,
+    customerEmail: payload.customer_email ?? "",
+    canCancel: Boolean(payload.can_cancel),
+    payment: payload.payment
+      ? {
+          reference: payload.payment.reference,
+          method: payload.payment.method,
+          status: payload.payment.status,
+          amount: payload.payment.amount ?? 0,
+          currency: payload.payment.currency ?? "PHP",
+          provider: payload.payment.provider ?? "",
+          refundedTotal: payload.payment.refunded_total ?? 0,
+          paidAt: payload.payment.paid_at ?? null,
+        }
+      : null,
+    shippingAddress: {
+      fullName: payload.shipping_address?.full_name ?? "",
+      phone: payload.shipping_address?.phone ?? "",
+      line1: payload.shipping_address?.line1 ?? "",
+      line2: payload.shipping_address?.line2 ?? "",
+      city: payload.shipping_address?.city ?? "",
+      province: payload.shipping_address?.province ?? "",
+      postalCode: payload.shipping_address?.postal_code ?? "",
+    },
+    totals: {
+      subtotal: payload.totals?.subtotal ?? 0,
+      shipping: payload.totals?.shipping_total ?? 0,
+      savings: payload.totals?.savings_total ?? 0,
+      tax: payload.totals?.tax_total ?? 0,
+      grandTotal: payload.totals?.grand_total ?? 0,
+    },
+    stores: (payload.seller_orders ?? []).map((sellerOrder) => ({
+      id: sellerOrder.id,
+      storeName: sellerOrder.store_name ?? "",
+      status: sellerOrder.status,
+      subtotal: sellerOrder.subtotal ?? 0,
+      shippingFee: sellerOrder.shipping_fee ?? 0,
+      total: sellerOrder.total ?? 0,
+      items: (sellerOrder.items ?? []).map((item) => ({
+        id: item.id,
+        title: item.title ?? "",
+        variant: item.variant_name ?? "",
+        sku: item.sku ?? "",
+        quantity: item.quantity ?? 0,
+        lineTotal: item.line_total ?? 0,
+      })),
+    })),
+    requests: (payload.requests ?? []).map((request) => ({
+      id: request.id,
+      kind: request.kind,
+      kindLabel: request.kind_label ?? "",
+      status: request.status,
+      reason: request.reason ?? "",
+      storeName: request.store_name ?? "",
+      createdAt: request.created_at,
+    })),
+  };
+}
+
+export async function fetchStaffOrders({
+  q = "",
+  status = "",
+  store = "",
+  payment = "",
+  page = "",
+  pageSize = "",
+} = {}) {
+  const query = buildQuery({ q, status, store, payment, page, page_size: pageSize });
+  const data = await request(OPERATIONS, `/admin/orders/${query}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: (data.items ?? []).map(mapStaffOrderRow),
+  };
+}
+
+export async function fetchStaffOrderDetail(number) {
+  const data = await request(
+    OPERATIONS,
+    `/admin/orders/${encodeURIComponent(number)}/`
+  );
+  return mapStaffOrderDetail(data);
+}
+
+export async function fetchStaffShipments({
+  q = "",
+  status = "",
+  carrier = "",
+  page = "",
+  pageSize = "",
+} = {}) {
+  const query = buildQuery({ q, status, carrier, page, page_size: pageSize });
+  const data = await request(OPERATIONS, `/admin/shipments/${query}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: (data.items ?? []).map(mapStaffShipmentRow),
+  };
+}
+
+export async function fetchStaffRequests({
+  q = "",
+  kind = "",
+  status = "",
+  page = "",
+  pageSize = "",
+} = {}) {
+  const query = buildQuery({ q, kind, status, page, page_size: pageSize });
+  const data = await request(OPERATIONS, `/admin/requests/${query}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: (data.items ?? []).map(mapStaffRequestRow),
+  };
+}
+
+export async function fetchStaffPayments({
+  q = "",
+  status = "",
+  method = "",
+  page = "",
+  pageSize = "",
+} = {}) {
+  const query = buildQuery({ q, status, method, page, page_size: pageSize });
+  const data = await request(PAYMENTS, `/admin/payments/${query}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: (data.items ?? []).map(mapStaffPaymentRow),
+  };
+}
+
+export async function fetchStaffRefunds({
+  q = "",
+  status = "",
+  page = "",
+  pageSize = "",
+} = {}) {
+  const query = buildQuery({ q, status, page, page_size: pageSize });
+  const data = await request(PAYMENTS, `/admin/refunds/${query}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: (data.items ?? []).map(mapStaffRefundRow),
+  };
+}
+

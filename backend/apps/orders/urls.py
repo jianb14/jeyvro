@@ -25,4 +25,10 @@ urlpatterns = [
     path('orders/<str:number>/requests', views.OrderRequestCreateView.as_view(), name='order-request-create'),
     path('orders/<str:number>/requests/<int:pk>/withdraw', views.OrderRequestWithdrawView.as_view(), name='order-request-withdraw'),
 
+    # Phase 13.5: staff order/shipment/request oversight (§4 groups).
+    path('admin/orders/', views.StaffOrderListView.as_view(), name='staff-order-list'),
+    path('admin/orders/<str:number>/', views.StaffOrderDetailView.as_view(), name='staff-order-detail'),
+    path('admin/shipments/', views.StaffShipmentListView.as_view(), name='staff-shipment-list'),
+    path('admin/requests/', views.StaffOrderRequestListView.as_view(), name='staff-order-request-list'),
+
 ]

@@ -10,6 +10,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.utils import timezone
 
@@ -105,6 +106,10 @@ def make_customer(client, user=CUSTOMER):
 def login_as_staff(client):
     register(client, STAFF)
     User.objects.filter(email=STAFF['email']).update(is_staff=True)
+    # 13.5 tightened refunds to finance/administrator (§4 least privilege);
+    # this helper's staff user settles money, so it carries the finance group.
+    finance, _ = Group.objects.get_or_create(name='finance')
+    User.objects.get(email=STAFF['email']).groups.add(finance)
     response = login(client, STAFF['email'], STAFF['password'])
     assert response.status_code == 200, response.content
 
