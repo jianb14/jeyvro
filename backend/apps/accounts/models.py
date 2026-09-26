@@ -62,14 +62,27 @@ class User(AbstractUser, TimeStampedModel):
         return self.is_active and self.account_status == self.AccountStatus.ACTIVE
 
     def suspend(self):
+        """Suspend the account AND revoke its live sessions.
+
+        `is_active=False` matters: Django's session auth re-loads the user on
+        every request through the auth backend, which refuses inactive users —
+        so an already-signed-in (or stolen) session dies immediately instead of
+        surviving until its next login (§4 v1.10).
+        """
         self.account_status = self.AccountStatus.SUSPENDED
         self.suspended_at = timezone.now()
-        self.save(update_fields=['account_status', 'suspended_at', 'updated_at'])
+        self.is_active = False
+        self.save(update_fields=[
+            'account_status', 'suspended_at', 'is_active', 'updated_at',
+        ])
 
     def reactivate(self):
         self.account_status = self.AccountStatus.ACTIVE
         self.suspended_at = None
-        self.save(update_fields=['account_status', 'suspended_at', 'updated_at'])
+        self.is_active = True
+        self.save(update_fields=[
+            'account_status', 'suspended_at', 'is_active', 'updated_at',
+        ])
 
     def __str__(self):
         return self.email

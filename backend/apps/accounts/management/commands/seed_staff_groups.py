@@ -15,15 +15,7 @@ from django.contrib.auth.models import Group
 from django.core.management.base import BaseCommand
 
 from apps.accounts.models import User
-
-STAFF_GROUPS = [
-    'support',
-    'moderator',
-    'finance',
-    'operations',
-    'administrator',
-    'super_administrator',
-]
+from apps.accounts.services import STAFF_GROUP_NAMES
 
 
 class Command(BaseCommand):
@@ -39,20 +31,20 @@ class Command(BaseCommand):
             '--group',
             type=str,
             default='administrator',
-            choices=STAFF_GROUPS,
+            choices=STAFF_GROUP_NAMES,
             help='Group to assign the promoted user to (default: administrator).',
         )
 
     def handle(self, *args, **options):
         created_count = 0
-        for name in STAFF_GROUPS:
+        for name in STAFF_GROUP_NAMES:
             _, created = Group.objects.get_or_create(name=name)
             if created:
                 created_count += 1
 
         self.stdout.write(
             self.style.SUCCESS(
-                f'Staff groups ensured: {len(STAFF_GROUPS)} total ({created_count} newly created).'
+                f'Staff groups ensured: {len(STAFF_GROUP_NAMES)} total ({created_count} newly created).'
             )
         )
 

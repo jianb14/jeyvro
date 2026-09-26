@@ -103,3 +103,50 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationPreference
         fields = ['order_updates_email', 'promotions_email', 'messaging_email']
+
+
+# --- Phase 13.1/13.2 staff administration (admin-gated views only) ----------
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """User-management row (13.2) — support oversight, administrator actions.
+
+    Declared fields only; passwords and session data never cross the wire
+    (backend-api rule 2, §10). `staff_roles` leaks to staff callers only via
+    StaffRolesField.
+    """
+
+    full_name = serializers.SerializerMethodField()
+    staff_roles = StaffRolesField(source='*', read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'full_name', 'phone',
+            'is_seller', 'is_staff', 'staff_roles', 'account_status',
+            'suspended_at', 'email_verified', 'date_joined',
+        ]
+
+    def get_full_name(self, user):
+        return user.get_full_name()
+
+
+class StaffMemberSerializer(serializers.ModelSerializer):
+    """Staff directory row (13.1 permission audit) — administrator-only view.
+
+    `is_superuser` is exposed deliberately: administrators need to see which
+    accounts are the technical-governance carve-out before any role action.
+    """
+
+    full_name = serializers.SerializerMethodField()
+    staff_roles = StaffRolesField(source='*', read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'full_name',
+            'staff_roles', 'is_staff', 'is_superuser', 'account_status',
+            'date_joined',
+        ]
+
+    def get_full_name(self, user):
+        return user.get_full_name()

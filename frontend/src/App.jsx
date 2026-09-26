@@ -28,6 +28,8 @@ import { SellerStoreSettings } from "./routes/seller/SellerStoreSettings";
 import { StaffLayout } from "./routes/staff/StaffLayout";
 import { StaffSellerApplications } from "./routes/staff/StaffSellerApplications";
 import { StaffStores } from "./routes/staff/StaffStores";
+import { StaffUsers } from "./routes/staff/StaffUsers";
+import { StaffTeam } from "./routes/staff/StaffTeam";
 import { StaffAuditLog } from "./routes/staff/StaffAuditLog";
 
 function App() {
@@ -128,6 +130,8 @@ function App() {
               >
                 <Route index element={<StaffSellerApplications />} />
                 <Route path="stores" element={<StaffStores />} />
+                <Route path="users" element={<StaffUsers />} />
+                <Route path="team" element={<StaffTeam />} />
                 <Route path="audit" element={<StaffAuditLog />} />
               </Route>
               <Route path="*" element={<Home />} />

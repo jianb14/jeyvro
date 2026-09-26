@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  changeStaffRole,
+  fetchAdminUser,
+  fetchAdminUsers,
   fetchApplicationQueue,
   fetchAuditEvents,
+  fetchStaffMembers,
   fetchStaffStores,
   reviewApplication,
   setStoreStatus,
+  setUserStatus,
 } from "./staff";
 
 const APPLICATION_PAYLOAD = {
@@ -46,6 +51,35 @@ const AUDIT_PAYLOAD = {
   object_id: "4",
   detail: { store_id: 2, reason: "" },
   created_at: "2026-09-25T12:05:00Z",
+};
+
+const USER_PAYLOAD = {
+  id: 12,
+  email: "buyer@example.com",
+  first_name: "Bea",
+  last_name: "Buyer",
+  full_name: "Bea Buyer",
+  phone: "+63 917 111 2222",
+  is_seller: false,
+  is_staff: false,
+  staff_roles: [],
+  account_status: "suspended",
+  suspended_at: "2026-09-26T08:00:00Z",
+  email_verified: true,
+  date_joined: "2026-07-01T09:00:00Z",
+};
+
+const STAFF_MEMBER_PAYLOAD = {
+  id: 3,
+  email: "mod@example.com",
+  first_name: "Mo",
+  last_name: "Derator",
+  full_name: "Mo Derator",
+  staff_roles: ["moderator"],
+  is_staff: true,
+  is_superuser: false,
+  account_status: "active",
+  date_joined: "2026-06-01T09:00:00Z",
 };
 
 function mockFetch(payload, { ok = true, status = ok ? 200 : 500 } = {}) {
@@ -180,5 +214,84 @@ describe("staff accessors", () => {
       status: 403,
       message: "Your staff group is not permitted for this action.",
     });
+  });
+
+  it("maps admin user rows and forwards q/status/role/page", async () => {
+    const { fetchMock } = mockFetch({ count: 1, items: [USER_PAYLOAD] });
+    const data = await fetchAdminUsers({
+      q: "bea",
+      status: "suspended",
+      role: "customer",
+      page: 2,
+    });
+
+    const [account] = data.items;
+    expect(account.fullName).toBe("Bea Buyer");
+    expect(account.accountStatus).toBe("suspended");
+    expect(account.suspendedAt).toBe("2026-09-26T08:00:00Z");
+    expect(account.emailVerified).toBe(true);
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/auth/admin/users/?");
+    expect(url).toContain("q=bea");
+    expect(url).toContain("status=suspended");
+    expect(url).toContain("role=customer");
+    expect(url).toContain("page=2");
+  });
+
+  it("fetches one user's detail record", async () => {
+    const { fetchMock } = mockFetch(USER_PAYLOAD);
+    const account = await fetchAdminUser(12);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/auth/admin/users/12/");
+    expect(account.id).toBe(12);
+    expect(account.isStaff).toBe(false);
+  });
+
+  it("suspends and reactivates through the audited endpoints", async () => {
+    const { callWith } = mockFetch(USER_PAYLOAD);
+    const suspended = await setUserStatus(12, "suspend", "Abuse report.");
+    const post = callWith("POST");
+    expect(post[0]).toBe("/api/v1/auth/admin/users/12/suspend");
+    expect(JSON.parse(post[1].body)).toEqual({ reason: "Abuse report." });
+    expect(suspended.accountStatus).toBe("suspended");
+
+    const { callWith: callWith2 } = mockFetch({
+      ...USER_PAYLOAD,
+      account_status: "active",
+      suspended_at: null,
+    });
+    const active = await setUserStatus(12, "reactivate", "Cleared.");
+    expect(callWith2("POST")[0]).toBe("/api/v1/auth/admin/users/12/reactivate");
+    expect(active.accountStatus).toBe("active");
+  });
+
+  it("maps the staff directory and forwards the search filter", async () => {
+    const { fetchMock } = mockFetch({ count: 1, items: [STAFF_MEMBER_PAYLOAD] });
+    const data = await fetchStaffMembers({ q: "mod@", page: 1 });
+
+    const [member] = data.items;
+    expect(member.staffRoles).toEqual(["moderator"]);
+    expect(member.isSuperuser).toBe(false);
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/auth/admin/staff/?");
+    expect(url).toContain("q=mod%40");
+    expect(url).toContain("page=1");
+  });
+
+  it("assigns and removes staff roles with the group payload", async () => {
+    const { callWith } = mockFetch({
+      ...STAFF_MEMBER_PAYLOAD,
+      staff_roles: ["moderator", "support"],
+    });
+    const updated = await changeStaffRole(3, "assign", "support");
+    const post = callWith("POST");
+    expect(post[0]).toBe("/api/v1/auth/admin/staff/3/roles/assign");
+    expect(JSON.parse(post[1].body)).toEqual({ group: "support" });
+    expect(updated.staffRoles).toEqual(["moderator", "support"]);
+
+    const { callWith: callWith2 } = mockFetch(STAFF_MEMBER_PAYLOAD);
+    await changeStaffRole(3, "remove", "support");
+    expect(callWith2("POST")[0]).toBe("/api/v1/auth/admin/staff/3/roles/remove");
   });
 });

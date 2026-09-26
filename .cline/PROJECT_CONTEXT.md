@@ -1,5 +1,6 @@
 # JEYVRO — Project Context (Single Source of Truth)
 
+> Version 1.10 · v1.10 changelog: §4 staff administration rules added (Phase 13 slices v1–v2) — the six-group least-privileged staff permission matrix, plus role/account-status change rules: administrator-only, refused for your own account and for superuser accounts, the last administrator cannot be demoted, suspension revokes live sessions, and every change writes an AuditLog row.
 > Version 1.9 · v1.9 changelog: §6 fulfillment & post-purchase rules added (Phases 10–11) — per-store parcels with carrier adapters, append-only tracking events and parent-order status aggregation (COD is captured at delivery), then the customer surface on top: owner-scoped history/detail/receipt, an audit-derived order timeline with whitelisted copy, server verdicts for cancellation and reorder, and return/refund/issue request intake that Phase 17 adjudicates.
 > Version 1.8 · v1.8 changelog: §6 payments & refund rules added (Phase 9) — one server-priced payment record per order, COD collected at delivery, adapter-seam online payments that expire after 24h, signed idempotent webhooks, and balance-checked refunds reversing an append-only ledger.
 > Version 1.7 · v1.7 changelog: §6 checkout, shipping & order rules added (Phase 8) — per-store flat shipping with free-shipping thresholds, signed-in checkouts with immutable address snapshots, and checkout-time inventory reservation.
@@ -67,6 +68,12 @@ Staff power is group-based and least-privileged (rule 1 of `marketplace-admin` &
 | **Super Administrator** | `super_administrator` | Technical governance: raw database administration, secret rotation, disaster recovery, emergency locks (`is_superuser=True`). |
 
 Every sensitive action (application review, store suspension, product moderation, refunds, settings edits, role changes) writes an `AuditLog` row: `(actor, action, object_type, object_id, detail, timestamp)`.
+
+Role and account-status changes follow the same least-privilege shape (Phase 13 slices v1–v2):
+
+- Only administrators (or superusers) assign or remove staff groups and suspend/reactivate accounts. The API refuses changes to your own account, to superuser accounts, and any demotion that would remove the marketplace's last administrator.
+- Suspension revokes live sessions — a suspended account is locked out immediately (Django's session auth rejects inactive users), not at its next login.
+- Every role change (`staff_group_assigned` / `staff_group_removed`) and status change (`user_suspended` / `user_reactivated`) is viewable in the audit trail (§13.7) with its reason.
 
 ## 5. Core Features
 

@@ -11,12 +11,19 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../features/auth/AuthContext";
 import { cx } from "../../lib/cx";
-import { InboxIcon, ShieldCheckIcon, StoreIcon } from "../../components/ui/Icons";
+import { InboxIcon, ClockIcon, ShieldCheckIcon, StoreIcon, UserIcon } from "../../components/ui/Icons";
 
 const NAV = [
   { to: "/staff", label: "Seller approvals", icon: InboxIcon, end: true },
   { to: "/staff/stores", label: "Stores", icon: StoreIcon },
-  { to: "/staff/audit", label: "Audit log", icon: ShieldCheckIcon },
+  { to: "/staff/users", label: "Users", icon: UserIcon },
+  {
+    to: "/staff/team",
+    label: "Staff & roles",
+    icon: ShieldCheckIcon,
+    administratorOnly: true,
+  },
+  { to: "/staff/audit", label: "Audit log", icon: ClockIcon },
 ];
 
 const navClass = ({ isActive }) =>
@@ -33,6 +40,11 @@ export function StaffLayout() {
   // payload — `is_staff` plus the roles list is the whole contract.
   const roles = user?.staff_roles ?? [];
   const isStaff = Boolean(user?.is_staff || roles.length > 0);
+  // Role administration is administrator-only (§4) — hide the link for other
+  // groups; the backend refuses it regardless.
+  const navItems = NAV.filter(
+    (item) => !item.administratorOnly || roles.includes("administrator")
+  );
 
   if (!isStaff) {
     return (
@@ -77,7 +89,7 @@ export function StaffLayout() {
             aria-label="Staff navigation"
             className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
           >
-            {NAV.map(({ to, label, icon: Icon, end }) => (
+            {navItems.map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end} className={navClass}>
                 <Icon size={16} className="shrink-0" />
                 {label}

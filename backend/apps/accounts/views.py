@@ -8,25 +8,30 @@ ownership checks all happen here, never in the UI.
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.tokens import default_token_generator
+from django.db.models import Q
 from django.middleware.csrf import get_token
+from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.cart import services as cart_services
+from apps.common.pagination import CountItemsPagination
 
 from . import services
 from .models import Address, NotificationPreference, User
-from .permissions import IsOwner
+from .permissions import InStaffGroup, IsOwner
 from .serializers import (
     AddressSerializer,
+    AdminUserSerializer,
     ChangePasswordSerializer,
     LoginSerializer,
     NotificationPreferenceSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     RegisterSerializer,
+    StaffMemberSerializer,
     UserSerializer,
 )
 
@@ -68,6 +73,18 @@ class LoginView(APIView):
                 {'error': 'account_locked',
                  'detail': 'Too many failed attempts. Try again in 15 minutes.'},
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        # Suspension gate runs BEFORE authenticate(): suspend() now sets
+        # is_active=False (live sessions revoked, §4 v1.10) and the auth
+        # backend refuses inactive users — without this pre-check a suspended
+        # account would collapse into a generic "invalid credentials".
+        target = User.objects.filter(email__iexact=email).first()
+        if target and not target.is_login_allowed:
+            return Response(
+                {'error': 'account_suspended',
+                 'detail': 'This account is suspended.'},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         user = authenticate(request, email=email, password=password)
@@ -239,3 +256,159 @@ class NotificationPreferenceView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+# --- Phase 13.1/13.2 staff administration views ------------------------------
+#
+# Group-gated (§4): support has read-only oversight of accounts; the
+# administrator group owns role assignment, user suspension, and the staff
+# directory. Views stay thin — every write goes through the accounts services,
+# so powers never bypass validation or the audit trail (marketplace-admin
+# rules 2/3).
+
+class AdminUserViewSet(viewsets.ReadOnlyModelViewSet):
+    """13.2 user management — {count, items} with q/status/role filters."""
+
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['support', 'administrator']
+    pagination_class = CountItemsPagination
+
+    def get_queryset(self):
+        qs = User.objects.prefetch_related('groups').order_by('-date_joined')
+        params = self.request.query_params
+
+        q = params.get('q')
+        if q:
+            qs = qs.filter(
+                Q(email__icontains=q)
+                | Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(phone__icontains=q)
+            )
+
+        account_status = params.get('status')
+        if account_status in User.AccountStatus.values:
+            qs = qs.filter(account_status=account_status)
+
+        role = params.get('role')
+        if role == 'customer':
+            qs = qs.filter(is_seller=False, is_staff=False)
+        elif role == 'seller':
+            qs = qs.filter(is_seller=True)
+        elif role == 'staff':
+            qs = qs.filter(is_staff=True)
+
+        return qs
+
+
+class SuspendUserView(APIView):
+    """POST /api/v1/auth/admin/users/<pk>/suspend — administrator only (§4)."""
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['administrator']
+
+    def post(self, request, pk):
+        target = get_object_or_404(User, pk=pk)
+        try:
+            services.suspend_user(
+                request.user, target, reason=request.data.get('reason', '')
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': 'suspend_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            AdminUserSerializer(target, context={'request': request}).data
+        )
+
+
+class ReactivateUserView(APIView):
+    """POST /api/v1/auth/admin/users/<pk>/reactivate — administrator only (§4)."""
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['administrator']
+
+    def post(self, request, pk):
+        target = get_object_or_404(User, pk=pk)
+        try:
+            services.reactivate_user(
+                request.user, target, reason=request.data.get('reason', '')
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': 'reactivate_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            AdminUserSerializer(target, context={'request': request}).data
+        )
+
+
+class StaffMemberViewSet(viewsets.ReadOnlyModelViewSet):
+    """13.1 staff & permission directory — administrator-only permission audit."""
+
+    serializer_class = StaffMemberSerializer
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['administrator']
+    pagination_class = CountItemsPagination
+
+    def get_queryset(self):
+        qs = (
+            User.objects.filter(Q(is_staff=True) | Q(is_superuser=True))
+            .prefetch_related('groups')
+            .order_by('email')
+        )
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(
+                Q(email__icontains=q)
+                | Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+            )
+        return qs
+
+
+class AssignStaffRoleView(APIView):
+    """POST /api/v1/auth/admin/staff/<pk>/roles/assign — administrator only."""
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['administrator']
+
+    def post(self, request, pk):
+        target = get_object_or_404(User, pk=pk)
+        try:
+            services.assign_staff_group(
+                request.user, target, group_name=request.data.get('group', '')
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': 'role_change_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            StaffMemberSerializer(target, context={'request': request}).data
+        )
+
+
+class RemoveStaffRoleView(APIView):
+    """POST /api/v1/auth/admin/staff/<pk>/roles/remove — administrator only."""
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['administrator']
+
+    def post(self, request, pk):
+        target = get_object_or_404(User, pk=pk)
+        try:
+            services.remove_staff_group(
+                request.user, target, group_name=request.data.get('group', '')
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': 'role_change_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            StaffMemberSerializer(target, context={'request': request}).data
+        )
