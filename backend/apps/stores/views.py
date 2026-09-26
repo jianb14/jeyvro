@@ -8,6 +8,8 @@ Endpoints (all under /api/v1/stores/):
 - GET admin/applications/         staff — review queue ({count, items})
 - POST admin/applications/<id>/review  staff — approve/reject
 """
+from django.db import models
+from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -25,6 +27,7 @@ from .serializers import (
     SellerApplicationCreateSerializer,
     SellerApplicationSerializer,
     SellerStoreSerializer,
+    StaffStoreSerializer,
 )
 
 
@@ -66,6 +69,21 @@ class MyStoreView(APIView):
         return Response(serializer.data)
 
 
+class MyStoreDashboardView(APIView):
+    """GET /api/v1/stores/my/dashboard — the seller home aggregates (§12.1).
+
+    Read-only API truth scoped to the caller's own store: sales summary,
+    order summary, inventory alerts, recent orders (masked customer label),
+    and the reviews slot that Phase 14 fills.
+    """
+
+    permission_classes = [IsAuthenticated, IsSeller]
+
+    def get(self, request):
+        store = get_object_or_404(Store, user=request.user)
+        return Response(services.build_seller_dashboard(store))
+
+
 class PublicStoreDetailView(APIView):
     """Public storefront — pending/suspended stores never leak (§6 v1.2)."""
 
@@ -101,17 +119,27 @@ class StaffApplicationViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = SellerApplication.objects.select_related('user', 'store')
     serializer_class = SellerApplicationSerializer
     permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['support', 'moderator', 'administrator']
 
     def get_queryset(self):
         queryset = super().get_queryset()
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+        q = self.request.query_params.get('q')
+        if q:
+            queryset = queryset.filter(
+                models.Q(store_name__icontains=q)
+                | models.Q(user__email__icontains=q)
+            )
         return queryset
 
 
 class ReviewApplicationView(APIView):
+    """Moderation decisions — moderator/administrator only (§4 matrix)."""
+
     permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['moderator', 'administrator']
 
     def post(self, request, pk):
         application = get_object_or_404(SellerApplication, pk=pk)
@@ -132,7 +160,75 @@ class ReviewApplicationView(APIView):
             )
         except ValueError as exc:
             return Response(
+
                 {'error': 'review_failed', 'detail': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(SellerApplicationSerializer(application).data)
+
+
+class StaffStoreViewSet(viewsets.ReadOnlyModelViewSet):
+    """Staff store oversight (§13.3) — list/detail with search & status filters."""
+
+    queryset = (
+        Store.objects.select_related('user')
+        .annotate(product_count=Count('products'))
+        .order_by('-created_at')
+    )
+    serializer_class = StaffStoreSerializer
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['moderator', 'administrator', 'support', 'operations']
+    pagination_class = CountItemsPagination
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            qs = qs.filter(status=status_param)
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(
+                models.Q(name__icontains=q)
+                | models.Q(user__email__icontains=q)
+                | models.Q(slug__icontains=q)
+            )
+        return qs
+
+
+class SuspendStoreView(APIView):
+    """POST /api/v1/stores/admin/stores/<pk>/suspend — moderator/administrator."""
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['moderator', 'administrator']
+
+    def post(self, request, pk):
+        store = get_object_or_404(Store, pk=pk)
+        reason = request.data.get('reason', '')
+        try:
+            services.suspend_store(request.user, store, reason=reason)
+        except ValueError as exc:
+            return Response(
+                {'error': 'suspend_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(StaffStoreSerializer(store).data)
+
+
+class ActivateStoreView(APIView):
+    """POST /api/v1/stores/admin/stores/<pk>/activate — moderator/administrator."""
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['moderator', 'administrator']
+
+    def post(self, request, pk):
+        store = get_object_or_404(Store, pk=pk)
+        reason = request.data.get('reason', '')
+        try:
+            services.activate_store(request.user, store, reason=reason)
+        except ValueError as exc:
+            return Response(
+                {'error': 'activate_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(StaffStoreSerializer(store).data)
+

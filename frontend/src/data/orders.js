@@ -83,17 +83,46 @@ function mapOrderRequest(request) {
   };
 }
 
-function mapSellerOrder(sellerOrder) {
+/**
+ * Seller-side slice mapping (Phase 12 reuses it from the seller accessors):
+ * server truth only — item snapshots, shipment timeline, privacy-laddered
+ * customer context, and the action flags that mirror the fulfillment
+ * services. `customer.address` is null until the seller accepts the order.
+ */
+export function mapSellerOrder(sellerOrder) {
   return {
     id: sellerOrder.id,
+    orderNumber: sellerOrder.order_number ?? "",
+    placedAt: sellerOrder.placed_at ?? null,
     storeSlug: sellerOrder.store_slug,
     storeName: sellerOrder.store_name,
     status: sellerOrder.status,
+    itemCount: sellerOrder.item_count ?? 0,
     subtotal: sellerOrder.subtotal,
     shippingFee: sellerOrder.shipping_fee,
     total: sellerOrder.total,
     items: (sellerOrder.items ?? []).map(mapItem),
     shipments: (sellerOrder.shipments ?? []).map(mapShipment),
+    payment: sellerOrder.payment
+      ? {
+          method: sellerOrder.payment.method,
+          methodLabel: sellerOrder.payment.method_label,
+          status: sellerOrder.payment.status,
+          paid: Boolean(sellerOrder.payment.paid),
+        }
+      : null,
+    customer: {
+      name: sellerOrder.customer?.name ?? "",
+      phone: sellerOrder.customer?.phone ?? "",
+      city: sellerOrder.customer?.city ?? "",
+      province: sellerOrder.customer?.province ?? "",
+      postalCode: sellerOrder.customer?.postal_code ?? "",
+      address: sellerOrder.customer?.address ?? null,
+      revealed: Boolean(sellerOrder.customer?.revealed),
+    },
+    canProcess: Boolean(sellerOrder.can_process),
+    canPack: Boolean(sellerOrder.can_pack),
+    canShip: Boolean(sellerOrder.can_ship),
   };
 }
 

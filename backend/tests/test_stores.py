@@ -1,8 +1,8 @@
-﻿"""Phase 4 gate tests â€” seller application â†’ review â†’ storefront ownership.
+﻿"""Phase 4 gate tests — seller application → review → storefront ownership.
 
 Marketplace-sellers verification checklist drives these: moderation is
 staff-only and audit-logged, sellers never self-approve, ownership deny
-paths are proven (seller A â‰  store B), and pending/suspended stores never
+paths are proven (seller A ≠ store B), and pending/suspended stores never
 leak through the public storefront.
 """
 from decimal import Decimal
@@ -46,11 +46,23 @@ def login(client, email, password):
     )
 
 
+def grant_moderator(email):
+    """Phase 13 group rules (PROJECT_CONTEXT section 4): the is_staff flag
+    alone no longer unlocks the review queue, so test staff join the group."""
+    from django.contrib.auth.models import Group
+    from apps.accounts.models import User
+    User.objects.filter(email=email).update(is_staff=True)
+    user = User.objects.get(email=email)
+    group, _ = Group.objects.get_or_create(name='moderator')
+    user.groups.add(group)
+    return user
+
+
 def make_staff(client):
-    """Creates an administrator user and starts their session."""
+    """Creates a moderator user and starts their session."""
     from apps.accounts.models import User
     register(client, STAFF)
-    User.objects.filter(email=STAFF['email']).update(is_staff=True)
+    grant_moderator(STAFF['email'])
     login(client, STAFF['email'], STAFF['password'])
     return User.objects.get(email=STAFF['email'])
 
@@ -99,7 +111,7 @@ def test_apply_creates_pending_application_and_store(client):
     store = application.store
     assert store.status == Store.Status.PENDING
     assert store.slug == 'kalinga-crafts'
-    # is_seller flips only on approval â€” applying alone grants nothing.
+    # is_seller flips only on approval — applying alone grants nothing.
     assert application.user.is_seller is False
 
     # Duplicate application is rejected (one application per user).
@@ -113,7 +125,7 @@ def test_customer_cannot_review_own_application(client):
     register(client, USER)
     login(client, USER['email'], USER['password'])
     client.post(APPLY, APPLICATION_PAYLOAD, content_type='application/json')
-    # No staff session â€” the review queue is staff-group only.
+    # No staff session — the review queue is staff-group only.
     applications = client.get(APPLICATIONS)
     assert applications.status_code in (401, 403)
 
@@ -186,7 +198,7 @@ def test_seller_can_edit_own_store_but_not_another(client):
     assert edit.status_code == 200, edit.content
     assert edit.json()['return_policy'] == 'Returns within 7 days.'
 
-    # Seller B cannot reach seller A's store â€” ownership deny path.
+    # Seller B cannot reach seller A's store — ownership deny path.
     client.post(LOGOUT)
     login(client, OTHER['email'], OTHER['password'])
     denied = client.get(MY_STORE)
@@ -196,7 +208,7 @@ def test_seller_can_edit_own_store_but_not_another(client):
 def test_seller_cannot_flip_own_store_status(client):
     application, _staff_user = setup_approved_store(client)
 
-    # Status is read-only on the owner serializer â€” self-serve flips are
+    # Status is read-only on the owner serializer — self-serve flips are
     # impossible by payload (marketplace-sellers rule 3).
     spoof = client.patch(
         MY_STORE, {'status': 'suspended'}, content_type='application/json'

@@ -102,6 +102,49 @@ def archive_product(seller_user, product_id):
     return product
 
 
+def update_product(seller_user, product_id, **fields):
+    """Seller edits the editable fields of their own product (§12.2).
+
+    Status transitions never happen through edits — they run through the
+    submit/unpublish/archive services (marketplace-catalog rule 4). The
+    slug stays: it is the product's public identity, so a retitle never
+    breaks existing links.
+    """
+    product = _get_owned_product(seller_user, product_id)
+    if product.status == Product.Status.ARCHIVED:
+        raise ValueError('Archived products cannot be edited.')
+    editable = (
+        'title', 'description', 'base_price', 'compare_at_price',
+        'category', 'brand', 'attributes',
+    )
+    changed = [field for field in editable if field in fields]
+    for field in changed:
+        setattr(product, field, fields[field])
+    if changed:
+        product.save(update_fields=changed + ['updated_at'])
+    return product
+
+
+def delete_product(seller_user, product_id):
+    """Delete a never-ordered product; archive one with order history (§12.2).
+
+    OrderItem.product is PROTECT (money records are never orphaned), so a
+    product that has ever been ordered resolves to archive instead of a
+    hard delete — the seller's intent ("remove it from my store") still
+    holds and past orders keep their lineage. Returns (action, product).
+    """
+    product = _get_owned_product(seller_user, product_id)
+    if product.order_items.exists():
+        if product.status != Product.Status.ARCHIVED:
+            product.status = Product.Status.ARCHIVED
+            product.save(update_fields=['status', 'updated_at'])
+        return 'archived', product
+    for image in product.images.all():
+        image.image.delete(save=False)
+    product.delete()
+    return 'deleted', None
+
+
 def review_product(staff_user, product_id, *, decision, reason=''):
     """Staff publishes or rejects a pending_review product (audit-logged)."""
     product = Product.objects.get(pk=product_id)
@@ -181,6 +224,57 @@ def adjust_stock(actor, variant, *, delta, reason=StockMovement.Reason.ADJUSTMEN
             resulting_on_hand=new_on_hand,
             note=note,
         )
+    return inventory
+
+
+def update_variant(seller_user, product_id, variant_id, **fields):
+    """Seller edits a variant's own fields (§12.2) — name/price/active/attrs.
+
+    Stock never moves through here: on_hand changes go through adjust_stock
+    so every movement stays in the append-only history (§12.3).
+    """
+    product = _get_owned_product(seller_user, product_id)
+    if product.status == Product.Status.ARCHIVED:
+        raise ValueError('Archived products cannot be edited.')
+    variant = Variant.objects.get(pk=variant_id, product=product)
+    editable = ('name', 'price', 'is_active', 'attributes')
+    changed = [field for field in editable if field in fields]
+    for field in changed:
+        setattr(variant, field, fields[field])
+    if changed:
+        variant.save(update_fields=changed + ['updated_at'])
+    return variant
+
+
+def delete_variant(seller_user, product_id, variant_id):
+    """Delete a never-ordered variant; deactivate one with order history.
+
+    OrderItem.variant is PROTECT for the same reason as the product FK, so
+    a variant that appears in a past order resolves to is_active=False
+    instead of a hard delete. Returns (action, variant).
+    """
+    product = _get_owned_product(seller_user, product_id)
+    if product.status == Product.Status.ARCHIVED:
+        raise ValueError('Archived products cannot be edited.')
+    variant = Variant.objects.get(pk=variant_id, product=product)
+    if variant.order_items.exists():
+        if variant.is_active:
+            variant.is_active = False
+            variant.save(update_fields=['is_active', 'updated_at'])
+        return 'deactivated', variant
+    variant.delete()
+    return 'deleted', None
+
+
+def set_low_stock_threshold(seller_user, variant, *, threshold):
+    """Seller sets the low-stock alert level for their own variant (§12.3)."""
+    if variant.product.store.user_id != seller_user.pk:
+        raise PermissionError('You may only manage your own store inventory.')
+    if threshold < 0:
+        raise ValueError('Threshold cannot be negative.')
+    inventory, _ = Inventory.objects.get_or_create(variant=variant)
+    inventory.low_stock_threshold = threshold
+    inventory.save(update_fields=['low_stock_threshold', 'updated_at'])
     return inventory
 
 

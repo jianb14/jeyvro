@@ -4,11 +4,18 @@ Rules honoured (PROJECT_CONTEXT §6 v1.2, marketplace-sellers):
 - apply → application + store both pending; is_seller flips on approval only
 - review/approve/reject and suspend/activate are staff-only, audit-logged
 - sellers never self-approve; no transition happens by blind field writes
+- seller dashboard aggregates are ALWAYS scoped to the seller's own store
+  (§12.1; marketplace-sellers rule 4/5 — the frontend renders API truth)
 """
+from datetime import timedelta
+from decimal import Decimal
+
+from django.db.models import Count, F, Sum
 from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.services import log_event
+from apps.common.privacy import mask_name
 
 from .models import SellerApplication, Store
 
@@ -109,3 +116,147 @@ def activate_store(staff_user, store, *, reason=''):
         store.save(update_fields=['status', 'suspended_at', 'updated_at'])
         log_event(staff_user, 'store_activated', store, detail={'reason': reason})
     return store
+
+
+def build_seller_dashboard(store):
+    """Seller home aggregates — scoped to exactly one store (§12.1).
+
+    Every number comes from the store's own rows (SellerOrder / OrderItem /
+    Product / Inventory, all indexed by store) and the frontend renders it
+    as API truth — it never estimates sales itself (marketplace-sellers
+    rule 5). The scope is part of every query, so one seller's numbers can
+    never leak into another's dashboard (rule 4/ownership).
+    """
+    from apps.catalog.models import Product, Variant
+    from apps.orders.models import OrderItem, OrderStatus, SellerOrder
+
+    sales_excluded = (
+        OrderStatus.CANCELLED,
+        OrderStatus.REFUNDED,
+        OrderStatus.REFUND_PENDING,
+    )
+    live_orders = SellerOrder.objects.filter(store=store).exclude(
+        status__in=sales_excluded
+    )
+    sales = live_orders.aggregate(orders=Count('id'), gross=Sum('total'))
+    orders_count = sales['orders'] or 0
+    gross = sales['gross'] or Decimal('0.00')
+    units_sold = OrderItem.objects.filter(
+        seller_order__store=store
+    ).exclude(
+        seller_order__status__in=sales_excluded
+    ).aggregate(units=Sum('quantity'))['units'] or 0
+
+    cutoff = timezone.now() - timedelta(days=30)
+    recent = live_orders.filter(created_at__gte=cutoff).aggregate(
+        orders=Count('id'), gross=Sum('total')
+    )
+    recent_units = OrderItem.objects.filter(
+        seller_order__store=store,
+        seller_order__created_at__gte=cutoff,
+    ).exclude(
+        seller_order__status__in=sales_excluded
+    ).aggregate(units=Sum('quantity'))['units'] or 0
+
+    order_status_counts = {
+        row['status']: row['count']
+        for row in SellerOrder.objects.filter(store=store)
+        .values('status').annotate(count=Count('id'))
+    }
+    product_status_counts = {
+        row['status']: row['count']
+        for row in Product.objects.filter(store=store)
+        .values('status').annotate(count=Count('id'))
+    }
+
+    low_stock_rows = (
+        Variant.objects.filter(product__store=store)
+        .exclude(product__status=Product.Status.ARCHIVED)
+        .select_related('product', 'inventory')
+        .filter(
+            inventory__on_hand__lte=(
+                F('inventory__low_stock_threshold') + F('inventory__reserved')
+            )
+        )
+        .order_by('inventory__on_hand')
+    )
+    low_stock_items = [
+        {
+            'variant_id': variant.id,
+            'product_id': variant.product_id,
+            'product_title': variant.product.title,
+            'sku': variant.sku,
+            'available': variant.inventory.available,
+            'low_stock_threshold': variant.inventory.low_stock_threshold,
+        }
+        for variant in low_stock_rows[:5]
+        if getattr(variant, 'inventory', None) is not None
+    ]
+
+    recent_orders = [
+        {
+            'id': seller_order.id,
+            'order_number': seller_order.order.number,
+            'status': seller_order.status,
+            'item_count': sum(
+                item.quantity for item in seller_order.items.all()
+            ),
+            'total': float(seller_order.total),
+            'customer': mask_name(seller_order.order.ship_to_name),
+            'placed_at': seller_order.created_at.isoformat(),
+        }
+        for seller_order in (
+            SellerOrder.objects.filter(store=store)
+            .select_related('order')
+            .prefetch_related('items')
+            .order_by('-created_at')[:5]
+        )
+    ]
+
+    open_statuses = (
+        OrderStatus.PLACED, OrderStatus.AWAITING_PAYMENT, OrderStatus.PAID,
+        OrderStatus.PROCESSING, OrderStatus.PACKED, OrderStatus.SHIPPED,
+        OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY,
+    )
+    open_orders = sum(
+        count for status, count in order_status_counts.items()
+        if status in open_statuses
+    )
+
+    return {
+        'store': {
+            'name': store.name,
+            'slug': store.slug,
+            'status': store.status,
+        },
+        'products': {
+            'total': sum(product_status_counts.values()),
+            'by_status': product_status_counts,
+        },
+        'sales': {
+            'orders': orders_count,
+            'units_sold': units_sold,
+            'gross': float(gross),
+            'average_order_value': (
+                float(gross / orders_count) if orders_count else 0.0
+            ),
+            'last_30_days': {
+                'orders': recent['orders'] or 0,
+                'units_sold': recent_units,
+                'gross': float(recent['gross'] or Decimal('0.00')),
+            },
+        },
+        'orders': {
+            'total': sum(order_status_counts.values()),
+            'open': open_orders,
+            'by_status': order_status_counts,
+        },
+        'inventory': {
+            'low_stock_count': low_stock_rows.count(),
+            'low_stock_items': low_stock_items,
+        },
+        'recent_orders': recent_orders,
+        # Phase 14 owns reviews — the slot ships now so the dashboard shape
+        # is stable when reviews land (12.1 "recent reviews").
+        'recent_reviews': [],
+    }

@@ -48,10 +48,22 @@ def login(client, email, password):
     )
 
 
+def grant_moderator(email):
+    """Phase 13 group rules (PROJECT_CONTEXT section 4): the is_staff flag
+    alone no longer unlocks the review queue, so test staff join the group."""
+    from django.contrib.auth.models import Group
+    from apps.accounts.models import User
+    User.objects.filter(email=email).update(is_staff=True)
+    user = User.objects.get(email=email)
+    group, _ = Group.objects.get_or_create(name='moderator')
+    user.groups.add(group)
+    return user
+
+
 def make_staff(client):
     from apps.accounts.models import User
     register(client, STAFF)
-    User.objects.filter(email=STAFF['email']).update(is_staff=True)
+    grant_moderator(STAFF['email'])
     login(client, STAFF['email'], STAFF['password'])
     return User.objects.get(email=STAFF['email'])
 

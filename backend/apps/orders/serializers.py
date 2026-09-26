@@ -10,13 +10,14 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.cart.serializers import build_cart_payload
+from apps.common.privacy import mask_name, mask_phone
 from apps.payments import adapters as payment_adapters
 from apps.payments.models import PaymentMethod
 from apps.payments.serializers import serialize_payment
 from apps.stores.models import Store
 
 from . import services
-from .models import RequestKind
+from .models import OrderStatus, RequestKind, ShipmentStatus
 
 
 class CreateOrderSerializer(serializers.Serializer):
@@ -174,19 +175,112 @@ def serialize_order_item(item):
     }
 
 
-def serialize_seller_order(seller_order):
-    """One store's slice of the order — the seller's fulfillment unit."""
+# Statuses where the seller has accepted the order and therefore needs the
+# full delivery details to fulfil it (§12.5 privacy ladder).
+SELLER_ADDRESS_VISIBLE_STATUSES = frozenset({
+    OrderStatus.PROCESSING,
+    OrderStatus.PACKED,
+    OrderStatus.SHIPPED,
+    OrderStatus.IN_TRANSIT,
+    OrderStatus.OUT_FOR_DELIVERY,
+    OrderStatus.DELIVERED,
+    OrderStatus.COMPLETED,
+})
+
+SELLER_CLOSED_STATUSES = frozenset({
+    OrderStatus.CANCELLED,
+    OrderStatus.REFUNDED,
+    OrderStatus.REFUND_PENDING,
+})
+
+
+def serialize_seller_order(seller_order, order=None):
+    """One store's slice of the order — the seller's fulfillment unit (§12.4).
+
+    Privacy ladder (§12.5): until the seller accepts the order they see a
+    masked customer label, a masked phone, and city/province only; the full
+    name, phone, and street address unlock at `processing` so the parcel can
+    actually ship. Emails and payment credentials never cross this shape.
+    `can_process` / `can_pack` / `can_ship` mirror the fulfillment services
+    so the UI offers only transitions the backend accepts.
+    """
+    parent_order = order if order is not None else seller_order.order
+    items = list(seller_order.items.all())
     shipments = list(seller_order.shipments.all())
+    payment = getattr(parent_order, 'payment', None)
+
+    shipped_by_item = {}
+    for shipment in shipments:
+        if shipment.status == ShipmentStatus.CANCELLED:
+            continue
+        for entry in shipment.items.all():
+            shipped_by_item[entry.order_item_id] = (
+                shipped_by_item.get(entry.order_item_id, 0) + entry.quantity
+            )
+    unfulfilled = [
+        item for item in items
+        if shipped_by_item.get(item.id, 0) < item.quantity
+    ]
+
+    revealed = seller_order.status in SELLER_ADDRESS_VISIBLE_STATUSES
     return {
         'id': seller_order.id,
+        'order_number': parent_order.number,
+        'placed_at': parent_order.created_at.isoformat(),
         'store_slug': seller_order.store.slug,
         'store_name': seller_order.store_name,
         'status': seller_order.status,
+        'item_count': sum(item.quantity for item in items),
         'subtotal': _money(seller_order.subtotal),
         'shipping_fee': _money(seller_order.shipping_fee),
         'total': _money(seller_order.total),
-        'items': [serialize_order_item(item) for item in seller_order.items.all()],
+        'items': [serialize_order_item(item) for item in items],
         'shipments': [serialize_shipment(s) for s in shipments],
+        'payment': (
+            {
+                'method': payment.method,
+                'method_label': payment.get_method_display(),
+                'status': payment.status,
+                'paid': payment.paid_at is not None,
+            }
+            if payment is not None
+            else None
+        ),
+        'customer': {
+            'name': (
+                parent_order.ship_to_name if revealed
+                else mask_name(parent_order.ship_to_name)
+            ),
+            'phone': (
+                parent_order.ship_to_phone if revealed
+                else mask_phone(parent_order.ship_to_phone)
+            ),
+            'city': parent_order.shipping_city,
+            'province': parent_order.shipping_province,
+            'postal_code': parent_order.shipping_postal_code,
+            'address': (
+                ', '.join(part for part in [
+                    parent_order.shipping_line1,
+                    parent_order.shipping_line2,
+                    parent_order.shipping_city,
+                    parent_order.shipping_province,
+                    parent_order.shipping_postal_code,
+                ] if part)
+                if revealed
+                else None
+            ),
+            'revealed': revealed,
+        },
+        'can_process': seller_order.status in (
+            OrderStatus.PLACED, OrderStatus.AWAITING_PAYMENT, OrderStatus.PAID,
+        ),
+        'can_pack': seller_order.status in (
+            OrderStatus.PROCESSING, OrderStatus.PAID, OrderStatus.AWAITING_PAYMENT,
+        ),
+        'can_ship': (
+            seller_order.status not in SELLER_CLOSED_STATUSES
+            and bool(unfulfilled)
+        ),
     }
 
 
@@ -279,7 +373,8 @@ def serialize_order(order):
             'grand_total': _money(order.grand_total),
         },
         'seller_orders': [
-            serialize_seller_order(seller_order) for seller_order in seller_orders
+            serialize_seller_order(seller_order, order=order)
+            for seller_order in seller_orders
         ],
         'can_cancel': services.can_cancel(order),
         'timeline': services.build_order_timeline(order),

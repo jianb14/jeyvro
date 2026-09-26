@@ -7,14 +7,17 @@
 
 export async function request(base, path, { method = "GET", body, csrf } = {}) {
   const headers = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // FormData (product image uploads) sets its own multipart Content-Type —
+  // overriding it breaks the boundary, so JSON is only applied to plain bodies.
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !isFormData) headers["Content-Type"] = "application/json";
   if (csrf) headers["X-CSRFToken"] = csrf;
 
   const response = await fetch(`${base}${path}`, {
     method,
     headers,
     credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
   });
 
   let data;

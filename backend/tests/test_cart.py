@@ -42,6 +42,18 @@ def login(client, email, password):
     )
 
 
+def grant_moderator(email):
+    """Phase 13 group rules (PROJECT_CONTEXT section 4): the is_staff flag
+    alone no longer unlocks the review queue, so test staff join the group."""
+    from django.contrib.auth.models import Group
+    from apps.accounts.models import User
+    User.objects.filter(email=email).update(is_staff=True)
+    user = User.objects.get(email=email)
+    group, _ = Group.objects.get_or_create(name='moderator')
+    user.groups.add(group)
+    return user
+
+
 def make_approved_seller_with_store(client, user=USER,
                                     store_name='Cart Log Store'):
     """Registers a seller, applies, staff-approves; leaves the seller in.
@@ -59,7 +71,7 @@ def make_approved_seller_with_store(client, user=USER,
     from apps.accounts.models import User
     seller = User.objects.get(email=user['email'])
     register(client, STAFF)
-    User.objects.filter(email=STAFF['email']).update(is_staff=True)
+    grant_moderator(STAFF['email'])
     login(client, STAFF['email'], STAFF['password'])
     application_id = client.get(
         '/api/v1/stores/admin/applications/'

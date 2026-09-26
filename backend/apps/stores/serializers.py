@@ -75,6 +75,31 @@ class SellerStoreSerializer(serializers.ModelSerializer):
             'id', 'slug', 'contact_email', 'status', 'created_at', 'updated_at',
         ]
 
+class StaffStoreSerializer(serializers.ModelSerializer):
+    """Staff oversight shape (§13.3) — full store details plus owner info."""
+
+    owner_email = serializers.EmailField(source='user.email', read_only=True)
+    owner_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    product_count = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta:
+        model = Store
+        fields = [
+            'id',
+            'name',
+            'slug',
+            'description',
+            'owner_email',
+            'owner_name',
+            'status',
+            'contact_email',
+            'contact_phone',
+            'product_count',
+            'suspended_at',
+            'created_at',
+            'updated_at',
+        ]
+
 
 class PublicStoreSerializer(serializers.ModelSerializer):
     """Storefront shape — active stores only, no owner/contact internals.

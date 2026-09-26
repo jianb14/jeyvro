@@ -59,6 +59,24 @@ class VariantSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'sku', 'is_default', 'is_active', 'inventory']
 
 
+class SellerVariantSerializer(serializers.ModelSerializer):
+    """Seller variant edits (§12.2) — price/name/active; stock stays out.
+
+    Stock changes run through the stock endpoints so every change is
+    transactional and appended to the movement history (§12.3).
+    """
+
+    inventory = InventorySerializer(read_only=True)
+
+    class Meta:
+        model = Variant
+        fields = [
+            'id', 'sku', 'name', 'price', 'is_default', 'is_active',
+            'attributes', 'inventory',
+        ]
+        read_only_fields = ['id', 'sku', 'is_default', 'inventory']
+
+
 class SellerProductSerializer(serializers.ModelSerializer):
     """Seller-facing shape — full lifecycle control on their own products."""
 

@@ -95,11 +95,14 @@ try:
         log(f"register {email} -> {status}")
         assert status == 201, body
 
-    # -- promote staff (group-based staff permissions land with Phase 13)
+    # -- promote staff into the moderator group (group-based staff permissions)
     output = shell(
+        "from django.contrib.auth.models import Group;"
         "from apps.accounts.models import User;"
         f"u = User.objects.get(email='{STAFF_EMAIL}');"
-        "u.is_staff = True; u.save(); print('STAFF_PROMOTED')"
+        "u.is_staff = True; u.save();"
+        "g, _ = Group.objects.get_or_create(name='moderator');"
+        "u.groups.add(g); print('STAFF_PROMOTED')"
     )
     log(f"staff promote -> {output}")
     assert "STAFF_PROMOTED" in output

@@ -136,9 +136,12 @@ try:
                {"email": STAFF_EMAIL, "password": PASSWORD,
                 "first_name": "P5", "last_name": "Staff"})
     output = shell(
+        "from django.contrib.auth.models import Group;"
         "from apps.accounts.models import User;"
         f"u = User.objects.get(email='{STAFF_EMAIL}');"
-        "u.is_staff = True; u.save(); print('STAFF_OK')"
+        "u.is_staff = True; u.save();"
+        "g, _ = Group.objects.get_or_create(name='moderator');"
+        "u.groups.add(g); print('STAFF_OK')"
     )
     assert "STAFF_OK" in output
     staff.call("POST", "/api/v1/auth/login", {"email": STAFF_EMAIL, "password": PASSWORD})

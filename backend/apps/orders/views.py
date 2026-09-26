@@ -5,6 +5,7 @@ cart at login and guests are prompted to sign in — no anonymous orders.
 Requests can only choose an address; prices, fees, and totals are always
 recomputed and snapshotted server-side.
 """
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -129,7 +130,7 @@ class SellerOrderListView(APIView):
             )
         queryset = SellerOrder.objects.filter(
             store__user=request.user
-        ).select_related('store', 'order').prefetch_related(
+        ).select_related('store', 'order', 'order__payment').prefetch_related(
             'items',
             'shipments__items__order_item',
             'shipments__tracking_events',
@@ -138,6 +139,15 @@ class SellerOrderListView(APIView):
         status_filter = request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+
+        needle = request.query_params.get('q')
+        if needle:
+            # Order number, customer label, or item title (§12.4 search).
+            queryset = queryset.filter(
+                Q(order__number__icontains=needle)
+                | Q(order__ship_to_name__icontains=needle)
+                | Q(items__product_title__icontains=needle)
+            ).distinct()
 
         paginator = CountItemsPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
@@ -153,7 +163,9 @@ class SellerOrderDetailView(APIView):
 
     def get(self, request, pk):
         seller_order = get_object_or_404(
-            SellerOrder.objects.select_related('store', 'order').prefetch_related(
+            SellerOrder.objects.select_related(
+                'store', 'order', 'order__payment'
+            ).prefetch_related(
                 'items',
                 'shipments__items__order_item',
                 'shipments__tracking_events',
@@ -171,7 +183,7 @@ class SellerOrderProcessView(APIView):
 
     def post(self, request, pk):
         seller_order = get_object_or_404(
-            SellerOrder.objects.select_related('store', 'order'),
+            SellerOrder.objects.select_related('store', 'order', 'order__payment'),
             pk=pk,
             store__user=request.user,
         )
@@ -179,7 +191,9 @@ class SellerOrderProcessView(APIView):
             so = services.mark_seller_order_processing(seller_order, actor=request.user)
         except services.FulfillmentError as exc:
             return _rejected(exc)
-        so = SellerOrder.objects.select_related('store', 'order').prefetch_related(
+        so = SellerOrder.objects.select_related(
+            'store', 'order', 'order__payment'
+        ).prefetch_related(
             'items',
             'shipments__items__order_item',
             'shipments__tracking_events',
@@ -194,7 +208,7 @@ class SellerOrderPackView(APIView):
 
     def post(self, request, pk):
         seller_order = get_object_or_404(
-            SellerOrder.objects.select_related('store', 'order'),
+            SellerOrder.objects.select_related('store', 'order', 'order__payment'),
             pk=pk,
             store__user=request.user,
         )
@@ -202,7 +216,9 @@ class SellerOrderPackView(APIView):
             so = services.mark_seller_order_packed(seller_order, actor=request.user)
         except services.FulfillmentError as exc:
             return _rejected(exc)
-        so = SellerOrder.objects.select_related('store', 'order').prefetch_related(
+        so = SellerOrder.objects.select_related(
+            'store', 'order', 'order__payment'
+        ).prefetch_related(
             'items',
             'shipments__items__order_item',
             'shipments__tracking_events',
@@ -217,7 +233,9 @@ class SellerOrderShipView(APIView):
 
     def post(self, request, pk):
         seller_order = get_object_or_404(
-            SellerOrder.objects.select_related('store', 'order').prefetch_related('items'),
+            SellerOrder.objects.select_related(
+                'store', 'order', 'order__payment'
+            ).prefetch_related('items'),
             pk=pk,
             store__user=request.user,
         )

@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import InStaffGroup, IsSeller
+from apps.common.pagination import CountItemsPagination
 from apps.stores.models import Store
 
 from . import services
@@ -28,6 +29,7 @@ from .serializers import (
     ProductImageSerializer,
     PublicProductSerializer,
     SellerProductSerializer,
+    SellerVariantSerializer,
     VariantSerializer,
 )
 
@@ -167,6 +169,93 @@ class SellerProductViewSet(viewsets.ModelViewSet):
             self.get_serializer(product).data, status=status.HTTP_201_CREATED
         )
 
+    def update(self, request, *args, **kwargs):
+        """PATCH/PUT — editable fields only (§12.2).
+
+        Status transitions never ride along: the serializer keeps status
+        read-only and edits run through the service (which also blocks
+        archived products).
+        """
+        product = self.get_object()
+        serializer = SellerProductSerializer(
+            product, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            product = services.update_product(
+                request.user, product.pk, **serializer.validated_data
+            )
+        except (ValueError, PermissionError) as exc:
+            return Response(
+                {'error': 'not_editable', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        product = self.get_queryset().get(pk=product.pk)
+        return Response(self.get_serializer(product).data)
+
+    def destroy(self, request, *args, **kwargs):
+        """DELETE — hard-delete when never ordered, archive otherwise (§12.2).
+
+        Both answers are success: the seller asked to remove the product
+        from their store, and order history (PROTECT) decides which action
+        actually happens.
+        """
+        product = self.get_object()
+        action, _ = services.delete_product(request.user, product.pk)
+        if action == 'archived':
+            product = self.get_queryset().get(pk=kwargs['pk'])
+            return Response({
+                'action': 'archived',
+                'detail': 'Product archived — past orders keep their history.',
+                'product': self.get_serializer(product).data,
+            })
+        return Response({
+            'action': 'deleted',
+            'detail': 'Product deleted.',
+        })
+
+    @action(detail=False, methods=['post'])
+    def bulk(self, request):
+        """Bulk lifecycle actions over the seller's own products (§12.2).
+
+        Each id is attempted independently and reported per id — one bad
+        row never blocks the batch (bulk operations where appropriate).
+        """
+        action_name = request.data.get('action')
+        transitions = {
+            'submit': services.submit_for_review,
+            'unpublish': services.unpublish_product,
+            'archive': services.archive_product,
+        }
+        if action_name not in transitions:
+            return Response(
+                {'error': 'invalid_action',
+                 'detail': "action must be 'submit', 'unpublish', or 'archive'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ids = request.data.get('ids')
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {'error': 'ids_required',
+                 'detail': 'Attach a non-empty list of product ids.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        transition = transitions[action_name]
+        results = []
+        for product_id in ids[:100]:
+            try:
+                transition(request.user, int(product_id))
+            except Product.DoesNotExist:
+                results.append({
+                    'id': product_id, 'ok': False,
+                    'detail': 'Product not found in your store.',
+                })
+            except (TypeError, ValueError) as exc:
+                results.append({'id': product_id, 'ok': False, 'detail': str(exc)})
+            else:
+                results.append({'id': product_id, 'ok': True})
+        return Response({'action': action_name, 'results': results})
+
     def _transition(self, request, pk, transition):
         try:
             product = transition(request.user, int(pk))
@@ -267,15 +356,84 @@ class SellerProductViewSet(viewsets.ModelViewSet):
             VariantSerializer(variant).data, status=status.HTTP_201_CREATED
         )
 
+    @action(
+        detail=True, methods=['patch', 'delete'],
+        url_path='variants/(?P<variant_pk>[0-9]+)',
+    )
+    def variant_detail(self, request, pk=None, variant_pk=None):
+        """PATCH/DELETE one variant of the seller's own product (§12.2).
+
+        Delete resolves to deactivation when the variant appears in order
+        history (OrderItem.variant is PROTECT) — the action field in the
+        response says which happened.
+        """
+        product = self.get_object()  # 404 outside the seller's store (§10)
+        variant = get_object_or_404(Variant, pk=variant_pk, product=product)
+        if request.method == 'DELETE':
+            action, variant = services.delete_variant(
+                request.user, product.pk, variant.pk
+            )
+            if action == 'deleted':
+                return Response({'action': 'deleted',
+                                 'detail': 'Variant deleted.'})
+            return Response({
+                'action': 'deactivated',
+                'detail': 'Variant deactivated — past orders keep their history.',
+                'variant': SellerVariantSerializer(variant).data,
+            })
+        payload = SellerVariantSerializer(
+            variant, data=request.data, partial=True
+        )
+        payload.is_valid(raise_exception=True)
+        try:
+            variant = services.update_variant(
+                request.user, product.pk, variant.pk, **payload.validated_data
+            )
+        except (ValueError, PermissionError) as exc:
+            return Response(
+                {'error': 'not_editable', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(SellerVariantSerializer(variant).data)
+
 
 class SellerStockView(APIView):
-    """GET/POST /my/stock — seller stock adjust + movement history."""
+    """GET/POST /my/stock — inventory list, adjustments, movement history.
+
+    - GET  ?variant_id=…  → that variant's movement history (5.4)
+    - GET  (no params)    → the store's inventory rows ({count, items}),
+      searchable, `low_stock=1` narrows to at/below-threshold rows (§12.3)
+    - POST {variant_id, delta, note}  → row-locked adjustment + movement
+    - POST {variant_id, threshold}    → low-stock alert level (§12.3)
+    """
 
     permission_classes = [IsAuthenticated, IsSeller]
 
     def post(self, request):
         store = get_seller_store(request)
         variant_id = request.data.get('variant_id')
+        variant = get_object_or_404(
+            Variant, pk=variant_id, product__store=store
+        )
+        if 'threshold' in request.data:
+            try:
+                threshold = int(request.data['threshold'])
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'invalid_threshold',
+                     'detail': 'threshold must be a non-negative integer.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                services.set_low_stock_threshold(
+                    request.user, variant, threshold=threshold
+                )
+            except ValueError as exc:
+                return Response(
+                    {'error': 'invalid_threshold', 'detail': str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(SellerVariantSerializer(variant).data)
         try:
             delta = int(request.data.get('delta', 0))
         except (TypeError, ValueError):
@@ -283,9 +441,6 @@ class SellerStockView(APIView):
                 {'error': 'invalid_delta', 'detail': 'delta must be an integer.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        variant = get_object_or_404(
-            Variant, pk=variant_id, product__store=store
-        )
         note = str(request.data.get('note', ''))[:255]
         try:
             services.adjust_stock(
@@ -301,28 +456,82 @@ class SellerStockView(APIView):
                 {'error': 'stock_adjustment_failed', 'detail': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return Response(VariantSerializer(variant).data)
+        variant.refresh_from_db()
+        return Response(SellerVariantSerializer(variant).data)
 
     def get(self, request):
-        """Movement history for a variant (5.4 stock movement history)."""
+        """Inventory list (§12.3) or one variant's movement history (5.4)."""
         store = get_seller_store(request)
         variant_id = request.query_params.get('variant_id')
-        variant = get_object_or_404(
-            Variant, pk=variant_id, product__store=store
+        if variant_id:
+            variant = get_object_or_404(
+                Variant, pk=variant_id, product__store=store
+            )
+            movements = variant.stock_movements.all()[:50]
+            data = [
+                {
+                    'id': movement.id,
+                    'reason': movement.reason,
+                    'quantity_delta': movement.quantity_delta,
+                    'resulting_on_hand': movement.resulting_on_hand,
+                    'note': movement.note,
+                    'created_at': movement.created_at,
+                }
+                for movement in movements
+            ]
+            return Response({'count': len(data), 'items': data})
+
+        queryset = (
+            Variant.objects.filter(product__store=store)
+            .select_related('product', 'inventory')
+            .order_by('product__title', 'price')
         )
-        movements = variant.stock_movements.all()[:50]
-        data = [
-            {
-                'id': movement.id,
-                'reason': movement.reason,
-                'quantity_delta': movement.quantity_delta,
-                'resulting_on_hand': movement.resulting_on_hand,
-                'note': movement.note,
-                'created_at': movement.created_at,
-            }
-            for movement in movements
-        ]
-        return Response({'count': len(data), 'items': data})
+        needle = request.query_params.get('q')
+        if needle:
+            queryset = queryset.filter(
+                Q(product__title__icontains=needle)
+                | Q(sku__icontains=needle)
+                | Q(name__icontains=needle)
+            )
+        if request.query_params.get('low_stock') in ('1', 'true', 'True'):
+            # available (on_hand − reserved) at or below the threshold
+            queryset = queryset.filter(
+                inventory__on_hand__lte=(
+                    F('inventory__low_stock_threshold') + F('inventory__reserved')
+                )
+            )
+        paginator = CountItemsPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        return paginator.get_paginated_response(
+            [self._inventory_row(variant) for variant in page]
+        )
+
+    @staticmethod
+    def _inventory_row(variant):
+        """One inventory row — variant identity + live stock numbers."""
+        inventory = getattr(variant, 'inventory', None)
+        return {
+            'variant_id': variant.id,
+            'product_id': variant.product_id,
+            'product_title': variant.product.title,
+            'product_slug': variant.product.slug,
+            'product_status': variant.product.status,
+            'sku': variant.sku,
+            'name': variant.name,
+            'price': float(variant.price),
+            'is_active': variant.is_active,
+            'inventory': (
+                {
+                    'on_hand': inventory.on_hand,
+                    'reserved': inventory.reserved,
+                    'available': inventory.available,
+                    'low_stock_threshold': inventory.low_stock_threshold,
+                    'low_stock': inventory.available <= inventory.low_stock_threshold,
+                }
+                if inventory is not None
+                else None
+            ),
+        }
 
 
 class StaffProductReviewViewSet(viewsets.ReadOnlyModelViewSet):
