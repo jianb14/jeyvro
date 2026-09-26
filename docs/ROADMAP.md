@@ -32,9 +32,9 @@
 | 8 | Checkout, Shipping Calculation & Order Creation | ✅ Done — `apps/orders` live (Order/SellerOrder/OrderItem snapshots, server-side flat fee + threshold shipping, transactional stock reservation & release on cancel), /checkout + /orders/:number frontend routes, 27 backend tests + race condition gate passed, Vitest (63/63) & build green |
 | 9 | Payments & Financial Transactions | ✅ Done — `apps/payments` domain (Payment, PaymentAttempt, Refund, append-only PaymentTransaction ledger, WebhookEvent), gateway adapter interface (COD live, generic hosted-gateway seam for PayMongo/GCash/Maya), signature-verified idempotent webhooks, online payment expiry cron command, full & partial stock-restoring refunds, Checkout step 3 + OrderDetail payment cards; 89/89 backend tests (45 tests for money flows + race gates) & 27/27 frontend tests passed, lint & build green |
 | 10 | Order Fulfillment & Delivery | ✅ Done — `apps/orders` shipments (carrier adapter registry, tracking numbers, append-only tracking events), seller process/pack/ship endpoints, partial shipments + parent-order status aggregation, COD capture on delivery; 7/7 fulfillment tests passed (commit `2afb1cf`) |
-| 11 | Customer Account & Order Management | 🔄 In progress — 11.1 panels live since Phase 3; order history, timeline, tracking UI, receipt, reorder and request intake landing now |
-| 12 | Seller Operations & Seller Dashboard | ⬜ Not started |
-| 13 | Admin, Staff & Platform Operations | ⬜ Not started |
+| 11 | Customer Account & Order Management | ✅ Done — owner-scoped history/detail/receipt, audit-derived timeline with whitelisted copy, reorder + cancel verdicts, return/refund/issue intake (`OrderRequest`; Phase 17 adjudicates); 11.1 panels live since Phase 3; Contact seller/support deferred to Phase 15 (documented) |
+| 12 | Seller Operations & Seller Dashboard | ✅ Done — seller dashboard aggregates (sales/orders/low-stock), product/variant editor with lifecycle + bulk ops, inventory console (append-only movements), seller order flow (process/pack/ship) with the §12.5 privacy ladder, store settings; gate tests `backend/tests/test_seller_operations.py` + `frontend/src/data/seller.test.js`; §12.6 messaging deferred to Phase 15 (documented) |
+| 13 | Admin, Staff & Platform Operations | 🔄 In progress — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Remaining: catalog management (13.4), order/payment oversight (13.5), platform settings (13.6), finance/operations surfaces |
 | 14 | Reviews, Ratings & Trust | ⬜ Not started |
 | 15 | Messaging & Notifications | ⬜ Not started |
 | 16 | Promotions, Vouchers & Campaigns | ⬜ Not started |
@@ -1110,8 +1110,8 @@ Build the platform control center.
 -   [ ] Operations role
 -   [x] Administrator role
 -   [x] Super administrator role
--   [ ] Permission assignment
--   [ ] Permission audit
+-   [x] Permission assignment
+-   [x] Permission audit
 
 > **Slice v1 (done):** the six canonical groups are seeded idempotently
 > (`manage.py seed_staff_groups`, `--promote <email> --group <name>`) and the
@@ -1121,14 +1121,32 @@ Build the platform control center.
 > today; finance and operations groups exist but their surfaces (payouts,
 > carrier overrides, catalog management) land in later slices — permission
 > assignment and role-change auditing follow with them.
+>
+> **Slice v2 (done):** role administration is live — the administrator-only
+> staff directory (`GET /api/v1/auth/admin/staff/`) plus `roles/assign` /
+> `roles/remove` run through the accounts services, so every change is
+> audit-logged (`staff_group_assigned` / `staff_group_removed`) and visible in
+> the audit viewer. Guards: self- and superuser-target changes are refused,
+> unknown groups are rejected, no one can remove the marketplace's last
+> administrator, and removing a user's final staff group clears `is_staff`.
+> Finance/operations surfaces (payouts, carrier overrides, catalog management)
+> still land in their own slices.
 
 ### 13.2 User management
 
--   [ ] User list
--   [ ] User detail
--   [ ] Search/filter
--   [ ] Account status
--   [ ] Account actions
+-   [x] User list
+-   [x] User detail
+-   [x] Search/filter
+-   [x] Account status
+-   [x] Account actions
+
+> **Slice v2 (done):** `GET /api/v1/auth/admin/users/` (+ `?q=` / `?status=` /
+> `?role=`, `{count, items}` envelope) and the per-id detail serve the
+> `/staff/users` console. Support has read-only oversight; suspension and
+> reactivation are administrator actions that revoke live sessions immediately
+> (a suspended account is locked out mid-session, not at its next login) and
+> write `user_suspended` / `user_reactivated` audit rows with their reason.
+> Coverage: `backend/tests/test_staff_management.py` + `frontend/src/data/staff.test.js`.
 
 ### 13.3 Seller management
 
