@@ -27,7 +27,7 @@ import { Select } from "../../components/ui/Select";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { Switch } from "../../components/ui/Switch";
 import { Textarea } from "../../components/ui/Textarea";
-import { TrashIcon } from "../../components/ui/Icons";
+import { ArrowLeftIcon, TrashIcon } from "../../components/ui/Icons";
 import { getCategories } from "../../data/products";
 import * as sellerApi from "../../data/seller";
 
@@ -526,9 +526,10 @@ export function SellerProductEdit() {
         <div className="flex flex-col gap-1">
           <Link
             to="/seller/products"
-            className="text-sm font-medium text-moss-700 hover:underline dark:text-moss-300"
+            className="inline-flex items-center gap-1 text-sm font-medium text-moss-700 hover:underline dark:text-moss-300"
           >
-            ← All products
+            <ArrowLeftIcon size={14} />
+            All products
           </Link>
           <h1 className="font-display text-2xl font-semibold text-sand-900 dark:text-sand-100">
             {isCreate ? "New product" : product.title}

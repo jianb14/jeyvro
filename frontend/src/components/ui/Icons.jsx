@@ -51,6 +51,7 @@ export const BellIcon = (p) => <I {...p}><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3
 export const LogOutIcon = (p) => <I {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></I>;
 export const HeartIcon = (p) => <I {...p}><path d="M19.5 12.6 12 20l-7.5-7.4a5 5 0 1 1 7.5-6.6 5 5 0 1 1 7.5 6.6z" /></I>;
 export const StarIcon = (p) => <I {...p}><path d="m12 2.5 2.9 5.9 6.6 1-4.8 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5-4.8-4.6 6.6-1z" /></I>;
+export const ArrowLeftIcon = (p) => <I {...p}><path d="M20 12H4m6-6-6 6 6 6" /></I>;
 export const ArrowRightIcon = (p) => <I {...p}><path d="M4 12h16m-6-6 6 6-6 6" /></I>;
 export const ArrowUpRightIcon = (p) => <I {...p}><path d="M7 17 17 7M8 7h9v9" /></I>;
 export const MoreHorizontalIcon = (p) => <I {...p}><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></I>;

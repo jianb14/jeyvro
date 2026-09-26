@@ -22,6 +22,7 @@ import { Select } from "../../components/ui/Select";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { Textarea } from "../../components/ui/Textarea";
 import { Timeline } from "../../components/ui/Timeline";
+import { ArrowLeftIcon } from "../../components/ui/Icons";
 import * as sellerApi from "../../data/seller";
 
 function formatDate(value) {
@@ -121,9 +122,10 @@ export function SellerOrderDetail() {
         <div className="flex flex-col gap-1">
           <Link
             to="/seller/orders"
-            className="text-sm font-medium text-moss-700 hover:underline dark:text-moss-300"
+            className="inline-flex items-center gap-1 text-sm font-medium text-moss-700 hover:underline dark:text-moss-300"
           >
-            ← All orders
+            <ArrowLeftIcon size={14} />
+            All orders
           </Link>
           <h1 className="font-display text-2xl font-semibold text-sand-900 dark:text-sand-100">
             {order.orderNumber}

@@ -13,7 +13,7 @@ import { OrderStatusBadge } from "../components/ui/OrderStatusBadge";
 import { PaymentStatusBadge } from "../components/ui/PaymentStatusBadge";
 import { Price } from "../components/ui/Price";
 import { Skeleton } from "../components/ui/Skeleton";
-import { LogoMark } from "../components/ui/Icons";
+import { ArrowLeftIcon, LogoMark } from "../components/ui/Icons";
 import * as ordersApi from "../data/orders";
 
 function formatDate(value, withTime = false) {
@@ -60,9 +60,10 @@ export function Receipt() {
         <div className="mb-4 flex items-center justify-between gap-3 print:hidden">
           <Link
             to={`/orders/${number}`}
-            className="text-sm text-sand-600 transition-colors hover:text-moss-700 dark:text-sand-300 dark:hover:text-moss-300"
+            className="inline-flex items-center gap-1 text-sm text-sand-600 transition-colors hover:text-moss-700 dark:text-sand-300 dark:hover:text-moss-300"
           >
-            ← Back to order
+            <ArrowLeftIcon size={14} />
+            Back to order
           </Link>
           <Button onClick={() => window.print()} disabled={!order}>
             Download / Print
