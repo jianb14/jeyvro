@@ -16,13 +16,19 @@ from django.utils import timezone
 
 from apps.audit.services import log_event
 from apps.common.privacy import mask_name
+from apps.platform.services import get_settings as get_platform_settings
 
 from .models import SellerApplication, Store
 
 
 def apply_as_seller(user, *, store_name, store_description='', contact_phone=''):
     """A customer applies to become a seller. Creates the pending
-    application + pending store atomically (marketplace-sellers rule)."""
+    application + pending store atomically (marketplace-sellers rule).
+
+    The new store starts from the platform shipping defaults (§6 v1.13) —
+    sellers keep editing their own values afterwards.
+    """
+    platform = get_platform_settings()
     with transaction.atomic():
         application = SellerApplication.objects.create(
             user=user,
@@ -32,6 +38,8 @@ def apply_as_seller(user, *, store_name, store_description='', contact_phone='')
                 description=store_description,
                 contact_email=user.email,
                 contact_phone=contact_phone,
+                shipping_flat_fee=platform.default_shipping_flat_fee,
+                free_shipping_threshold=platform.default_free_shipping_threshold,
                 status=Store.Status.PENDING,
             ),
             store_name=store_name,

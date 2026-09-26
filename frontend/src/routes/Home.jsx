@@ -24,6 +24,7 @@ import {
   ZapIcon,
 } from "../components/ui/Icons";
 import { getCategories, getProducts } from "../data/products";
+import { fetchPlatformInfo } from "../data/platform";
 import { fetchPublicStores } from "../data/stores";
 import { getRecentlyViewed } from "../lib/recentlyViewed";
 
@@ -92,6 +93,23 @@ export function Home() {
   const [stores, setStores] = useState(null);
   const [storesError, setStoresError] = useState(null);
   const [recent] = useState(() => getRecentlyViewed());
+  const [platform, setPlatform] = useState(null);
+
+  // Marketplace name + support contact are platform settings (Phase 13.6);
+  // the chrome falls back to the built-in default if the fetch ever fails.
+  useEffect(() => {
+    let alive = true;
+    fetchPlatformInfo()
+      .then((info) => {
+        if (alive) setPlatform(info);
+      })
+      .catch(() => {
+        /* the footer must never break the page — defaults render instead */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -294,7 +312,19 @@ export function Home() {
           <span className="flex items-center gap-2">
             <LogoMark size={22} />
             <span className="text-sm text-sand-500 dark:text-sand-400">
-              Jeyvro Marketplace · {new Date().getFullYear()}
+              {platform?.platformName ?? "Jeyvro"} Marketplace ·{" "}
+              {new Date().getFullYear()}
+              {platform?.supportEmail ? (
+                <>
+                  {" · "}
+                  <a
+                    href={`mailto:${platform.supportEmail}`}
+                    className="transition-colors hover:text-moss-700 dark:hover:text-moss-300"
+                  >
+                    {platform.supportEmail}
+                  </a>
+                </>
+              ) : null}
             </span>
           </span>
           <Link

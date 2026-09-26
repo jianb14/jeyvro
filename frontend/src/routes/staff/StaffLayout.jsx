@@ -16,6 +16,7 @@ import {
   CreditCardIcon,
   InboxIcon,
   PackageIcon,
+  SettingsIcon,
   ShieldCheckIcon,
   ShoppingBagIcon,
   StoreIcon,
@@ -39,6 +40,12 @@ const NAV = [
     label: "Payments",
     icon: CreditCardIcon,
     groups: ["support", "finance", "administrator"],
+  },
+  {
+    to: "/staff/settings",
+    label: "Platform settings",
+    icon: SettingsIcon,
+    groups: ["administrator", "finance", "operations"],
   },
   {
     to: "/staff/catalog",

@@ -35,6 +35,7 @@ import { StaffCatalog } from "./routes/staff/StaffCatalog";
 import { StaffTaxonomy } from "./routes/staff/StaffTaxonomy";
 import { StaffOrders } from "./routes/staff/StaffOrders";
 import { StaffPayments } from "./routes/staff/StaffPayments";
+import { StaffSettings } from "./routes/staff/StaffSettings";
 
 function App() {
   return (
@@ -138,6 +139,7 @@ function App() {
                 <Route path="taxonomy" element={<StaffTaxonomy />} />
                 <Route path="orders" element={<StaffOrders />} />
                 <Route path="payments" element={<StaffPayments />} />
+                <Route path="settings" element={<StaffSettings />} />
                 <Route path="users" element={<StaffUsers />} />
                 <Route path="team" element={<StaffTeam />} />
                 <Route path="audit" element={<StaffAuditLog />} />

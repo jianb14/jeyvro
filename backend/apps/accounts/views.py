@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from apps.cart import services as cart_services
 from apps.common.pagination import CountItemsPagination
+from apps.platform.services import notification_defaults
 
 from . import services
 from .models import Address, NotificationPreference, User
@@ -247,11 +248,17 @@ class NotificationPreferenceView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        prefs, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        # New accounts start from the platform defaults (§6 v1.13); an
+        # existing row always wins — the customer's own choice is theirs.
+        prefs, _ = NotificationPreference.objects.get_or_create(
+            user=request.user, defaults=notification_defaults()
+        )
         return Response(NotificationPreferenceSerializer(prefs).data)
 
     def put(self, request):
-        prefs, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        prefs, _ = NotificationPreference.objects.get_or_create(
+            user=request.user, defaults=notification_defaults()
+        )
         serializer = NotificationPreferenceSerializer(prefs, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()

@@ -673,3 +673,47 @@ export async function fetchStaffRefunds({
   };
 }
 
+// --- 13.6 Platform settings (one audited singleton row, §4 groups) ---------
+
+const SETTINGS = "/api/v1/admin/settings";
+
+export function mapStaffSettings(data) {
+  return {
+    platformName: data.platform_name ?? "",
+    supportEmail: data.support_email ?? "",
+    commissionRatePercent: data.commission_rate_percent ?? "0.00",
+    defaultShippingFlatFee: data.default_shipping_flat_fee ?? "0.00",
+    // Null is a real value here (a store may ship with no threshold).
+    defaultFreeShippingThreshold:
+      data.default_free_shipping_threshold ?? null,
+    codEnabled: Boolean(data.cod_enabled),
+    paymentExpiryHours: data.payment_expiry_hours ?? 24,
+    defaultOrderUpdatesEmail: Boolean(data.default_order_updates_email),
+    defaultPromotionsEmail: Boolean(data.default_promotions_email),
+    defaultMessagingEmail: Boolean(data.default_messaging_email),
+    updatedAt: data.updated_at ?? null,
+    updatedByEmail: data.updated_by_email ?? null,
+  };
+}
+
+export async function fetchStaffSettings() {
+  return mapStaffSettings(await request(SETTINGS, "/"));
+}
+
+/** Administrator path — everything except commission (§4 keeps that with
+ * finance), applied as a partial update of the singleton row. */
+export async function updateStaffSettings(patch) {
+  const csrf = await ensureCsrfToken();
+  return mapStaffSettings(
+    await request(SETTINGS, "/", { method: "PATCH", body: patch, csrf })
+  );
+}
+
+/** Finance/administrator path — commission only (§4). */
+export async function updateStaffCommission(patch) {
+  const csrf = await ensureCsrfToken();
+  return mapStaffSettings(
+    await request(SETTINGS, "/commission/", { method: "PATCH", body: patch, csrf })
+  );
+}
+

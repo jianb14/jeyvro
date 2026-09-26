@@ -34,7 +34,7 @@
 | 10 | Order Fulfillment & Delivery | ✅ Done — `apps/orders` shipments (carrier adapter registry, tracking numbers, append-only tracking events), seller process/pack/ship endpoints, partial shipments + parent-order status aggregation, COD capture on delivery; 7/7 fulfillment tests passed (commit `2afb1cf`) |
 | 11 | Customer Account & Order Management | ✅ Done — owner-scoped history/detail/receipt, audit-derived timeline with whitelisted copy, reorder + cancel verdicts, return/refund/issue intake (`OrderRequest`; Phase 17 adjudicates); 11.1 panels live since Phase 3; Contact seller/support deferred to Phase 15 (documented) |
 | 12 | Seller Operations & Seller Dashboard | ✅ Done — seller dashboard aggregates (sales/orders/low-stock), product/variant editor with lifecycle + bulk ops, inventory console (append-only movements), seller order flow (process/pack/ship) with the §12.5 privacy ladder, store settings; gate tests `backend/tests/test_seller_operations.py` + `frontend/src/data/seller.test.js`; §12.6 messaging deferred to Phase 15 (documented) |
-| 13 | Admin, Staff & Platform Operations | 🔄 In progress — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Slice v4: read-only order/payment operations console (order & shipment oversight, return/refund/dispute intake, payment/refund trail) with refund issuance tightened to finance/administrator. Remaining: platform settings (13.6), finance/operations surfaces |
+| 13 | Admin, Staff & Platform Operations | ✅ Done — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Slice v4: read-only order/payment operations console (order & shipment oversight, return/refund/dispute intake, payment/refund trail) with refund issuance tightened to finance/administrator. Slice v5: platform settings (`/staff/settings` — marketplace/commission/shipping/feature/notification as one audited singleton; COD gate, platform-owned payment window, new-store shipping seeds, new-account notification defaults); finance/operations now carry real §4 surfaces and the phase Gate is closed. Deferred: 13.3 seller verification (not yet scoped) and store *content* management (deliberate — seller-owned) |
 | 14 | Reviews, Ratings & Trust | ⬜ Not started |
 | 15 | Messaging & Notifications | ⬜ Not started |
 | 16 | Promotions, Vouchers & Campaigns | ⬜ Not started |
@@ -1106,8 +1106,8 @@ Build the platform control center.
 
 -   [x] Support role
 -   [x] Moderator role
--   [ ] Finance role
--   [ ] Operations role
+-   [x] Finance role
+-   [x] Operations role
 -   [x] Administrator role
 -   [x] Super administrator role
 -   [x] Permission assignment
@@ -1131,6 +1131,12 @@ Build the platform control center.
 > administrator, and removing a user's final staff group clears `is_staff`.
 > Finance/operations surfaces (payouts, carrier overrides, catalog management)
 > still land in their own slices.
+>
+> **Slice v5 (done):** finance and operations now carry real §4 surfaces,
+> which completes this section: finance reads payments/refunds and adjusts
+> the platform commission rate (13.5/13.6); operations manages taxonomy,
+> reads shipments, and reads the settings row (13.4–13.6). Each path is
+> group-gated and deny-tested in its slice's gate file.
 
 ### 13.2 User management
 
@@ -1218,11 +1224,28 @@ Build the platform control center.
 
 ### 13.6 Platform settings
 
--   [ ] Marketplace settings
--   [ ] Commission settings
--   [ ] Shipping settings
--   [ ] Feature settings
--   [ ] Notification settings
+-   [x] Marketplace settings
+-   [x] Commission settings
+-   [x] Shipping settings
+-   [x] Feature settings
+-   [x] Notification settings
+
+> **Slice v5 (done):** one audited singleton row (`PlatformSettings`, pinned
+> to pk 1) behind `GET/PATCH /api/v1/admin/settings/` and
+> `PATCH /api/v1/admin/settings/commission/`. Marketplace identity (name +
+> support email; the anonymous subset at `GET /api/v1/platform/public/` feeds
+> the storefront footer), a 0–100 commission rate finance or administrator may
+> set (§4), shipping defaults that seed every **newly created** store without
+> touching existing ones, feature switches — the COD switch makes checkout
+> refuse the method with a full rollback (no order, payment, or reservation),
+> and the online-payment window now lives in the DB row and drives `expires_at`
+> (env only seeds the row's first creation) — and notification defaults applied
+> only when a new account's preference row is first created (existing per-user
+> rows always win). Reads are administrator/finance/operations; general edits
+> are administrator-only; every write lands an `AuditLog` row with a per-field
+> from→to diff; DB CheckConstraints back the serializer bounds. Console:
+> `/staff/settings`. Gate tests: `backend/tests/test_platform_settings.py`;
+> accessor coverage in `frontend/src/data/staff.test.js` + `platform.test.js`.
 
 ### 13.7 Audit
 
@@ -1246,15 +1269,17 @@ Build the platform control center.
 -   [x] Every sensitive admin action is permission-protected
 -   [x] Audit records are created
 -   [x] Staff cannot exceed assigned permissions
--   [ ] Admin cannot accidentally bypass ownership/security rules
+-   [x] Admin cannot accidentally bypass ownership/security rules
 
-> **Slice v1 status:** the four gate lines are proven for everything shipped so
-> far — per-group allow/deny paths are tested (`support` reads but cannot act,
-> `moderator` reviews and suspends, `administrator` sees the audit log), every
-> write goes through the domain services (no side doors), and each sensitive
-> action lands an AuditLog row. The last line stays open until the remaining
-> staff surfaces (finance, operations, catalog, settings) exist and carry the
-> same tests.
+> **Slice v5 status:** all four lines are now proven for the whole phase —
+> per-group allow/deny paths are tested across every staff surface
+> (support, moderator, finance, operations, administrator each hit their
+> exact allow and deny routes, settings included), every write goes through
+> the domain services (no side doors), each sensitive action lands an
+> AuditLog row carrying its change detail, and the ownership/security
+> rules are deny-tested end to end in the 13.4–13.6 gate files. The 13.3
+> seller-verification item remains open and deliberately out of scope for
+> this phase; store *content* management stays seller-owned.
 
 **Skills:** marketplace-admin, security, backend-feature
 

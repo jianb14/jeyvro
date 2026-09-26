@@ -18,6 +18,7 @@ import {
   fetchStaffPayments,
   fetchStaffRefunds,
   fetchStaffRequests,
+  fetchStaffSettings,
   fetchStaffShipments,
   fetchStaffStores,
   reviewApplication,
@@ -26,6 +27,8 @@ import {
   setUserStatus,
   unpublishProduct,
   updateCategory,
+  updateStaffCommission,
+  updateStaffSettings,
 } from "./staff";
 
 const APPLICATION_PAYLOAD = {
@@ -699,5 +702,93 @@ describe("staff catalog accessors (13.4)", () => {
     const { callWith: callWith2 } = mockFetch(null);
     await deleteBrand(3);
     expect(callWith2("DELETE")[0]).toBe("/api/v1/catalog/admin/brands/3/");
+  });
+});
+
+describe("platform settings accessors (13.6)", () => {
+  const SETTINGS_PAYLOAD = {
+    platform_name: "Jeyvro",
+    support_email: "support@jeyvro.com",
+    commission_rate_percent: "5.00",
+    default_shipping_flat_fee: "49.00",
+    default_free_shipping_threshold: null,
+    cod_enabled: true,
+    payment_expiry_hours: 24,
+    default_order_updates_email: true,
+    default_promotions_email: false,
+    default_messaging_email: true,
+    updated_at: "2026-09-26T10:00:00Z",
+    updated_by_email: "admin@jeyvro.ph",
+  };
+
+  it("fetches and maps the full settings row (nullable threshold kept)", async () => {
+    const { fetchMock } = mockFetch(SETTINGS_PAYLOAD);
+    const settings = await fetchStaffSettings();
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admin/settings/");
+    expect(settings.platformName).toBe("Jeyvro");
+    expect(settings.supportEmail).toBe("support@jeyvro.com");
+    expect(settings.commissionRatePercent).toBe("5.00");
+    expect(settings.defaultShippingFlatFee).toBe("49.00");
+    expect(settings.defaultFreeShippingThreshold).toBeNull();
+    expect(settings.codEnabled).toBe(true);
+    expect(settings.paymentExpiryHours).toBe(24);
+    expect(settings.defaultOrderUpdatesEmail).toBe(true);
+    expect(settings.defaultPromotionsEmail).toBe(false);
+    expect(settings.defaultMessagingEmail).toBe(true);
+    expect(settings.updatedAt).toBe("2026-09-26T10:00:00Z");
+    expect(settings.updatedByEmail).toBe("admin@jeyvro.ph");
+  });
+
+  it("PATCHes general settings through the administrator path", async () => {
+    const { callWith } = mockFetch({
+      ...SETTINGS_PAYLOAD,
+      platform_name: "Jeyvro PH",
+    });
+    const updated = await updateStaffSettings({ platform_name: "Jeyvro PH" });
+
+    const patch = callWith("PATCH");
+    expect(patch[0]).toBe("/api/v1/admin/settings/");
+    expect(JSON.parse(patch[1].body)).toEqual({ platform_name: "Jeyvro PH" });
+    expect(updated.platformName).toBe("Jeyvro PH");
+  });
+
+  it("PATCHes commission through the finance path", async () => {
+    const { callWith } = mockFetch({
+      ...SETTINGS_PAYLOAD,
+      commission_rate_percent: "7.50",
+    });
+    const updated = await updateStaffCommission({
+      commission_rate_percent: "7.50",
+    });
+
+    const patch = callWith("PATCH");
+    expect(patch[0]).toBe("/api/v1/admin/settings/commission/");
+    expect(JSON.parse(patch[1].body)).toEqual({
+      commission_rate_percent: "7.50",
+    });
+    expect(updated.commissionRatePercent).toBe("7.50");
+  });
+
+  it("maps a fresh row's defaults before the first edit", async () => {
+    mockFetch({
+      platform_name: "Jeyvro",
+      support_email: "support@jeyvro.com",
+      commission_rate_percent: "0.00",
+      default_shipping_flat_fee: "0.00",
+      default_free_shipping_threshold: null,
+      cod_enabled: false,
+      payment_expiry_hours: 12,
+      default_order_updates_email: false,
+      default_promotions_email: true,
+      default_messaging_email: false,
+      updated_at: null,
+      updated_by_email: null,
+    });
+    const settings = await fetchStaffSettings();
+    expect(settings.codEnabled).toBe(false);
+    expect(settings.paymentExpiryHours).toBe(12);
+    expect(settings.updatedAt).toBeNull();
+    expect(settings.updatedByEmail).toBeNull();
   });
 });

@@ -11,7 +11,6 @@ import json
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
@@ -21,6 +20,7 @@ from apps.audit import services as audit_services
 from apps.catalog import services as catalog_services
 from apps.catalog.models import StockMovement
 from apps.orders.models import Order, OrderItem, SellerOrder
+from apps.platform import services as platform_services
 
 from . import adapters
 from .models import (
@@ -75,10 +75,9 @@ def _parse_amount(value):
 
 
 def payment_expiry_hours():
-    try:
-        return int(getattr(settings, 'PAYMENTS_PAYMENT_EXPIRY_HOURS', 24))
-    except (TypeError, ValueError):
-        return 24
+    """The window is platform configuration now (§6 v1.13): the DB row
+    wins; the env setting only seeds that row's first creation."""
+    return platform_services.payment_window_hours()
 
 
 def start_payment(order, method=PaymentMethod.COD):
