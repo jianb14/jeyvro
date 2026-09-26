@@ -7,7 +7,7 @@ envelope (marketplace-catalog rule 3); seller endpoints are store-scoped
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.db.models import ExpressionWrapper, F, FloatField, Min, Q
+from django.db.models import Count, ExpressionWrapper, F, FloatField, Min, Q
 from django.db.models.functions import Coalesce, NullIf
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -30,6 +30,10 @@ from .serializers import (
     PublicProductSerializer,
     SellerProductSerializer,
     SellerVariantSerializer,
+    StaffBrandSerializer,
+    StaffCategorySerializer,
+    StaffProductListSerializer,
+    StaffProductSerializer,
     VariantSerializer,
 )
 
@@ -534,20 +538,73 @@ class SellerStockView(APIView):
         }
 
 
-class StaffProductReviewViewSet(viewsets.ReadOnlyModelViewSet):
-    """Staff pending-review queue — group-based access (§4)."""
+class StaffProductViewSet(viewsets.ReadOnlyModelViewSet):
+    """Staff product console (13.4) — every status, server-filtered.
 
-    queryset = (
-        Product.objects.filter(status=Product.Status.PENDING_REVIEW)
-        .select_related('store', 'category', 'brand')
-        .prefetch_related('variants', 'images')
-    )
-    serializer_class = SellerProductSerializer
+    Moderator/administrator only (§4 matrix). The list shape is light
+    (store identity + status + counts); retrieve returns the full seller
+    shape so staff can inspect variants/images without leaving the console.
+    """
+
     permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['moderator', 'administrator']
+    pagination_class = CountItemsPagination
+
+    def get_queryset(self):
+        display_price = Coalesce(
+            Min('variants__price', filter=Q(variants__is_active=True)),
+            'base_price',
+        )
+        queryset = (
+            Product.objects.select_related(
+                'store', 'store__user', 'category', 'brand'
+            )
+            .annotate(
+                display_price=display_price,
+                variant_count=Count('variants', distinct=True),
+                image_count=Count('images', distinct=True),
+            )
+            .prefetch_related('variants__inventory', 'images')
+            .order_by('-created_at')
+        )
+        params = self.request.query_params
+        needle = params.get('q')
+        if needle:
+            queryset = queryset.filter(
+                Q(title__icontains=needle)
+                | Q(description__icontains=needle)
+                | Q(slug__icontains=needle)
+                | Q(store__name__icontains=needle)
+                | Q(store__user__email__icontains=needle)
+            )
+        status_param = params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        category = params.get('category')
+        if category:
+            queryset = queryset.filter(category__slug=category)
+        store = params.get('store')
+        if store:
+            if store.isdigit():
+                queryset = queryset.filter(store_id=store)
+            else:
+                queryset = queryset.filter(store__slug=store)
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return StaffProductListSerializer
+        return StaffProductSerializer
 
 
 class StaffProductReviewActionView(APIView):
+    """POST /api/v1/catalog/admin/products/<pk>/review — publish/reject.
+
+    Completes the Phase 5 review loop; moderator/administrator only (§4).
+    """
+
     permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['moderator', 'administrator']
 
     def post(self, request, pk):
         decision = request.data.get('decision')
@@ -562,3 +619,163 @@ class StaffProductReviewActionView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(SellerProductSerializer(product).data)
+
+
+class StaffProductUnpublishView(APIView):
+    """POST /api/v1/catalog/admin/products/<pk>/unpublish — takedown.
+
+    Reason required; the seller sees it on their product and the decision
+    is audit-logged (moderator/administrator only, §4).
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['moderator', 'administrator']
+
+    def post(self, request, pk):
+        product = get_object_or_404(Product, pk=pk)
+        reason = request.data.get('reason', '')
+        try:
+            services.staff_unpublish_product(request.user, product, reason=reason)
+        except ValueError as exc:
+            return Response(
+                {'error': 'unpublish_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(StaffProductSerializer(product).data)
+
+
+class StaffCategoryViewSet(viewsets.ModelViewSet):
+    """Category management (13.4) — operations/administrator (§4 matrix).
+
+    Reads are {count, items}; writes run through the audited catalog
+    services (thin views, §13) so cycles, non-empty deletes, and every
+    create/update/delete are enforced and logged server-side.
+    """
+
+    serializer_class = StaffCategorySerializer
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['operations', 'administrator']
+    pagination_class = CountItemsPagination
+
+    def get_queryset(self):
+        queryset = (
+            Category.objects.select_related('parent')
+            .annotate(product_count=Count('products'))
+            .order_by('position', 'name')
+        )
+        needle = self.request.query_params.get('q')
+        if needle:
+            queryset = queryset.filter(
+                Q(name__icontains=needle) | Q(slug__icontains=needle)
+            )
+        return queryset
+
+    def create(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            category = services.create_category(
+                request.user, **serializer.validated_data
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': 'create_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            self.get_serializer(category).data, status=status.HTTP_201_CREATED
+        )
+
+    def update(self, request, *args, **kwargs):
+        category = self.get_object()
+        serializer = self.get_serializer(
+            category, data=request.data, partial=kwargs.pop('partial', False)
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            category = services.update_category(
+                request.user, category, changes=serializer.validated_data
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': 'update_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(category).data)
+
+    def destroy(self, request, *args, **kwargs):
+        category = self.get_object()
+        try:
+            services.delete_category(request.user, category)
+        except ValueError as exc:
+            return Response(
+                {'error': 'delete_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StaffBrandViewSet(viewsets.ModelViewSet):
+    """Brand management (13.4) — operations/administrator (§4 matrix).
+
+    Deleting a brand only removes the label (products detach via SET_NULL);
+    every write is audit-logged through the catalog services.
+    """
+
+    serializer_class = StaffBrandSerializer
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['operations', 'administrator']
+    pagination_class = CountItemsPagination
+
+    def get_queryset(self):
+        queryset = Brand.objects.annotate(
+            product_count=Count('products')
+        ).order_by('name')
+        needle = self.request.query_params.get('q')
+        if needle:
+            queryset = queryset.filter(
+                Q(name__icontains=needle) | Q(slug__icontains=needle)
+            )
+        return queryset
+
+    def create(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            brand = services.create_brand(request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response(
+                {'error': 'create_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            self.get_serializer(brand).data, status=status.HTTP_201_CREATED
+        )
+
+    def update(self, request, *args, **kwargs):
+        brand = self.get_object()
+        serializer = self.get_serializer(
+            brand, data=request.data, partial=kwargs.pop('partial', False)
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            brand = services.update_brand(
+                request.user, brand, **serializer.validated_data
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': 'update_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self.get_serializer(brand).data)
+
+    def destroy(self, request, *args, **kwargs):
+        brand = self.get_object()
+        try:
+            services.delete_brand(request.user, brand)
+        except ValueError as exc:
+            return Response(
+                {'error': 'delete_failed', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)

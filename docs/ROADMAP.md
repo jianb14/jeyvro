@@ -34,7 +34,7 @@
 | 10 | Order Fulfillment & Delivery | ✅ Done — `apps/orders` shipments (carrier adapter registry, tracking numbers, append-only tracking events), seller process/pack/ship endpoints, partial shipments + parent-order status aggregation, COD capture on delivery; 7/7 fulfillment tests passed (commit `2afb1cf`) |
 | 11 | Customer Account & Order Management | ✅ Done — owner-scoped history/detail/receipt, audit-derived timeline with whitelisted copy, reorder + cancel verdicts, return/refund/issue intake (`OrderRequest`; Phase 17 adjudicates); 11.1 panels live since Phase 3; Contact seller/support deferred to Phase 15 (documented) |
 | 12 | Seller Operations & Seller Dashboard | ✅ Done — seller dashboard aggregates (sales/orders/low-stock), product/variant editor with lifecycle + bulk ops, inventory console (append-only movements), seller order flow (process/pack/ship) with the §12.5 privacy ladder, store settings; gate tests `backend/tests/test_seller_operations.py` + `frontend/src/data/seller.test.js`; §12.6 messaging deferred to Phase 15 (documented) |
-| 13 | Admin, Staff & Platform Operations | 🔄 In progress — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Remaining: catalog management (13.4), order/payment oversight (13.5), platform settings (13.6), finance/operations surfaces |
+| 13 | Admin, Staff & Platform Operations | 🔄 In progress — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Remaining: order/payment oversight (13.5), platform settings (13.6), finance/operations surfaces |
 | 14 | Reviews, Ratings & Trust | ⬜ Not started |
 | 15 | Messaging & Notifications | ⬜ Not started |
 | 16 | Promotions, Vouchers & Campaigns | ⬜ Not started |
@@ -1169,11 +1169,26 @@ Build the platform control center.
 
 ### 13.4 Catalog management
 
--   [ ] Products
--   [ ] Categories
--   [ ] Brands
--   [ ] Moderation
--   [ ] Product status
+-   [x] Products
+-   [x] Categories
+-   [x] Brands
+-   [x] Moderation
+-   [x] Product status
+
+> **Slice v1 (done):** the moderator console (`/staff/catalog`) lists every
+> status behind `GET /api/v1/catalog/admin/products/` (q / status / store /
+> category filters, `{count, items}` envelope, light rows with store identity
+> and counts) and completes the Phase 5 review loop: publish/reject through
+> the review endpoint (rejection demands a reason) plus the reason-gated
+> staff takedown (`POST .../unpublish`) — the reason is stored on the product
+> so the seller sees why it disappeared, and every decision writes an
+> AuditLog row. Categories & brands are managed at `/staff/taxonomy` through
+> the audited operations/administrator CRUD (`admin/categories`,
+> `admin/brands`); cycles, duplicate brands, and non-empty category deletes
+> are refused server-side. Group gating follows §4: the product queue moved
+> from any-staff to moderator/administrator, taxonomy writes are
+> operations/administrator. Coverage: `backend/tests/test_staff_catalog.py`
+> + `frontend/src/data/staff.test.js`.
 
 ### 13.5 Order/payment operations
 

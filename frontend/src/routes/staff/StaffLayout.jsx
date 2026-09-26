@@ -11,11 +11,33 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../features/auth/AuthContext";
 import { cx } from "../../lib/cx";
-import { InboxIcon, ClockIcon, ShieldCheckIcon, StoreIcon, UserIcon } from "../../components/ui/Icons";
+import {
+  ClockIcon,
+  InboxIcon,
+  PackageIcon,
+  ShieldCheckIcon,
+  StoreIcon,
+  TagIcon,
+  UserIcon,
+} from "../../components/ui/Icons";
 
+// `groups` narrows a nav item to the §4 matrix roles; the backend refuses
+// out-of-group actions regardless (this is UX, not security).
 const NAV = [
   { to: "/staff", label: "Seller approvals", icon: InboxIcon, end: true },
   { to: "/staff/stores", label: "Stores", icon: StoreIcon },
+  {
+    to: "/staff/catalog",
+    label: "Catalog",
+    icon: PackageIcon,
+    groups: ["moderator", "administrator"],
+  },
+  {
+    to: "/staff/taxonomy",
+    label: "Categories & brands",
+    icon: TagIcon,
+    groups: ["operations", "administrator"],
+  },
   { to: "/staff/users", label: "Users", icon: UserIcon },
   {
     to: "/staff/team",
@@ -40,11 +62,16 @@ export function StaffLayout() {
   // payload — `is_staff` plus the roles list is the whole contract.
   const roles = user?.staff_roles ?? [];
   const isStaff = Boolean(user?.is_staff || roles.length > 0);
-  // Role administration is administrator-only (§4) — hide the link for other
-  // groups; the backend refuses it regardless.
-  const navItems = NAV.filter(
-    (item) => !item.administratorOnly || roles.includes("administrator")
-  );
+  // Role administration is administrator-only (§4) and each catalog surface
+  // belongs to its matrix groups — hide links the role cannot use; the
+  // backend refuses them regardless.
+  const navItems = NAV.filter((item) => {
+    if (item.administratorOnly && !roles.includes("administrator")) return false;
+    if (item.groups && !item.groups.some((group) => roles.includes(group))) {
+      return false;
+    }
+    return true;
+  });
 
   if (!isStaff) {
     return (

@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   changeStaffRole,
+  createBrand,
+  createCategory,
+  deleteBrand,
+  deleteCategory,
+  fetchAdminBrands,
+  fetchAdminCategories,
+  fetchAdminProducts,
   fetchAdminUser,
   fetchAdminUsers,
   fetchApplicationQueue,
@@ -8,8 +15,11 @@ import {
   fetchStaffMembers,
   fetchStaffStores,
   reviewApplication,
+  reviewProduct,
   setStoreStatus,
   setUserStatus,
+  unpublishProduct,
+  updateCategory,
 } from "./staff";
 
 const APPLICATION_PAYLOAD = {
@@ -293,5 +303,138 @@ describe("staff accessors", () => {
     const { callWith: callWith2 } = mockFetch(STAFF_MEMBER_PAYLOAD);
     await changeStaffRole(3, "remove", "support");
     expect(callWith2("POST")[0]).toBe("/api/v1/auth/admin/staff/3/roles/remove");
+  });
+});
+
+describe("staff catalog accessors (13.4)", () => {
+  const PRODUCT_PAYLOAD = {
+    id: 31,
+    title: "Rattan Chair",
+    slug: "rattan-chair",
+    status: "pending_review",
+    rejection_reason: "",
+    base_price: "1299.00",
+    compare_at_price: "1599.00",
+    display_price: "1299.00",
+    store_name: "JianShop",
+    store_slug: "jianshop",
+    store_owner_email: "bacayonjian@gmail.com",
+    category_name: "Home & Living",
+    category_slug: "home-living",
+    brand_name: "Rattan Co",
+    variant_count: 2,
+    image_count: 3,
+    primary_image: "http://testserver/media/products/a.png",
+    created_at: "2026-09-26T08:00:00Z",
+    updated_at: "2026-09-26T09:00:00Z",
+  };
+
+  const CATEGORY_PAYLOAD = {
+    id: 7,
+    parent: null,
+    name: "Home & Living",
+    slug: "home-living",
+    description: "Nest goods.",
+    position: 1,
+    is_active: true,
+    product_count: 4,
+  };
+
+  const BRAND_PAYLOAD = {
+    id: 3,
+    name: "Rattan Co",
+    slug: "rattan-co",
+    product_count: 2,
+  };
+
+  it("maps console rows (numbers parsed) and forwards every filter", async () => {
+    const { fetchMock } = mockFetch({ count: 1, items: [PRODUCT_PAYLOAD] });
+    const data = await fetchAdminProducts({
+      q: "rattan",
+      status: "pending_review",
+      store: "jianshop",
+      category: "home-living",
+      page: 2,
+      pageSize: 10,
+    });
+
+    const [row] = data.items;
+    expect(row.storeOwnerEmail).toBe("bacayonjian@gmail.com");
+    expect(row.displayPrice).toBe(1299);
+    expect(row.compareAtPrice).toBe(1599);
+    expect(row.variantCount).toBe(2);
+    expect(row.status).toBe("pending_review");
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/catalog/admin/products/?");
+    expect(url).toContain("status=pending_review");
+    expect(url).toContain("store=jianshop");
+    expect(url).toContain("category=home-living");
+    expect(url).toContain("page=2");
+    expect(url).toContain("page_size=10");
+  });
+
+  it("publishes/rejects through the review endpoint", async () => {
+    const { callWith } = mockFetch({ ...PRODUCT_PAYLOAD, status: "rejected" });
+    const updated = await reviewProduct(31, "rejected", "Counterfeit listing.");
+    const post = callWith("POST");
+    expect(post[0]).toBe("/api/v1/catalog/admin/products/31/review");
+    expect(JSON.parse(post[1].body)).toEqual({
+      decision: "rejected",
+      reason: "Counterfeit listing.",
+    });
+    expect(updated.status).toBe("rejected");
+  });
+
+  it("takes down a published product with a reason", async () => {
+    const { callWith } = mockFetch({ ...PRODUCT_PAYLOAD, status: "unpublished" });
+    await unpublishProduct(31, "Unverified claim.");
+    const post = callWith("POST");
+    expect(post[0]).toBe("/api/v1/catalog/admin/products/31/unpublish");
+    expect(JSON.parse(post[1].body)).toEqual({ reason: "Unverified claim." });
+  });
+
+  it("maps taxonomy rows and writes categories through the audited endpoints", async () => {
+    const { fetchMock } = mockFetch({ count: 1, items: [CATEGORY_PAYLOAD] });
+    const data = await fetchAdminCategories({ q: "home", pageSize: 100 });
+    const [category] = data.items;
+    expect(category.parentId).toBeNull();
+    expect(category.productCount).toBe(4);
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/catalog/admin/categories/?");
+    expect(url).toContain("q=home");
+    expect(url).toContain("page_size=100");
+
+    const { callWith } = mockFetch(CATEGORY_PAYLOAD);
+    const created = await createCategory({ name: "Home & Living" });
+    expect(callWith("POST")[0]).toBe("/api/v1/catalog/admin/categories/");
+    expect(JSON.parse(callWith("POST")[1].body)).toEqual({ name: "Home & Living" });
+    expect(created.slug).toBe("home-living");
+
+    const { callWith: callWith2 } = mockFetch({ ...CATEGORY_PAYLOAD, name: "Rugs" });
+    const renamed = await updateCategory(7, { name: "Rugs" });
+    expect(callWith2("PATCH")[0]).toBe("/api/v1/catalog/admin/categories/7/");
+    expect(renamed.name).toBe("Rugs");
+
+    const { callWith: callWith3 } = mockFetch(null);
+    await deleteCategory(7);
+    expect(callWith3("DELETE")[0]).toBe("/api/v1/catalog/admin/categories/7/");
+  });
+
+  it("creates and deletes brands through the audited endpoints", async () => {
+    const { callWith } = mockFetch(BRAND_PAYLOAD);
+    const created = await createBrand({ name: "Rattan Co" });
+    expect(callWith("POST")[0]).toBe("/api/v1/catalog/admin/brands/");
+    expect(JSON.parse(callWith("POST")[1].body)).toEqual({ name: "Rattan Co" });
+    expect(created.slug).toBe("rattan-co");
+
+    const { fetchMock } = mockFetch({ count: 1, items: [BRAND_PAYLOAD] });
+    const data = await fetchAdminBrands({ q: "rattan" });
+    expect(data.items[0].productCount).toBe(2);
+    expect(fetchMock.mock.calls[0][0]).toContain("/api/v1/catalog/admin/brands/?q=rattan");
+
+    const { callWith: callWith2 } = mockFetch(null);
+    await deleteBrand(3);
+    expect(callWith2("DELETE")[0]).toBe("/api/v1/catalog/admin/brands/3/");
   });
 });

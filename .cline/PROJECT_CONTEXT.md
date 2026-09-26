@@ -1,5 +1,6 @@
 # JEYVRO — Project Context (Single Source of Truth)
 
+> Version 1.11 · v1.11 changelog: §6 catalog rule completed (Phase 13.4) — the staff catalogue console (every status, server-filtered), reason-gated takedowns whose reason stays seller-visible, and audited operations/administrator category & brand management; the product queue is now moderator/administrator per §4.
 > Version 1.10 · v1.10 changelog: §4 staff administration rules added (Phase 13 slices v1–v2) — the six-group least-privileged staff permission matrix, plus role/account-status change rules: administrator-only, refused for your own account and for superuser accounts, the last administrator cannot be demoted, suspension revokes live sessions, and every change writes an AuditLog row.
 > Version 1.9 · v1.9 changelog: §6 fulfillment & post-purchase rules added (Phases 10–11) — per-store parcels with carrier adapters, append-only tracking events and parent-order status aggregation (COD is captured at delivery), then the customer surface on top: owner-scoped history/detail/receipt, an audit-derived order timeline with whitelisted copy, server verdicts for cancellation and reorder, and return/refund/issue request intake that Phase 17 adjudicates.
 > Version 1.8 · v1.8 changelog: §6 payments & refund rules added (Phase 9) — one server-priced payment record per order, COD collected at delivery, adapter-seam online payments that expire after 24h, signed idempotent webhooks, and balance-checked refunds reversing an append-only ledger.
@@ -88,7 +89,7 @@ User & seller management · product & category management · order oversight · 
 
 ## 6. Marketplace Features (cross-cutting)
 
-- **Catalog:** product = title, description, images, category, price, variants (size/color with own stock/price), store, rating.
+- **Catalog:** product = title, description, images, category, price, variants (size/color with own stock/price), store, rating. Staff moderation completes the loop (Phase 13.4): moderators own publish/reject/unpublish — a staff takedown demands a reason, stores it on the product (seller-visible), and writes an `AuditLog` row; operations/administrator own the category tree and brand records through the same audited service paths.
 - **Cart:** per-user and server-side; totals are recomputed on the backend at checkout — client prices are never trusted.
 - **Checkout:** address → shipping → payment → review; creates an Order that snapshots prices and items at purchase time.
 - **Payments:** gateway-adapter interface (start with Cash-on-Delivery; PayMongo/GCash/Maya later); every payment has a ledger record and status.

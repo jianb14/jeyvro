@@ -13,6 +13,7 @@ import { ensureCsrfToken, request } from "../lib/api";
 const STORES = "/api/v1/stores";
 const AUDIT = "/api/v1/audit";
 const AUTH = "/api/v1/auth";
+const CATALOG = "/api/v1/catalog";
 
 // --- Shape mapping ---------------------------------------------------------
 
@@ -260,5 +261,179 @@ export async function changeStaffRole(id, action, group) {
     csrf,
   });
   return mapStaffMember(data);
+}
+
+// --- 13.4 Catalog management ----------------------------------------------
+
+export function mapStaffProduct(product) {
+  return {
+    id: product.id,
+    title: product.title,
+    slug: product.slug,
+    status: product.status,
+    rejectionReason: product.rejection_reason ?? "",
+    basePrice: Number(product.base_price ?? 0),
+    compareAtPrice:
+      product.compare_at_price != null ? Number(product.compare_at_price) : null,
+    displayPrice: Number(product.display_price ?? product.base_price ?? 0),
+    storeName: product.store_name ?? "",
+    storeSlug: product.store_slug ?? "",
+    storeOwnerEmail: product.store_owner_email ?? "",
+    categoryName: product.category_name ?? null,
+    categorySlug: product.category_slug ?? null,
+    brandName: product.brand_name ?? null,
+    variantCount: product.variant_count ?? 0,
+    imageCount: product.image_count ?? 0,
+    primaryImage: product.primary_image ?? null,
+    createdAt: product.created_at,
+    updatedAt: product.updated_at,
+  };
+}
+
+export async function fetchAdminProducts({
+  q = "",
+  status = "",
+  store = "",
+  category = "",
+  page = "",
+  pageSize = "",
+} = {}) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (status) params.set("status", status);
+  if (store) params.set("store", store);
+  if (category) params.set("category", category);
+  if (page) params.set("page", page);
+  if (pageSize) params.set("page_size", pageSize);
+  const query = params.toString();
+  const data = await request(CATALOG, `/admin/products/${query ? `?${query}` : ""}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: (data.items ?? []).map(mapStaffProduct),
+  };
+}
+
+/** `decision` is "published" or "rejected" — both audit-logged server-side. */
+export async function reviewProduct(id, decision, reason = "") {
+  const csrf = await ensureCsrfToken();
+  const data = await request(CATALOG, `/admin/products/${id}/review`, {
+    method: "POST",
+    body: { decision, reason },
+    csrf,
+  });
+  return mapStaffProduct(data);
+}
+
+/** Staff takedown of a published product (reason required, audit-logged). */
+export async function unpublishProduct(id, reason) {
+  const csrf = await ensureCsrfToken();
+  const data = await request(CATALOG, `/admin/products/${id}/unpublish`, {
+    method: "POST",
+    body: { reason },
+    csrf,
+  });
+  return mapStaffProduct(data);
+}
+
+export function mapStaffCategory(category) {
+  return {
+    id: category.id,
+    parentId: category.parent ?? null,
+    name: category.name,
+    slug: category.slug,
+    description: category.description ?? "",
+    position: category.position ?? 0,
+    isActive: Boolean(category.is_active),
+    productCount: category.product_count ?? 0,
+  };
+}
+
+export function mapStaffBrand(brand) {
+  return {
+    id: brand.id,
+    name: brand.name,
+    slug: brand.slug,
+    productCount: brand.product_count ?? 0,
+  };
+}
+
+export async function fetchAdminCategories({
+  q = "",
+  page = "",
+  pageSize = "",
+} = {}) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (page) params.set("page", page);
+  if (pageSize) params.set("page_size", pageSize);
+  const query = params.toString();
+  const data = await request(CATALOG, `/admin/categories/${query ? `?${query}` : ""}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: (data.items ?? []).map(mapStaffCategory),
+  };
+}
+
+export async function createCategory(payload) {
+  const csrf = await ensureCsrfToken();
+  const data = await request(CATALOG, "/admin/categories/", {
+    method: "POST",
+    body: payload,
+    csrf,
+  });
+  return mapStaffCategory(data);
+}
+
+export async function updateCategory(id, payload) {
+  const csrf = await ensureCsrfToken();
+  const data = await request(CATALOG, `/admin/categories/${id}/`, {
+    method: "PATCH",
+    body: payload,
+    csrf,
+  });
+  return mapStaffCategory(data);
+}
+
+export async function deleteCategory(id) {
+  const csrf = await ensureCsrfToken();
+  await request(CATALOG, `/admin/categories/${id}/`, { method: "DELETE", csrf });
+}
+
+export async function fetchAdminBrands({ q = "", page = "", pageSize = "" } = {}) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (page) params.set("page", page);
+  if (pageSize) params.set("page_size", pageSize);
+  const query = params.toString();
+  const data = await request(CATALOG, `/admin/brands/${query ? `?${query}` : ""}`);
+  return {
+    count: data.count ?? (data.items ?? []).length,
+    items: (data.items ?? []).map(mapStaffBrand),
+  };
+}
+
+export async function createBrand(payload) {
+  const csrf = await ensureCsrfToken();
+  const data = await request(CATALOG, "/admin/brands/", {
+    method: "POST",
+    body: payload,
+    csrf,
+  });
+  return mapStaffBrand(data);
+}
+
+export async function updateBrand(id, payload) {
+  const csrf = await ensureCsrfToken();
+  const data = await request(CATALOG, `/admin/brands/${id}/`, {
+    method: "PATCH",
+    body: payload,
+    csrf,
+  });
+  return mapStaffBrand(data);
+}
+
+export async function deleteBrand(id) {
+  const csrf = await ensureCsrfToken();
+  await request(CATALOG, `/admin/brands/${id}/`, { method: "DELETE", csrf });
 }
 

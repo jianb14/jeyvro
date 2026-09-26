@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from apps.audit.services import log_event
 
-from .models import Inventory, Product, StockMovement, Variant
+from .models import Brand, Category, Inventory, Product, StockMovement, Variant
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB (validated at the upload view)
 
@@ -171,6 +171,131 @@ def review_product(staff_user, product_id, *, decision, reason=''):
             detail={'store_id': product.store_id, 'reason': reason},
         )
     return product
+
+
+def staff_unpublish_product(staff_user, product, *, reason):
+    """Staff takedown: published → unpublished (moderation; audit-logged).
+
+    Unlike the seller's own unpublish, a takedown demands a reason — it is
+    stored on the product so the seller sees why it disappeared, and it is
+    written to the audit row (§4 matrix: moderators own publish/reject/
+    unpublish).
+    """
+    if product.status != Product.Status.PUBLISHED:
+        raise ValueError('Only published products can be taken down.')
+    if not reason.strip():
+        raise ValueError('A reason is required for a staff takedown.')
+
+    with transaction.atomic():
+        product.status = Product.Status.UNPUBLISHED
+        product.rejection_reason = reason.strip()
+        product.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+        log_event(
+            staff_user,
+            'product_unpublished',
+            product,
+            detail={'store_id': product.store_id, 'reason': reason.strip()},
+        )
+    return product
+
+
+# --- Taxonomy management (13.4 — operations/administrator, audited) ---
+
+def _validate_category_parent(category, parent):
+    """Refuses self-parenting and cycles: walking up from the new parent
+    must never meet the category being moved."""
+    if parent is None:
+        return
+    if parent.pk == category.pk:
+        raise ValueError('A category cannot be its own parent.')
+    seen = {parent.pk}  # guard against pre-existing corrupt loops
+    cursor = parent.parent
+    while cursor is not None and cursor.pk not in seen:
+        if cursor.pk == category.pk:
+            raise ValueError(
+                'A category cannot be moved under its own descendant.'
+            )
+        seen.add(cursor.pk)
+        cursor = cursor.parent
+
+
+def create_category(staff_user, *, name, parent=None, description='',
+                    position=0, is_active=True):
+    """Operations/administrator category create (audit-logged)."""
+    category = Category.objects.create(
+        name=name.strip(),
+        parent=parent,
+        description=description,
+        position=position or 0,
+        is_active=is_active,
+    )
+    log_event(
+        staff_user,
+        'category_created',
+        category,
+        detail={'name': category.name, 'parent_id': category.parent_id},
+    )
+    return category
+
+
+def update_category(staff_user, category, *, changes):
+    """Field edits incl. reparenting — cycle-checked (audit-logged)."""
+    if 'parent' in changes:
+        _validate_category_parent(category, changes['parent'])
+    if 'name' in changes:
+        changes['name'] = changes['name'].strip()
+
+    for field, value in changes.items():
+        setattr(category, field, value)
+    category.save()
+    log_event(
+        staff_user,
+        'category_updated',
+        category,
+        detail={'name': category.name, 'fields': sorted(changes.keys())},
+    )
+    return category
+
+
+def delete_category(staff_user, category):
+    """Refuses non-empty categories: children would cascade and products
+    are PROTECTed — both must be moved first. The audit row is written
+    before the delete so the object id still exists (§9 append-only trail).
+    """
+    if category.children.exists():
+        raise ValueError('Move or delete the subcategories first.')
+    if category.products.exists():
+        raise ValueError('This category still has products — move them first.')
+
+    with transaction.atomic():
+        log_event(
+            staff_user,
+            'category_deleted',
+            category,
+            detail={'name': category.name, 'parent_id': category.parent_id},
+        )
+        category.delete()
+
+
+def create_brand(staff_user, *, name):
+    """Operations/administrator brand create (audit-logged)."""
+    brand = Brand.objects.create(name=name.strip())
+    log_event(staff_user, 'brand_created', brand, detail={'name': brand.name})
+    return brand
+
+
+def update_brand(staff_user, brand, *, name):
+    brand.name = name.strip()
+    brand.save()
+    log_event(staff_user, 'brand_updated', brand, detail={'name': brand.name})
+    return brand
+
+
+def delete_brand(staff_user, brand):
+    """Products detach (FK SET_NULL) — deletion only removes the label."""
+    with transaction.atomic():
+        log_event(staff_user, 'brand_deleted', brand, detail={'name': brand.name})
+        brand.delete()
 
 
 # --- Inventory (transaction-safe; every change appends a movement row) ---

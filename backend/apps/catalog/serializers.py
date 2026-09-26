@@ -192,3 +192,104 @@ class PublicProductSerializer(serializers.ModelSerializer):
             url = image.image.url
             return request.build_absolute_uri(url) if request else url
         return None
+
+
+# --- Staff shapes (13.4 — catalog console & taxonomy management) -----------
+
+class StaffProductListSerializer(serializers.ModelSerializer):
+    """Staff console row: store identity + status + counts, no payloads.
+
+    Light on purpose (marketplace-admin rule 5) — variants/images open in
+    the seller too, so the console only carries what the table renders.
+    """
+
+    display_price = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
+    store_name = serializers.CharField(source='store.name', read_only=True)
+    store_slug = serializers.SlugField(source='store.slug', read_only=True)
+    store_owner_email = serializers.EmailField(
+        source='store.user.email', read_only=True
+    )
+    category_name = serializers.SerializerMethodField()
+    category_slug = serializers.SerializerMethodField()
+    brand_name = serializers.SerializerMethodField()
+    variant_count = serializers.IntegerField(read_only=True)
+    image_count = serializers.IntegerField(read_only=True)
+    primary_image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'title', 'slug', 'status', 'rejection_reason',
+            'base_price', 'compare_at_price', 'display_price',
+            'store_name', 'store_slug', 'store_owner_email',
+            'category_name', 'category_slug', 'brand_name',
+            'variant_count', 'image_count', 'primary_image',
+            'created_at', 'updated_at',
+        ]
+
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category else None
+
+    def get_category_slug(self, obj):
+        return obj.category.slug if obj.category else None
+
+    def get_brand_name(self, obj):
+        return obj.brand.name if obj.brand else None
+
+    def get_primary_image(self, obj):
+        image = next(iter(obj.images.all()), None)
+        if image is None:
+            return None
+        request = self.context.get('request')
+        url = image.image.url
+        return request.build_absolute_uri(url) if request else url
+
+
+class StaffProductSerializer(SellerProductSerializer):
+    """Full seller shape + store identity — staff detail inspection."""
+
+    store_name = serializers.CharField(source='store.name', read_only=True)
+    store_slug = serializers.SlugField(source='store.slug', read_only=True)
+    store_owner_email = serializers.EmailField(
+        source='store.user.email', read_only=True
+    )
+
+    class Meta(SellerProductSerializer.Meta):
+        fields = SellerProductSerializer.Meta.fields + [
+            'store_name', 'store_slug', 'store_owner_email',
+        ]
+
+
+class StaffCategorySerializer(serializers.ModelSerializer):
+    """Taxonomy management row — slug, ids, and counts stay read-only."""
+
+    product_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = [
+            'id', 'parent', 'name', 'slug', 'description', 'position',
+            'is_active', 'product_count',
+        ]
+        read_only_fields = ['id', 'slug', 'product_count']
+
+    def get_product_count(self, obj):
+        annotated = getattr(obj, 'product_count', None)
+        return annotated if annotated is not None else obj.products.count()
+
+
+class StaffBrandSerializer(serializers.ModelSerializer):
+    """Taxonomy management row — name is unique, slug stays read-only."""
+
+    product_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Brand
+        fields = ['id', 'name', 'slug', 'product_count']
+        read_only_fields = ['id', 'slug', 'product_count']
+
+    def get_product_count(self, obj):
+        annotated = getattr(obj, 'product_count', None)
+        return annotated if annotated is not None else obj.products.count()
