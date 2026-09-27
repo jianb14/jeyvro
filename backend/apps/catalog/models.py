@@ -133,6 +133,21 @@ class Product(TimeStampedModel):
     reviewed_at = models.DateTimeField(blank=True, null=True)
     attributes = models.JSONField(blank=True, default=dict)
 
+    # --- Rating aggregates (Phase 14 — server-computed, §6) ----------------
+    # Rewritten inside every review transaction by apps.reviews services;
+    # the frontend only ever renders these, never recalculates (rule 3).
+    rating_average = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Average of published review ratings; null = no reviews.',
+    )
+    rating_count = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of published reviews.',
+    )
+
     class Meta:
         ordering = ['-created_at']
         indexes = [

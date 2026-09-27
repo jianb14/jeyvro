@@ -24,6 +24,7 @@ import { SellerProductEdit } from "./routes/seller/SellerProductEdit";
 import { SellerInventory } from "./routes/seller/SellerInventory";
 import { SellerOrders } from "./routes/seller/SellerOrders";
 import { SellerOrderDetail } from "./routes/seller/SellerOrderDetail";
+import { SellerReviews } from "./routes/seller/SellerReviews";
 import { SellerStoreSettings } from "./routes/seller/SellerStoreSettings";
 import { StaffLayout } from "./routes/staff/StaffLayout";
 import { StaffSellerApplications } from "./routes/staff/StaffSellerApplications";
@@ -35,6 +36,7 @@ import { StaffCatalog } from "./routes/staff/StaffCatalog";
 import { StaffTaxonomy } from "./routes/staff/StaffTaxonomy";
 import { StaffOrders } from "./routes/staff/StaffOrders";
 import { StaffPayments } from "./routes/staff/StaffPayments";
+import { StaffReviews } from "./routes/staff/StaffReviews";
 import { StaffSettings } from "./routes/staff/StaffSettings";
 
 function App() {
@@ -123,6 +125,7 @@ function App() {
                 <Route path="inventory" element={<SellerInventory />} />
                 <Route path="orders" element={<SellerOrders />} />
                 <Route path="orders/:id" element={<SellerOrderDetail />} />
+                <Route path="reviews" element={<SellerReviews />} />
                 <Route path="settings" element={<SellerStoreSettings />} />
               </Route>
               <Route
@@ -139,6 +142,7 @@ function App() {
                 <Route path="taxonomy" element={<StaffTaxonomy />} />
                 <Route path="orders" element={<StaffOrders />} />
                 <Route path="payments" element={<StaffPayments />} />
+                <Route path="reviews" element={<StaffReviews />} />
                 <Route path="settings" element={<StaffSettings />} />
                 <Route path="users" element={<StaffUsers />} />
                 <Route path="team" element={<StaffTeam />} />

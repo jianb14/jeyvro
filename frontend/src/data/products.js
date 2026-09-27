@@ -35,6 +35,7 @@ export function mapProduct(item) {
     originalPrice: item.originalPrice ?? undefined,
     discount: item.discount ?? 0,
     rating: item.rating ?? 0,
+    ratingCount: item.rating_count ?? 0,
     sold: item.sold ?? 0,
     stock: item.stock,
     store: item.store_name,

@@ -136,8 +136,22 @@ export async function fetchDashboard() {
       customer: order.customer ?? "",
       placedAt: order.placed_at,
     })),
-    // Reviews land with Phase 14 — the slot renders its empty state today.
-    recentReviews: data.recent_reviews ?? [],
+    // Phase 14: the newest published reviews plus the store's own rating —
+    // both written by the review services, rendered as-is here.
+    recentReviews: (data.recent_reviews ?? []).map((review) => ({
+      id: review.id,
+      productTitle: review.product_title ?? "",
+      productSlug: review.product_slug ?? "",
+      rating: review.rating,
+      author: review.author ?? "",
+      body: review.body ?? "",
+      sellerReplied: Boolean(review.seller_replied),
+      createdAt: review.created_at,
+    })),
+    rating: {
+      average: data.store?.rating_average ?? null,
+      count: data.store?.rating_count ?? 0,
+    },
   };
 }
 

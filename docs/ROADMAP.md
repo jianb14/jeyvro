@@ -35,7 +35,7 @@
 | 11 | Customer Account & Order Management | ✅ Done — owner-scoped history/detail/receipt, audit-derived timeline with whitelisted copy, reorder + cancel verdicts, return/refund/issue intake (`OrderRequest`; Phase 17 adjudicates); 11.1 panels live since Phase 3; Contact seller/support deferred to Phase 15 (documented) |
 | 12 | Seller Operations & Seller Dashboard | ✅ Done — seller dashboard aggregates (sales/orders/low-stock), product/variant editor with lifecycle + bulk ops, inventory console (append-only movements), seller order flow (process/pack/ship) with the §12.5 privacy ladder, store settings; gate tests `backend/tests/test_seller_operations.py` + `frontend/src/data/seller.test.js`; §12.6 messaging deferred to Phase 15 (documented) |
 | 13 | Admin, Staff & Platform Operations | ✅ Done — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Slice v4: read-only order/payment operations console (order & shipment oversight, return/refund/dispute intake, payment/refund trail) with refund issuance tightened to finance/administrator. Slice v5: platform settings (`/staff/settings` — marketplace/commission/shipping/feature/notification as one audited singleton; COD gate, platform-owned payment window, new-store shipping seeds, new-account notification defaults); finance/operations now carry real §4 surfaces and the phase Gate is closed. Deferred: 13.3 seller verification (not yet scoped) and store *content* management (deliberate — seller-owned) |
-| 14 | Reviews, Ratings & Trust | ⬜ Not started |
+| 14 | Reviews, Ratings & Trust | ✅ Done — `apps/reviews` (verified-buyer `create_review` proving a delivered/completed order item, one review per user+product DB constraint, server-computed product/store `rating_average`/`rating_count` inside every review transaction), staff moderation (`InStaffGroup` hide with reason + audit, restore, report auto-flag at 3 distinct reporters), seller reply (once, own store), eligibility verdict driving the edit form; `backend/tests/test_reviews.py` + frontend review UI/tests; seller-reply notification wired with Phase 15 (§15.3) |
 | 15 | Messaging & Notifications | ⬜ Not started |
 | 16 | Promotions, Vouchers & Campaigns | ⬜ Not started |
 | 17 | Returns, Refunds & Disputes | ⬜ Not started |
@@ -1291,36 +1291,53 @@ Build the platform control center.
 
 Build a trustworthy review ecosystem.
 
+> **Slice v1 (done):** `apps.reviews` ships the whole loop end to end.
+> Verified-buyer gate (`services._eligible_item` proves a delivered/
+> completed OrderItem — the client never vouches for itself), DB
+> `UniqueConstraint(user, product)` + rating `CheckConstraint`, server
+> computed `Product.rating_average/rating_count` and
+> `Store.rating_average/rating_count` rewritten inside every review
+> transaction, photo links (up to 4), owner edits, staff-only moderation
+> (hide demands a reason, audit-logged `review_hidden`/`review_restored`,
+> restore also clears FLAGGED), abuse reports with a 3-distinct-reporter
+> auto-flag threshold and report resolution, one-per-review seller replies
+> (own store only), and the eligibility endpoint (`can_review`, `reason`,
+> `order_number`, `review_id`) the write form renders from. Frontend:
+> `ProductReviews` section on `/product/:slug` (list + eligibility-driven
+> write/edit form + report modal), seller reviews desk at `/seller/reviews`,
+> staff queue at `/staff/reviews` (group-gated nav), dashboard
+> `recent_reviews`, and product/store rating fields in the public shapes.
+
 ### 14.1 Product reviews
 
--   [ ] Review model
--   [ ] Rating
--   [ ] Text review
--   [ ] Image attachments
--   [ ] Verified purchase
--   [ ] One eligible review per purchase/item
--   [ ] Review editing rules
+-   [x] Review model
+-   [x] Rating
+-   [x] Text review
+-   [x] Image attachments
+-   [x] Verified purchase
+-   [x] One eligible review per purchase/item
+-   [x] Review editing rules
 
 ### 14.2 Seller ratings
 
--   [ ] Seller rating calculation
--   [ ] Seller rating display
--   [ ] Rating aggregation
+-   [x] Seller rating calculation
+-   [x] Seller rating display
+-   [x] Rating aggregation
 
 ### 14.3 Moderation
 
--   [ ] Report review
--   [ ] Review moderation
--   [ ] Remove/hide review
--   [ ] Seller reply
--   [ ] Abuse detection foundation
+-   [x] Report review
+-   [x] Review moderation
+-   [x] Remove/hide review
+-   [x] Seller reply
+-   [x] Abuse detection foundation
 
 ### Gate
 
--   [ ] Only eligible customers can review
--   [ ] Rating aggregation is accurate
--   [ ] Moderation works
--   [ ] Review abuse is controlled
+-   [x] Only eligible customers can review
+-   [x] Rating aggregation is accurate
+-   [x] Moderation works
+-   [x] Review abuse is controlled
 
 **Skills:** marketplace-community, security
 

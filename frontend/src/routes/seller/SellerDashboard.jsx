@@ -3,7 +3,8 @@
  *
  * Every number is server truth from GET /api/v1/stores/my/dashboard
  * (marketplace-sellers rule 5); this page renders, never estimates.
- * Recent reviews render their empty state until Phase 14 ships reviews.
+ * Recent reviews and the store rating come from the Phase 14 review
+ * services — server-computed aggregates rendered as-is.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -20,6 +21,7 @@ import {
 import { EmptyState } from "../../components/ui/EmptyState";
 import { OrderStatusBadge } from "../../components/ui/OrderStatusBadge";
 import { Price } from "../../components/ui/Price";
+import { Rating } from "../../components/ui/Rating";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { StockIndicator } from "../../components/ui/StockIndicator";
 import { InboxIcon, PackageIcon, StarIcon } from "../../components/ui/Icons";
@@ -88,7 +90,7 @@ export function SellerDashboard() {
     );
   }
 
-  const { store, sales, orders, products, inventory } = data;
+  const { store, sales, orders, products, inventory, rating, recentReviews } = data;
 
   return (
     <div className="flex flex-col gap-6">
@@ -255,15 +257,51 @@ export function SellerDashboard() {
       <Card>
         <CardHeader>
           <CardTitle>Recent reviews</CardTitle>
-          <CardDescription>Seller and product reviews arrive with Phase 14.</CardDescription>
+          <CardDescription>
+            {rating.count > 0
+              ? `${rating.average} average from ${rating.count} published ${rating.count === 1 ? "review" : "reviews"} — reply from the reviews desk.`
+              : "Published reviews of your products land here."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <EmptyState
-            compact
-            icon={StarIcon}
-            title="No reviews yet"
-            description="Ratings and reviews unlock when the reviews phase ships — nothing is faked in the meantime."
-          />
+          {recentReviews.length === 0 ? (
+            <EmptyState
+              compact
+              icon={StarIcon}
+              title="No reviews yet"
+              description="Reviews come from buyers whose orders were delivered — nothing is faked in the meantime."
+            />
+          ) : (
+            <ul className="flex flex-col divide-y divide-sand-100 dark:divide-night-800">
+              {recentReviews.map((review) => (
+                <li key={review.id} className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Link
+                      to={`/product/${review.productSlug}`}
+                      className="truncate text-sm font-medium text-sand-900 hover:text-moss-700 dark:text-sand-100 dark:hover:text-moss-300"
+                    >
+                      {review.productTitle}
+                    </Link>
+                    <Rating value={review.rating} readonly size="sm" />
+                  </div>
+                  <p className="text-sm leading-relaxed text-sand-600 dark:text-sand-300">
+                    {review.body}
+                  </p>
+                  <span className="text-xs text-sand-500 dark:text-sand-400">
+                    {review.author} · {formatDate(review.createdAt)}
+                    {review.sellerReplied ? " · replied" : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-4">
+            <Link to="/seller/reviews">
+              <Button variant="outline" size="sm">
+                Open the reviews desk
+              </Button>
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

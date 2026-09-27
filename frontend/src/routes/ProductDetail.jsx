@@ -38,6 +38,7 @@ import { useCart } from "../features/cart/CartContext";
 import { useQuickAdd } from "../features/cart/useQuickAdd";
 import { useWishlist } from "../features/wishlist/WishlistContext";
 import { getProductById, getProducts } from "../data/products";
+import { ProductReviews } from "../features/reviews/ProductReviews";
 import { recordRecentlyViewed } from "../lib/recentlyViewed";
 
 export function ProductDetail() {
@@ -423,6 +424,8 @@ export function ProductDetail() {
                 </p>
               </section>
             )}
+
+            <ProductReviews slug={slug} product={product} />
 
             {related.slug === slug && related.items.length > 0 && (
               <ProductShelf

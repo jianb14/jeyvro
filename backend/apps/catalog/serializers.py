@@ -121,6 +121,7 @@ class PublicProductSerializer(serializers.ModelSerializer):
     originalPrice = serializers.SerializerMethodField()
     discount = serializers.SerializerMethodField()
     rating = serializers.SerializerMethodField()
+    rating_count = serializers.IntegerField(read_only=True)
     sold = serializers.SerializerMethodField()
     stock = serializers.SerializerMethodField()
     isNew = serializers.SerializerMethodField()
@@ -131,7 +132,7 @@ class PublicProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'slug', 'title', 'description',
-            'price', 'originalPrice', 'discount', 'rating', 'sold',
+            'price', 'originalPrice', 'discount', 'rating', 'rating_count', 'sold',
             'stock', 'isNew', 'category', 'category_slug',
             'store_name', 'store_slug', 'store_verified',
             'primary_image', 'images', 'variants', 'created_at',
@@ -159,7 +160,9 @@ class PublicProductSerializer(serializers.ModelSerializer):
         )
 
     def get_rating(self, obj):
-        return None  # reviews arrive with Phase 14
+        # Phase 14: the aggregate the review services keep on the product row
+        # — null means "no published reviews yet", never a faked 0.
+        return float(obj.rating_average) if obj.rating_average is not None else None
 
     def get_sold(self, obj):
         return 0  # order events arrive with Phase 8

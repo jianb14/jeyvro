@@ -108,7 +108,10 @@ class PublicStoreSerializer(serializers.ModelSerializer):
     the storefront surface "free shipping over X" later without a new read.
     """
 
-    rating = serializers.FloatField(read_only=True, allow_null=True, default=None)
+    rating = serializers.FloatField(
+        source='rating_average', read_only=True, allow_null=True, default=None
+    )
+    rating_count = serializers.IntegerField(read_only=True)
     shipping_flat_fee = serializers.DecimalField(
         max_digits=12, decimal_places=2, coerce_to_string=False, read_only=True
     )
@@ -125,5 +128,5 @@ class PublicStoreSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'slug', 'name', 'description', 'logo_url', 'banner_url',
             'return_policy', 'shipping_policy', 'shipping_flat_fee',
-            'free_shipping_threshold', 'rating', 'created_at',
+            'free_shipping_threshold', 'rating', 'rating_count', 'created_at',
         ]

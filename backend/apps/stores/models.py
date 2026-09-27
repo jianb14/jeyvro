@@ -67,6 +67,21 @@ class Store(TimeStampedModel):
     )
     suspended_at = models.DateTimeField(blank=True, null=True)
 
+    # --- Rating aggregates (Phase 14 — derives from product reviews, §6) --
+    # Server-computed by apps.reviews services on every review state
+    # change; storefronts render this value as-is.
+    rating_average = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Average of this store’s published review ratings.',
+    )
+    rating_count = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of published reviews across this store.',
+    )
+
     class Meta:
         indexes = [
             models.Index(fields=['slug'], name='stores_slug_idx'),

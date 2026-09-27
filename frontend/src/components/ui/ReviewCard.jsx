@@ -31,25 +31,42 @@ export function ReviewCard({ review, className }) {
       <p className="text-sm leading-relaxed text-sand-600 dark:text-sand-300">{review.text}</p>
 
       {review.photos?.length > 0 && (
-        <div className="flex gap-2">
-          {review.photos.map((seed, i) => (
-            <div
-              key={i}
-              className="size-14 overflow-hidden rounded-lg border border-sand-200 dark:border-night-700"
-              style={{ backgroundColor: ["#e4ecdc", "#f5ebd6", "#e3edf4"][seed % 3] }}
-              aria-label="Review photo"
-              role="img"
-            />
-          ))}
+        <div className="flex flex-wrap gap-2">
+          {review.photos.map((photo, i) =>
+            typeof photo === "string" ? (
+              <a
+                key={i}
+                href={photo}
+                target="_blank"
+                rel="noreferrer"
+                className="size-14 overflow-hidden rounded-lg border border-sand-200 dark:border-night-700"
+                aria-label="Review photo"
+              >
+                <img
+                  src={photo}
+                  alt={`Review photo ${i + 1}`}
+                  loading="lazy"
+                  className="size-full object-cover"
+                />
+              </a>
+            ) : (
+              <div
+                key={i}
+                className="size-14 overflow-hidden rounded-lg border border-sand-200 dark:border-night-700"
+                style={{ backgroundColor: ["#e4ecdc", "#f5ebd6", "#e3edf4"][photo % 3] }}
+                aria-label="Review photo"
+                role="img"
+              />
+            )
+          )}
         </div>
       )}
 
-      <button
-        type="button"
-        className="inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-sand-500 transition-colors hover:bg-sand-100 hover:text-sand-800 dark:hover:bg-night-800 dark:hover:text-sand-200"
-      >
-        <HeartIcon size={13} /> Helpful ({review.helpful})
-      </button>
+      {review.helpful != null && (
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-sand-500 dark:text-sand-400">
+          <HeartIcon size={13} /> Helpful ({review.helpful})
+        </span>
+      )}
     </article>
   );
 }

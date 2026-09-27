@@ -14,6 +14,7 @@ import {
   InboxIcon,
   PackageIcon,
   SettingsIcon,
+  StarIcon,
   StoreIcon,
   TagIcon,
 } from "../../components/ui/Icons";
@@ -23,6 +24,7 @@ const NAV = [
   { to: "/seller/products", label: "Products", icon: TagIcon },
   { to: "/seller/inventory", label: "Inventory", icon: PackageIcon },
   { to: "/seller/orders", label: "Orders", icon: InboxIcon },
+  { to: "/seller/reviews", label: "Reviews", icon: StarIcon },
   { to: "/seller/settings", label: "Store settings", icon: SettingsIcon },
 ];
 

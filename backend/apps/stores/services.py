@@ -231,11 +231,36 @@ def build_seller_dashboard(store):
         if status in open_statuses
     )
 
+    # Phase 14 reviews — published rows only, reader never recalculates (§6).
+    from apps.reviews.models import Review, ReviewStatus  # local: stores ↔ reviews seam
+
+    recent_reviews = [
+        {
+            'id': review.id,
+            'product_title': review.product.title,
+            'product_slug': review.product.slug,
+            'rating': review.rating,
+            'author': mask_name(review.user.get_full_name() or review.user.email),
+            'body': review.body[:240],
+            'seller_replied': bool(review.seller_reply),
+            'created_at': review.created_at.isoformat(),
+        }
+        for review in (
+            Review.objects.filter(store=store, status=ReviewStatus.PUBLISHED)
+            .select_related('product', 'user')
+            .order_by('-created_at')[:5]
+        )
+    ]
+
     return {
         'store': {
             'name': store.name,
             'slug': store.slug,
             'status': store.status,
+            'rating_average': (
+                float(store.rating_average) if store.rating_average is not None else None
+            ),
+            'rating_count': store.rating_count,
         },
         'products': {
             'total': sum(product_status_counts.values()),
@@ -264,7 +289,7 @@ def build_seller_dashboard(store):
             'low_stock_items': low_stock_items,
         },
         'recent_orders': recent_orders,
-        # Phase 14 owns reviews — the slot ships now so the dashboard shape
-        # is stable when reviews land (12.1 "recent reviews").
-        'recent_reviews': [],
+        # Phase 14 reviews — newest published rows plus the aggregates the
+        # review services keep on the store row (never recomputed here).
+        'recent_reviews': recent_reviews,
     }

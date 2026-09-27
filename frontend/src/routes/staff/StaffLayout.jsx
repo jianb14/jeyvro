@@ -19,6 +19,7 @@ import {
   SettingsIcon,
   ShieldCheckIcon,
   ShoppingBagIcon,
+  StarIcon,
   StoreIcon,
   TagIcon,
   UserIcon,
@@ -52,6 +53,12 @@ const NAV = [
     label: "Catalog",
     icon: PackageIcon,
     groups: ["moderator", "administrator"],
+  },
+  {
+    to: "/staff/reviews",
+    label: "Reviews",
+    icon: StarIcon,
+    groups: ["support", "moderator", "administrator"],
   },
   {
     to: "/staff/taxonomy",
