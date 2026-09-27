@@ -3,7 +3,9 @@
 A real threaded race on PostgreSQL: both checkouts pass the advisory
 pre-check, then the row-locked reservation in catalog services serializes
 them — exactly one order wins, stock never goes negative, and the loser
-leaves no partial rows behind.
+leaves no partial rows behind. (A loser scheduled late enough to read
+stock only after the winner commits is refused one step earlier, at the
+pre-check, as `line_unavailable` — same guarantee, other interleaving.)
 """
 import threading
 from decimal import Decimal
@@ -86,7 +88,16 @@ def test_concurrent_checkout_of_the_last_unit():
 
     assert len(results) == 2, results
     assert results.count('placed') == 1, results
-    assert results.count('insufficient_stock') == 1, results
+    # The loser's refusal *code* depends on its interleaving with the
+    # winner's commit: 'insufficient_stock' when it passed the advisory
+    # pre-check first (the row lock then decides at reserve), or
+    # 'line_unavailable' when its pre-check read stock only after the
+    # reservation committed (available < 1 → 'out of stock'). Both are
+    # correct refusals of the same last unit — the guarantee is exactly
+    # one winner and no partial rows (asserted below), not the path.
+    losers = [code for code in results if code != 'placed']
+    assert len(losers) == 1, results
+    assert losers[0] in {'insufficient_stock', 'line_unavailable'}, results
 
     assert Order.objects.count() == 1
     assert OrderItem.objects.count() == 1

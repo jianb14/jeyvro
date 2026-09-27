@@ -32,6 +32,13 @@ class CreateOrderSerializer(serializers.Serializer):
     payment_method = serializers.ChoiceField(
         choices=PaymentMethod.choices, default=PaymentMethod.COD
     )
+    voucher_code = serializers.CharField(
+        max_length=32,
+        required=False,
+        allow_blank=True,
+        default='',
+        help_text='Optional voucher code (Phase 16 §16.1) — a code, never an amount.',
+    )
 
 
 class CreateOrderRequestSerializer(serializers.Serializer):
@@ -372,6 +379,8 @@ def serialize_order(order):
             'subtotal': _money(order.subtotal),
             'shipping_total': _money(order.shipping_total),
             'savings_total': _money(order.savings_total),
+            'discount_total': _money(order.discount_total),
+            'voucher_code': order.voucher_code,
             'tax_total': _money(order.tax_total),
             'grand_total': _money(order.grand_total),
         },

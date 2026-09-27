@@ -50,6 +50,7 @@ class CheckoutOrderView(APIView):
                 request.user,
                 serializer.validated_data['address_id'],
                 serializer.validated_data['payment_method'],
+                serializer.validated_data['voucher_code'],
             )
         except services.CheckoutError as exc:
             return _rejected(exc)

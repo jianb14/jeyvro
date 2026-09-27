@@ -92,6 +92,16 @@ class Order(TimeStampedModel):
     savings_total = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0.00')
     )
+    # Voucher snapshot (Phase 16 §16.1) — resolved and applied server-side at
+    # checkout; `discount_total` is already subtracted from `grand_total`.
+    voucher_code = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text='Applied voucher code snapshot; empty = no voucher.',
+    )
+    discount_total = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00')
+    )
     tax_total = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0.00')
     )

@@ -37,7 +37,7 @@
 | 13 | Admin, Staff & Platform Operations | ✅ Done — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Slice v4: read-only order/payment operations console (order & shipment oversight, return/refund/dispute intake, payment/refund trail) with refund issuance tightened to finance/administrator. Slice v5: platform settings (`/staff/settings` — marketplace/commission/shipping/feature/notification as one audited singleton; COD gate, platform-owned payment window, new-store shipping seeds, new-account notification defaults); finance/operations now carry real §4 surfaces and the phase Gate is closed. Deferred: 13.3 seller verification (not yet scoped) and store *content* management (deliberate — seller-owned) |
 | 14 | Reviews, Ratings & Trust | ✅ Done — `apps/reviews` (verified-buyer `create_review` proving a delivered/completed order item, one review per user+product DB constraint, server-computed product/store `rating_average`/`rating_count` inside every review transaction), staff moderation (`InStaffGroup` hide with reason + audit, restore, report auto-flag at 3 distinct reporters), seller reply (once, own store), eligibility verdict driving the edit form; `backend/tests/test_reviews.py` + frontend review UI/tests; seller-reply notification wired with Phase 15 (§15.3) |
 | 15 | Messaging & Notifications | 🔄 Slice v1 shipped — `apps/messaging` (participant-scoped `Conversation` with order/product context and reuse-or-create threads, `Message`, per-participant read state, unread counts, report → moderation status, store-owner + staff access checks) and `apps/notifications` (`Notification` + `NotificationPreference` email gating via `GET`/`PUT /api/v1/notification-preferences`); endpoints `/api/v1/conversations/…`, `/api/v1/seller/conversations/`, `/api/v1/notifications/…`; UI `ConversationInbox` at `/account/messages` + `/seller/messages`, `MessageStoreButton` (product/order/support starters), `NotificationBell` badge with `action_url` navigation; §15.3 wired for order placed / shipment / new message / review reply; gate 3/4 (Background jobs waits on §15.4). Open: attachment uploads, mute toggles, staff report console, remaining §15.3 events |
-| 16 | Promotions, Vouchers & Campaigns | ⬜ Not started |
+| 16 | Promotions, Vouchers & Campaigns | 🔄 Slice v1 shipped — `apps/promotions` (platform/seller vouchers — percentage or fixed with min spend, max-discount cap, usage + per-user limits, start/end window, first-order rule, product/category targeting rows, funding attribution), `POST /api/v1/vouchers/validate/` previews a code against the caller's live cart through the same service checkout uses, and redemption is atomic inside `create_order`: the row-locked `VoucherUsage` ledger plus `voucher.redeemed` audit keep counters and discounts race-condition safe and auditable, and orders snapshot `voucher_code`/`discount_total` with the payment collecting the discounted total. Open: §16.2 promotions, §16.3 funding settlement, §16.4 voucher center + checkout UI |
 | 17 | Returns, Refunds & Disputes | ⬜ Not started |
 | 18 | Search, Recommendations & Discovery | ⬜ Not started |
 | 19 | Analytics & Reporting | ⬜ Not started |
@@ -1477,21 +1477,40 @@ Build communication between customers, sellers, and JEYVRO support.
 
 Build the marketplace promotion engine.
 
+> **Slice v1 (done):** `apps.promotions` ships the voucher engine end to end.
+> `Voucher` — platform/seller scope (a DB constraint guarantees seller
+> vouchers carry a store and platform vouchers do not), percentage or fixed
+> value with `min_spend`, an optional `max_discount` cap, `usage_limit`,
+> `per_user_limit`, `first_order_only`, a start/end window, and funding
+> attribution — plus two companions: `VoucherEligibility` (product/category
+> targeting rows; no rows means everything in scope) and `VoucherUsage` (the
+> append-only redemption ledger, one row per voucher per order).
+> `POST /api/v1/vouchers/validate/` judges a code against the caller's live
+> cart through the exact service checkout uses, so the preview can never
+> disagree with the order. `orders.services.create_order` accepts a
+> `voucher_code`, re-evaluates it against the re-validated checkout lines,
+> subtracts the server-computed discount from `grand_total` (snapshotted as
+> `voucher_code` + `discount_total` on the order), and writes the ledger row
+> under a row lock — counters are re-checked there, so a limited code cannot
+> be double-spent, the loser of a race rolls back whole, and every discount
+> is audit-logged (`voucher.redeemed`). Every rule is DB-constraint backed
+> and covered by `backend/tests/test_vouchers.py` + `test_vouchers_race.py`.
+
 ### 16.1 Voucher engine
 
--   [ ] Platform vouchers
--   [ ] Seller vouchers
--   [ ] Product vouchers
--   [ ] Category vouchers
--   [ ] Percentage discount
--   [ ] Fixed discount
--   [ ] Minimum spend
--   [ ] Maximum discount
--   [ ] Usage limit
--   [ ] Per-user limit
--   [ ] Start/end date
--   [ ] Eligibility rules
--   [ ] First-order rules
+-   [x] Platform vouchers
+-   [x] Seller vouchers
+-   [x] Product vouchers
+-   [x] Category vouchers
+-   [x] Percentage discount
+-   [x] Fixed discount
+-   [x] Minimum spend
+-   [x] Maximum discount
+-   [x] Usage limit
+-   [x] Per-user limit
+-   [x] Start/end date
+-   [x] Eligibility rules
+-   [x] First-order rules
 
 ### 16.2 Promotions
 
@@ -1518,10 +1537,16 @@ Build the marketplace promotion engine.
 
 ### Gate
 
--   [ ] Promotion rules calculated server-side
--   [ ] Invalid vouchers rejected
--   [ ] Voucher usage is race-condition safe
--   [ ] Discount calculations are auditable
+-   [x] Promotion rules calculated server-side
+-   [x] Invalid vouchers rejected
+-   [x] Voucher usage is race-condition safe
+-   [x] Discount calculations are auditable
+
+> Verified by `tests/test_vouchers.py` (server-side verdicts and discount
+> math, unknown/expired/inactive/min-spend/targeting/limit rejections with
+> their error codes, ledger + audit rows, model CheckConstraints) and
+> `tests/test_vouchers_race.py` (two parallel checkouts on a
+> one-redemption voucher — exactly one wins, the loser rolls back whole).
 
 **Skills:** marketplace-orders, backend-feature
 

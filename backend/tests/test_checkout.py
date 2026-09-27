@@ -375,6 +375,8 @@ def test_multi_seller_order_creates_per_store_seller_orders(client):
         'subtotal': 500.0,
         'shipping_total': 50.0,
         'savings_total': 0.0,
+        'discount_total': 0.0,
+        'voucher_code': '',
         'tax_total': 0.0,
         'grand_total': 550.0,
     }

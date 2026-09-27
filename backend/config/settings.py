@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'apps.reviews',
     'apps.messaging',
     'apps.notifications',
+    'apps.promotions',
 ]
 
 MIDDLEWARE = [

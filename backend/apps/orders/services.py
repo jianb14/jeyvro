@@ -22,6 +22,7 @@ from apps.payments.models import PaymentMethod, PaymentStatus
 
 from apps.notifications import services as notification_services
 from apps.notifications.models import NotificationCategory
+from apps.promotions import services as promotion_services
 
 from .models import (
     Order,
@@ -70,7 +71,7 @@ def _generate_order_number():
     raise RuntimeError('Could not allocate a unique order number.')
 
 
-def create_order(user, address_id, payment_method=PaymentMethod.COD):
+def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_code=''):
     """Creates the parent order + one SellerOrder per store — one transaction.
 
     Re-validates every cart line against live product/variant/stock/price
@@ -144,8 +145,35 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD):
             savings_total += store_savings
             store_plans.append((store, store_lines, store_subtotal, fee))
 
+        # Vouchers (§16.1): the code is the only client input — whether it
+        # applies and what it is worth is decided here, against the same live
+        # line plan the order is built from. An invalid code fails the whole
+        # checkout; a discount is never silently dropped or trusted.
+        voucher_plan = None
+        discount_total = Decimal('0.00')
+        if voucher_code:
+            try:
+                voucher_plan = promotion_services.evaluate_voucher(
+                    voucher_code,
+                    user,
+                    [
+                        {
+                            'store': store,
+                            'subtotal': store_subtotal,
+                            'lines': [
+                                (item.variant.product, line_total)
+                                for item, _price, _compare_at, line_total in store_lines
+                            ],
+                        }
+                        for store, store_lines, store_subtotal, _fee in store_plans
+                    ],
+                )
+            except promotion_services.VoucherError as exc:
+                raise CheckoutError(str(exc), code=exc.code) from exc
+            discount_total = voucher_plan['discount_total']
+
         tax_total = Decimal('0.00')  # §6: tax is not computed yet — slot reserved
-        grand_total = subtotal + shipping_total + tax_total
+        grand_total = subtotal + shipping_total + tax_total - discount_total
 
         order = Order.objects.create(
             number=_generate_order_number(),
@@ -161,6 +189,8 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD):
             subtotal=subtotal,
             shipping_total=shipping_total,
             savings_total=savings_total,
+            voucher_code=voucher_plan['voucher'].code if voucher_plan else '',
+            discount_total=discount_total,
             tax_total=tax_total,
             grand_total=grand_total,
         )
@@ -201,6 +231,16 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD):
                     ) from exc
 
         cart.items.all().delete()
+
+        # The redemption ledger write (§16.1) — row-locked counters, inside
+        # this transaction: a code that raced to its limit raises here and
+        # the whole order rolls back with it, so totals and counters can
+        # never diverge (§16 Gate).
+        if voucher_plan is not None:
+            try:
+                promotion_services.redeem_voucher(voucher_plan, user, order)
+            except promotion_services.VoucherError as exc:
+                raise CheckoutError(str(exc), code=exc.code) from exc
 
         # Payments (§6 v1.8): every order is immediately awaiting payment —
         # COD collects on delivery, online payments start through the adapter
