@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getCategories, getProductById, getProducts } from "./products";
 
 const API_ITEM = {
+  id: 7,
   slug: "woven-basket",
   title: "Woven Basket",
   description: "Handwoven.",
@@ -85,6 +86,8 @@ describe("catalog accessors", () => {
     expect(item.price).toBe(349);
     expect(item.originalPrice).toBe(499);
     expect(item.variants[0].isDefault).toBe(true);
+    // Product pk rides along for messaging (product-scoped conversations).
+    expect(item.dbId).toBe(7);
   });
 
   it("unwraps the category envelope into a plain list", async () => {

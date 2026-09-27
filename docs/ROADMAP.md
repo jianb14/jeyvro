@@ -36,7 +36,7 @@
 | 12 | Seller Operations & Seller Dashboard | ✅ Done — seller dashboard aggregates (sales/orders/low-stock), product/variant editor with lifecycle + bulk ops, inventory console (append-only movements), seller order flow (process/pack/ship) with the §12.5 privacy ladder, store settings; gate tests `backend/tests/test_seller_operations.py` + `frontend/src/data/seller.test.js`; §12.6 messaging deferred to Phase 15 (documented) |
 | 13 | Admin, Staff & Platform Operations | ✅ Done — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Slice v4: read-only order/payment operations console (order & shipment oversight, return/refund/dispute intake, payment/refund trail) with refund issuance tightened to finance/administrator. Slice v5: platform settings (`/staff/settings` — marketplace/commission/shipping/feature/notification as one audited singleton; COD gate, platform-owned payment window, new-store shipping seeds, new-account notification defaults); finance/operations now carry real §4 surfaces and the phase Gate is closed. Deferred: 13.3 seller verification (not yet scoped) and store *content* management (deliberate — seller-owned) |
 | 14 | Reviews, Ratings & Trust | ✅ Done — `apps/reviews` (verified-buyer `create_review` proving a delivered/completed order item, one review per user+product DB constraint, server-computed product/store `rating_average`/`rating_count` inside every review transaction), staff moderation (`InStaffGroup` hide with reason + audit, restore, report auto-flag at 3 distinct reporters), seller reply (once, own store), eligibility verdict driving the edit form; `backend/tests/test_reviews.py` + frontend review UI/tests; seller-reply notification wired with Phase 15 (§15.3) |
-| 15 | Messaging & Notifications | ⬜ Not started |
+| 15 | Messaging & Notifications | 🔄 Slice v1 shipped — `apps/messaging` (participant-scoped `Conversation` with order/product context and reuse-or-create threads, `Message`, per-participant read state, unread counts, report → moderation status, store-owner + staff access checks) and `apps/notifications` (`Notification` + `NotificationPreference` email gating via `GET`/`PUT /api/v1/notification-preferences`); endpoints `/api/v1/conversations/…`, `/api/v1/seller/conversations/`, `/api/v1/notifications/…`; UI `ConversationInbox` at `/account/messages` + `/seller/messages`, `MessageStoreButton` (product/order/support starters), `NotificationBell` badge with `action_url` navigation; §15.3 wired for order placed / shipment / new message / review reply; gate 3/4 (Background jobs waits on §15.4). Open: attachment uploads, mute toggles, staff report console, remaining §15.3 events |
 | 16 | Promotions, Vouchers & Campaigns | ⬜ Not started |
 | 17 | Returns, Refunds & Disputes | ⬜ Not started |
 | 18 | Search, Recommendations & Discovery | ⬜ Not started |
@@ -956,8 +956,8 @@ Complete the customer post-purchase experience.
 -   [x] Request return
 -   [x] Request refund
 -   [x] Report issue
--   [ ] Contact seller — arrives with Phase 15 (Messaging & Notifications)
--   [ ] Contact support — arrives with Phase 15 (Messaging & Notifications)
+-   [x] Contact seller — live via Phase 15 (`MessageStoreButton` on the order's seller slice)
+-   [x] Contact support — live via Phase 15 (same control, support-scoped thread)
 
 > 11.3 returns/refunds/issues are **intake records** (`OrderRequest`):
 > owner-scoped, server-verified eligibility (delivered slice / captured
@@ -1053,16 +1053,19 @@ Give sellers complete operational control over their stores.
 
 ### 12.6 Seller messaging
 
--   [ ] Conversation list
--   [ ] Chat view
--   [ ] Buyer ↔ seller conversations
--   [ ] Order/product context
+-   [x] Conversation list
+-   [x] Chat view
+-   [x] Buyer ↔ seller conversations
+-   [x] Order/product context
 
-> **Deferred to Phase 15 (§15.1):** messaging ships as one system — the
-> Conversation/Message models, customer ↔ seller *and* customer ↔ support,
-> read state, attachments and moderation access. Phase 11 already surfaces the
-> "Contact seller — arrives with Phase 15" entry points and §12.5 "Customer
-> communication" closes with the same slice, so nothing is built twice.
+> **Closed by Phase 15 (§15.1) Slice v1:** `/seller/messages` renders the shared
+> `ConversationInbox` (conversation list + thread + reply + report) against
+> `GET /api/v1/seller/conversations/`, which is store-owner scoped
+> (`store__user=request.user`). §12.5 "Customer communication" and the Phase 11
+> "Contact seller / Contact support" entry points ship in the same slice, so
+> nothing was built twice. Remaining messaging items — mute toggles, a staff
+> report console, and the §15.3 event hooks beyond orders/messages — are
+> tracked in Phase 15.
 
 ### 12.7 Store settings
 
@@ -1351,27 +1354,60 @@ Build communication between customers, sellers, and JEYVRO support.
 
 ### 15.1 Messaging
 
--   [ ] Conversation model
--   [ ] Message model
--   [ ] Customer ↔ seller
--   [ ] Customer ↔ support
--   [ ] Order context
--   [ ] Product context
--   [ ] Read state
+-   [x] Conversation model
+-   [x] Message model
+-   [x] Customer ↔ seller
+-   [x] Customer ↔ support
+-   [x] Order context
+-   [x] Product context
+-   [x] Read state
 -   [ ] Attachments
--   [ ] Report conversation
+-   [x] Report conversation
 -   [ ] Block/mute where appropriate
 -   [ ] Moderation access
 
+> **Slice v1 (done):** `apps/messaging` — `Conversation` (buyer ↔ store seller
+> or buyer ↔ support, optional order/product context, plus a per-side mute flag)
+> and `Message` (body, system flag, `attachment_url`). `POST /api/v1/conversations/`
+> reuses the caller's open thread for the same customer + store/order/product, so
+> the product-page and order-page entry points can never duplicate a thread.
+> The inbox is `GET /api/v1/conversations/` (buyer),
+> `GET /api/v1/seller/conversations/` (store owner),
+> `GET /api/v1/conversations/<id>/`, `POST .../messages/`, `POST .../read/` and
+> `POST .../report/`; every one re-checks `can_access_conversation` — the buyer,
+> the store's owner, or `support` / `moderator` / `administrator` staff.
+> Read state is per participant (`customer_last_read_at` /
+> `seller_last_read_at` / `support_last_read_at`), unread counts are derived
+> server-side and opening a thread marks it read. Reporting writes a
+> `ConversationReport`, sets the thread to `reported` and audit-logs it.
+> UI: shared `ConversationInbox` (list + thread + reply + report, selection via
+> `?id=`) at `/account/messages` and `/seller/messages`, with
+> `MessageStoreButton` as the product ("Message store"), order ("Contact
+> seller") and support ("Contact support") starter.
+> **Still open:** attachment *uploads* (the field exists; storage lands with the
+> media phase), mute toggles (the flags exist and already suppress the
+> new-message notification, but nothing exposes them yet), and a staff console
+> for reported threads (staff can read them; the review screen is Phase 20).
+
 ### 15.2 Notifications
 
--   [ ] Notification model
--   [ ] In-app notifications
--   [ ] Unread count
--   [ ] Mark as read
--   [ ] Mark all as read
--   [ ] Notification categories
--   [ ] Notification preferences
+-   [x] Notification model
+-   [x] In-app notifications
+-   [x] Unread count
+-   [x] Mark as read
+-   [x] Mark all as read
+-   [x] Notification categories
+-   [x] Notification preferences
+
+> **Slice v1 (done):** `apps/notifications` — `Notification` (category, title,
+> message, `action_url`, read flag) and `NotificationPreference` (per-category
+> email opt-out, seeded from the platform defaults on first use, edited in the
+> account settings panel through `GET`/`PUT /api/v1/notification-preferences`).
+> `/api/v1/notifications/` (list, `?unread=1`, `?category=`), `.../unread-count/`,
+> `POST .../<id>/read/` and `POST .../read-all/`. The email side respects the
+> preference row and sends synchronously (worker tier is §15.4). The navbar bell
+> (`NotificationBell`) polls the unread count every 30 s, marks items/all read
+> and navigates through `action_url`.
 
 ### 15.3 Notification events
 
@@ -1379,16 +1415,28 @@ Build communication between customers, sellers, and JEYVRO support.
 -   [ ] Verification
 -   [ ] Seller application
 -   [ ] Seller approval/rejection
--   [ ] Order placed
+-   [x] Order placed
 -   [ ] Payment confirmed
 -   [ ] Order processing
--   [ ] Order shipped
--   [ ] Order delivered
+-   [x] Order shipped
+-   [x] Order delivered
 -   [ ] Return update
 -   [ ] Refund update
--   [ ] New message
+-   [x] New message
 -   [ ] Promotion
 -   [ ] Security event
+
+> **Wired so far:** order placed (§8 checkout → `ORDERS`, linking to
+> `/orders/<number>`), shipment in transit / out for delivery / delivered (§8.4
+> status updates, same link), new message (§15.1 — suppressed when the recipient
+> muted the thread) and the seller's reply to a review (§14). Verification,
+> password reset and staff suspension already send their own account emails from
+> `apps/accounts/services.py`.
+> **Next slice:** in-app registration/verification rows, seller application and
+> its approval/rejection, payment confirmed and refund updates (the payment
+> service already emits audit events at exactly those transitions),
+> processing/packed, then return updates with the §11.3 workflow and promotions
+> with §16.
 
 ### 15.4 Background jobs
 
@@ -1399,12 +1447,25 @@ Build communication between customers, sellers, and JEYVRO support.
 -   [ ] Retry strategy
 -   [ ] Failure handling
 
+> **Deferred (Slice v2):** notification email sends synchronously from
+> `notifications.services.create_notification`, and payment expiry runs from the
+> `expire_overdue_payments` management command rather than a scheduler. The
+> services around them are already transaction-safe and idempotent (a duplicate
+> capture or replayed webhook changes nothing), so moving them onto a worker tier
+> is a transport change: the seam is the single `create_notification` call site
+> plus the existing management commands.
+
 ### Gate
 
--   [ ] Messages are permission-scoped
--   [ ] Notifications are generated correctly
--   [ ] Read state works
+-   [x] Messages are permission-scoped
+-   [x] Notifications are generated correctly
+-   [x] Read state works
 -   [ ] Background jobs are retry-safe
+
+> The first three are verified by `tests/test_messaging.py` (participant and
+> staff access, deny paths for strangers, unread counts and read-marking) and
+> `tests/test_notifications.py` (categories, unread count, per-item and mark-all
+> read, email preference gating); the fourth waits on §15.4.
 
 **Skills:** marketplace-community, backend-feature
 

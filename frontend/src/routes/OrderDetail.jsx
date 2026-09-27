@@ -23,6 +23,7 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { Textarea } from "../components/ui/Textarea";
 import { Timeline } from "../components/ui/Timeline";
 import { useToast } from "../components/ui/ToastProvider";
+import { MessageStoreButton } from "../components/messaging/MessageStoreButton";
 import * as ordersApi from "../data/orders";
 
 /**
@@ -323,6 +324,15 @@ export function OrderDetail() {
               <Button variant="ghost" size="sm" onClick={() => openRequest("issue")}>
                 Report an issue
               </Button>
+              <MessageStoreButton
+                type="support"
+                orderId={order.dbId}
+                label="Contact support"
+                heading="Contact Jeyvro support"
+                description={`Support will see ${order.number} as the conversation context.`}
+                placeholder="Tell support what you need help with…"
+                variant="ghost"
+              />
             </div>
 
             {order.sellerOrders.map((so) => (
@@ -337,7 +347,19 @@ export function OrderDetail() {
                   >
                     {so.storeName}
                   </Link>
-                  <OrderStatusBadge status={so.status} />
+                  <div className="flex items-center gap-2">
+                    <OrderStatusBadge status={so.status} />
+                    {so.storeId && (
+                      <MessageStoreButton
+                        storeId={so.storeId}
+                        orderId={order.dbId}
+                        label="Contact seller"
+                        heading={`Message ${so.storeName}`}
+                        description={`Your message is attached to order ${order.number}.`}
+                        placeholder={`Hi ${so.storeName}, about order ${order.number}…`}
+                      />
+                    )}
+                  </div>
                 </div>
                 <ul className="mt-4 flex flex-col gap-3">
                   {so.items.map((item) => (

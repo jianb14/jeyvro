@@ -24,6 +24,9 @@ import {
   StoreIcon,
   PackageIcon,
 } from "../ui/Icons";
+import { NotificationBell } from "../ui/NotificationBell";
+import { MessageSquareIcon } from "../ui/Icons";
+
 
 const navRailClass = ({ isActive }) =>
   cx(
@@ -133,6 +136,8 @@ export function Navbar() {
             )}
           </Link>
 
+          <NotificationBell />
+
           <div className="hidden items-center gap-2.5 md:flex">
           <ThemeToggle />
           {loading ? null : user ? (
@@ -145,6 +150,7 @@ export function Navbar() {
               }
               items={[
                 { key: "profile", label: "My account", icon: UserIcon, onSelect: () => navigate("/account") },
+                { key: "messages", label: "Messages", icon: MessageSquareIcon, onSelect: () => navigate("/account/messages") },
                 { key: "orders", label: "My orders", icon: PackageIcon, onSelect: () => navigate("/orders") },
                 { key: "sell", label: "Sell on Jeyvro", icon: StoreIcon, onSelect: () => navigate("/sell") },
                 { key: "settings", label: "Settings", icon: SettingsIcon, onSelect: () => navigate("/account") },

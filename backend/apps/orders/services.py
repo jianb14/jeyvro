@@ -20,6 +20,9 @@ from apps.catalog import services as catalog_services
 from apps.payments import services as payment_services
 from apps.payments.models import PaymentMethod, PaymentStatus
 
+from apps.notifications import services as notification_services
+from apps.notifications.models import NotificationCategory
+
 from .models import (
     Order,
     OrderItem,
@@ -224,6 +227,14 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD):
                 'payment': payment.reference,
             },
         )
+        notification_services.create_notification(
+            recipient=user,
+            category=NotificationCategory.ORDERS,
+            title=f'Order #{order.number} Placed',
+            message=f'Your order #{order.number} for ₱{order.grand_total:,.2f} has been placed successfully.',
+            action_url=f'/orders/{order.number}',
+        )
+
     return order
 
 
@@ -583,6 +594,21 @@ def update_shipment_status(shipment, new_status, *, location='', description='',
                 'location': location,
             },
         )
+
+        # Notification trigger (§15.3)
+        if new_status in (ShipmentStatus.IN_TRANSIT, ShipmentStatus.OUT_FOR_DELIVERY, ShipmentStatus.DELIVERED):
+            status_labels = {
+                ShipmentStatus.IN_TRANSIT: 'is in transit',
+                ShipmentStatus.OUT_FOR_DELIVERY: 'is out for delivery',
+                ShipmentStatus.DELIVERED: 'has been delivered',
+            }
+            notification_services.create_notification(
+                recipient=parent_order.user,
+                category=NotificationCategory.ORDERS,
+                title=f'Shipment update for Order #{parent_order.number}',
+                message=f'Parcel {s.tracking_number} {status_labels.get(new_status, "updated")}.',
+                action_url=f'/orders/{parent_order.number}',
+            )
 
     return s
 

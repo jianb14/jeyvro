@@ -72,6 +72,7 @@ const CHECKOUT_PAYLOAD = {
 };
 
 const ORDER_PAYLOAD = {
+  id: 42,
   number: "JV-20260925-ABCD2345",
   status: "awaiting_payment",
   created_at: "2026-09-25T08:00:00Z",
@@ -107,6 +108,7 @@ const ORDER_PAYLOAD = {
   seller_orders: [
     {
       id: 3,
+      store_id: 9,
       store_slug: "kalinga-crafts",
       store_name: "Kalinga Crafts",
       status: "placed",
@@ -288,6 +290,14 @@ describe("order accessors", () => {
     expect(order.sellerOrders[0].storeName).toBe("Kalinga Crafts");
     expect(order.sellerOrders[0].shippingFee).toBe(49);
     expect(order.sellerOrders[0].items[0].qty).toBe(2);
+  });
+
+  it("keeps the ids the messaging starter needs for conversation context", async () => {
+    const { callWith } = mockFetch(ORDER_PAYLOAD, { status: 201 });
+    const order = await placeOrder(7, "cod");
+    expect(callWith("POST")[0]).toBe("/api/v1/checkout/orders");
+    expect(order.dbId).toBe(42);
+    expect(order.sellerOrders[0].storeId).toBe(9);
   });
 
   it("fetches and cancels one order by number", async () => {

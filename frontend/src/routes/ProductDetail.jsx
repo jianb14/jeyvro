@@ -23,6 +23,7 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { StockIndicator } from "../components/ui/StockIndicator";
 import { VariantPicker } from "../components/ui/VariantPicker";
 import { useToast } from "../components/ui/ToastProvider";
+import { MessageStoreButton } from "../components/messaging/MessageStoreButton";
 import {
   CheckCircleIcon,
   HeartIcon,
@@ -394,9 +395,20 @@ export function ProductDetail() {
                         </p>
                       </div>
                     </div>
-                    <Link to={`/store/${product.storeSlug}`}>
-                      <Button variant="outline" size="sm">Visit store</Button>
-                    </Link>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link to={`/store/${product.storeSlug}`}>
+                        <Button variant="outline" size="sm">Visit store</Button>
+                      </Link>
+                      {product.dbId && (
+                        <MessageStoreButton
+                          productId={product.dbId}
+                          label="Message store"
+                          heading={`Ask ${product.store} a question`}
+                          description="Your message keeps this product as context."
+                          placeholder={`Hi ${product.store}, about ${product.title}…`}
+                        />
+                      )}
+                    </div>
                   </div>
                 </Card>
 

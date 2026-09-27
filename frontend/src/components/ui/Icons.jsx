@@ -80,6 +80,8 @@ export const FilterIcon = (p) => <I {...p}><path d="M3 5h18M6.5 12h11M10 19h4" /
 export const WalletIcon = (p) => <I {...p}><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z" /><path d="M16 7V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2M16 14h.01" /></I>;
 export const PercentIcon = (p) => <I {...p}><path d="m19 5-14 14" /><circle cx="7" cy="7" r="2.5" /><circle cx="17" cy="17" r="2.5" /></I>;
 export const CreditCardSolidIcon = (p) => <I {...p}><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></I>;
+export const MessageSquareIcon = (p) => <I {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></I>;
+
 export const HeartSolidIcon = ({ size = 18, className }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" className={className} aria-hidden="true">
     <path d="M19.5 12.6 12 20l-7.5-7.4a5 5 0 1 1 7.5-6.6 5 5 0 1 1 7.5 6.6z" />

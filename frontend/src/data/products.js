@@ -28,6 +28,9 @@ export function hashSeed(text) {
 export function mapProduct(item) {
   return {
     id: item.slug,
+    // Numeric pk — kept alongside the slug identity so messaging can attach
+    // product context without a second lookup (§15.1).
+    dbId: item.id ?? null,
     seed: hashSeed(item.slug),
     title: item.title,
     description: item.description ?? "",

@@ -92,6 +92,8 @@ function mapOrderRequest(request) {
 export function mapSellerOrder(sellerOrder) {
   return {
     id: sellerOrder.id,
+    // Store pk — needed to open an order-scoped conversation (§15.1).
+    storeId: sellerOrder.store_id ?? null,
     orderNumber: sellerOrder.order_number ?? "",
     placedAt: sellerOrder.placed_at ?? null,
     storeSlug: sellerOrder.store_slug,
@@ -143,6 +145,8 @@ function mapPayment(payment) {
 
 function mapOrder(order) {
   return {
+    // Order pk — the messaging starter needs it for order context (§15.1).
+    dbId: order.id ?? null,
     number: order.number,
     status: order.status,
     placedAt: order.created_at,

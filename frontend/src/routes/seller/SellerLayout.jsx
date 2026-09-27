@@ -12,6 +12,7 @@ import { useAuth } from "../../features/auth/AuthContext";
 import { cx } from "../../lib/cx";
 import {
   InboxIcon,
+  MessageSquareIcon,
   PackageIcon,
   SettingsIcon,
   StarIcon,
@@ -24,6 +25,7 @@ const NAV = [
   { to: "/seller/products", label: "Products", icon: TagIcon },
   { to: "/seller/inventory", label: "Inventory", icon: PackageIcon },
   { to: "/seller/orders", label: "Orders", icon: InboxIcon },
+  { to: "/seller/messages", label: "Messages", icon: MessageSquareIcon },
   { to: "/seller/reviews", label: "Reviews", icon: StarIcon },
   { to: "/seller/settings", label: "Store settings", icon: SettingsIcon },
 ];

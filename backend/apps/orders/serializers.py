@@ -226,6 +226,8 @@ def serialize_seller_order(seller_order, order=None):
     return {
         'id': seller_order.id,
         'order_number': parent_order.number,
+        # Store pk so buyers can open an order-scoped conversation (§15.1).
+        'store_id': seller_order.store_id,
         'placed_at': parent_order.created_at.isoformat(),
         'store_slug': seller_order.store.slug,
         'store_name': seller_order.store_name,
@@ -351,6 +353,7 @@ def serialize_order(order):
         for item in seller_order.items.all()
     )
     return {
+        'id': order.id,
         'number': order.number,
         'status': order.status,
         'created_at': order.created_at.isoformat(),

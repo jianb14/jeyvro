@@ -15,6 +15,7 @@ import { Wishlist } from "./routes/Wishlist";
 import { Login } from "./routes/Login";
 import { Register } from "./routes/Register";
 import { Account } from "./routes/Account";
+import { AccountMessages } from "./routes/AccountMessages";
 import { BecomeSeller } from "./routes/BecomeSeller";
 import { Storefront } from "./routes/Storefront";
 import { SellerLayout } from "./routes/seller/SellerLayout";
@@ -25,6 +26,7 @@ import { SellerInventory } from "./routes/seller/SellerInventory";
 import { SellerOrders } from "./routes/seller/SellerOrders";
 import { SellerOrderDetail } from "./routes/seller/SellerOrderDetail";
 import { SellerReviews } from "./routes/seller/SellerReviews";
+import { SellerMessages } from "./routes/seller/SellerMessages";
 import { SellerStoreSettings } from "./routes/seller/SellerStoreSettings";
 import { StaffLayout } from "./routes/staff/StaffLayout";
 import { StaffSellerApplications } from "./routes/staff/StaffSellerApplications";
@@ -103,6 +105,14 @@ function App() {
                 }
               />
               <Route
+                path="/account/messages"
+                element={
+                  <ProtectedRoute>
+                    <AccountMessages />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/sell"
                 element={
                   <ProtectedRoute>
@@ -125,6 +135,7 @@ function App() {
                 <Route path="inventory" element={<SellerInventory />} />
                 <Route path="orders" element={<SellerOrders />} />
                 <Route path="orders/:id" element={<SellerOrderDetail />} />
+                <Route path="messages" element={<SellerMessages />} />
                 <Route path="reviews" element={<SellerReviews />} />
                 <Route path="settings" element={<SellerStoreSettings />} />
               </Route>
