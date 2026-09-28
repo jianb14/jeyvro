@@ -1,19 +1,26 @@
 import { cx } from "../../lib/cx";
 import { Button } from "./Button";
-import { TruckIcon, ShieldCheckIcon, TagIcon } from "./Icons";
+import { TruckIcon, ShieldCheckIcon, TagIcon, PercentIcon } from "./Icons";
 
 function formatP(n) {
   return "₱" + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /**
- * CartSummary (Phase 7) — renders the totals the cart API computed (§6):
- * subtotal, savings, and item count arrive as server truth; shipping is
- * priced by checkout (Phase 8) and promo codes arrive with Phase 16, so
- * this component adds no money math of its own (marketplace-orders rule 1).
+ * CartSummary (Phase 7, §16.2) — renders the totals the cart API computed:
+ * subtotal, savings, item count and the promotion engine's auto-discount
+ * arrive as server truth; shipping is priced by checkout (Phase 8). This
+ * component adds no money math of its own (marketplace-orders rule 1) — the
+ * promotion line is a label + a server number, nothing else.
  */
 export function CartSummary({ totals = {}, onCheckout, checkoutDisabled = false, checkoutNote, className }) {
-  const { itemCount = 0, subtotal = 0, savings = 0 } = totals;
+  const {
+    itemCount = 0,
+    subtotal = 0,
+    savings = 0,
+    promotionDiscount = 0,
+    itemsTotal = subtotal,
+  } = totals;
 
   return (
     <div
@@ -39,6 +46,14 @@ export function CartSummary({ totals = {}, onCheckout, checkoutDisabled = false,
             <span className="tabular-nums">-{formatP(savings)}</span>
           </div>
         )}
+        {promotionDiscount > 0 && (
+          <div className="flex justify-between font-medium text-moss-700 dark:text-moss-400">
+            <span className="flex items-center gap-1.5">
+              <PercentIcon size={14} /> Promotions
+            </span>
+            <span className="tabular-nums">-{formatP(promotionDiscount)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-sand-600 dark:text-sand-300">
           <span className="flex items-center gap-1.5">
             <TruckIcon size={14} /> Shipping
@@ -50,7 +65,7 @@ export function CartSummary({ totals = {}, onCheckout, checkoutDisabled = false,
       <div className="flex items-baseline justify-between border-t border-sand-200 pt-4 dark:border-night-800">
         <span className="text-sm font-medium text-sand-600 dark:text-sand-300">Items total</span>
         <span className="font-display text-2xl font-semibold tabular-nums text-moss-700 dark:text-moss-300">
-          {formatP(subtotal)}
+          {formatP(itemsTotal)}
         </span>
       </div>
 

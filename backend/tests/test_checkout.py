@@ -21,6 +21,7 @@ from apps.cart.models import Cart
 from apps.catalog import services as catalog_services
 from apps.catalog.models import Inventory, Product, StockMovement, Variant
 from apps.orders.models import Order, OrderItem, SellerOrder
+from apps.promotions.models import Campaign, Promotion
 from apps.stores.models import Store
 
 pytestmark = pytest.mark.django_db
@@ -175,6 +176,36 @@ def test_threshold_below_subtotal_keeps_the_flat_fee(client):
     assert body['groups'][0]['shipping_fee'] == 50.0
     assert body['groups'][0]['free_shipping'] is False
     assert body['totals']['grand_total'] == 349.0
+
+
+def test_checkout_preview_grand_total_is_net_of_auto_promotions(client):
+    """§16.2 — the preview judges promotions exactly as order creation does.
+
+    Without this parity the summary would quote a total the order later
+    undercuts: `create_order` subtracts `promotion_discount`, so the preview
+    must too.
+    """
+    _seller, store = make_active_store(
+        'promopreviewseller@example.com', 'Promo Preview Store', fee='50.00'
+    )
+    _product, variant = make_product(store, price='299.00', compare_at=None)
+    campaign = Campaign.objects.create(
+        scope='seller', store=store, name='Preview Campaign'
+    )
+    Promotion.objects.create(
+        campaign=campaign,
+        label='10% Off Storewide',
+        kind='product_discount',
+        discount_type='percentage',
+        value=Decimal('10.00'),
+    )
+    make_customer(client)
+    add_to_cart(client, variant, quantity=2)  # 598.00 + 50.00 shipping
+
+    body = client.get(CHECKOUT).json()
+    totals = body['totals']
+    assert totals['promotion_discount'] == 59.8  # 10% of 598.00
+    assert totals['grand_total'] == 588.2  # 598 + 50 − 59.80
 
 
 def test_guests_cannot_preview_or_place_orders(client):
@@ -375,6 +406,7 @@ def test_multi_seller_order_creates_per_store_seller_orders(client):
         'subtotal': 500.0,
         'shipping_total': 50.0,
         'savings_total': 0.0,
+        'promotion_discount': 0.0,
         'discount_total': 0.0,
         'voucher_code': '',
         'tax_total': 0.0,

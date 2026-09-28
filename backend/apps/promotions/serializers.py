@@ -44,3 +44,79 @@ def serialize_voucher_preview(plan):
         'eligible_subtotal': float(plan['eligible_subtotal']),
         'discount_total': float(plan['discount_total']),
     }
+
+
+def serialize_promotion(promo):
+    """Public / seller / staff promotion read shape."""
+    campaign = promo.campaign
+    store = campaign.store if campaign else None
+    return {
+        'id': promo.id,
+        'store_id': store.id if store else None,
+        'store_name': store.name if store else None,
+        'store_slug': store.slug if store else None,
+        'name': promo.label,
+        'kind': promo.kind,
+        'label': promo.label,
+        'discount_type': promo.discount_type,
+        'value': float(promo.value),
+        'min_spend': float(promo.min_spend),
+        'min_qty': promo.min_qty,
+        'is_active': promo.is_active,
+        'campaign_id': campaign.id if campaign else None,
+        'campaign_name': campaign.name if campaign else None,
+        'starts_at': campaign.starts_at.isoformat() if campaign and campaign.starts_at else None,
+        'ends_at': campaign.ends_at.isoformat() if campaign and campaign.ends_at else None,
+    }
+
+
+def serialize_campaign(campaign):
+    """Staff / seller campaign read shape."""
+    return {
+        'id': campaign.id,
+        'name': campaign.name,
+        'scope': campaign.scope,
+        'store_id': campaign.store_id,
+        'store_name': campaign.store.name if campaign.store else None,
+        'description': campaign.description,
+        'starts_at': campaign.starts_at.isoformat() if campaign.starts_at else None,
+        'ends_at': campaign.ends_at.isoformat() if campaign.ends_at else None,
+        'is_active': campaign.is_active,
+        'promotion_count': campaign.promotions.count(),
+    }
+
+
+class PromotionCreateSerializer(serializers.Serializer):
+    """Store owner promotion creation payload."""
+
+    name = serializers.CharField(max_length=120)
+    kind = serializers.ChoiceField(
+        choices=[
+            'flash_sale',
+            'product_discount',
+            'bundle',
+            'free_shipping',
+            'buy_x_get_y',
+        ]
+    )
+    discount_type = serializers.ChoiceField(choices=['percentage', 'fixed'], default='percentage')
+    value = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, default=0.0)
+    min_spend = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=0, default=0.0
+    )
+    min_qty = serializers.IntegerField(min_value=1, default=1)
+    label = serializers.CharField(max_length=120, required=False, allow_blank=True, default='')
+    starts_at = serializers.DateTimeField(required=False, allow_null=True)
+    ends_at = serializers.DateTimeField(required=False, allow_null=True)
+    is_active = serializers.BooleanField(default=True)
+    target_type = serializers.ChoiceField(
+        choices=['all', 'product', 'category'], default='all'
+    )
+    product_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, default=list
+    )
+    category_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, default=list
+    )
+
+

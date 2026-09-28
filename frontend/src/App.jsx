@@ -26,6 +26,7 @@ import { SellerInventory } from "./routes/seller/SellerInventory";
 import { SellerOrders } from "./routes/seller/SellerOrders";
 import { SellerOrderDetail } from "./routes/seller/SellerOrderDetail";
 import { SellerReviews } from "./routes/seller/SellerReviews";
+import { SellerPromotions } from "./routes/seller/SellerPromotions";
 import { SellerMessages } from "./routes/seller/SellerMessages";
 import { SellerStoreSettings } from "./routes/seller/SellerStoreSettings";
 import { StaffLayout } from "./routes/staff/StaffLayout";
@@ -137,6 +138,7 @@ function App() {
                 <Route path="orders/:id" element={<SellerOrderDetail />} />
                 <Route path="messages" element={<SellerMessages />} />
                 <Route path="reviews" element={<SellerReviews />} />
+                <Route path="promotions" element={<SellerPromotions />} />
                 <Route path="settings" element={<SellerStoreSettings />} />
               </Route>
               <Route

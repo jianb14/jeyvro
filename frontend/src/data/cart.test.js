@@ -24,6 +24,8 @@ const CART_PAYLOAD = {
       primary_image: "http://api/media/products/a.png",
       store_slug: "kalinga-crafts",
       store_name: "Kalinga Crafts",
+      promotion_savings: 30,
+      promotion_label: "Flash sale",
     },
   ],
   groups: [
@@ -32,10 +34,18 @@ const CART_PAYLOAD = {
       store_name: "Kalinga Crafts",
       item_count: 2,
       subtotal: 698,
+      promotion_discount: 30,
       items: [],
     },
   ],
-  totals: { line_count: 1, item_count: 2, subtotal: 698, savings: 300 },
+  totals: {
+    line_count: 1,
+    item_count: 2,
+    subtotal: 698,
+    savings: 300,
+    promotion_discount: 30,
+    items_total: 668,
+  },
 };
 
 function mockFetch(payload, { ok = true, status = ok ? 200 : 500 } = {}) {
@@ -72,6 +82,12 @@ describe("cart accessors", () => {
     expect(cart.items[0].storeSlug).toBe("kalinga-crafts");
     expect(cart.groups[0].storeName).toBe("Kalinga Crafts");
     expect(typeof cart.items[0].seed).toBe("number");
+    // §16.2 — the engine's numbers are mapped, never recomputed.
+    expect(cart.totals.promotionDiscount).toBe(30);
+    expect(cart.totals.itemsTotal).toBe(668);
+    expect(cart.groups[0].promotionDiscount).toBe(30);
+    expect(cart.items[0].promotionSavings).toBe(30);
+    expect(cart.items[0].promotionLabel).toBe("Flash sale");
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/cart/");
   });
 

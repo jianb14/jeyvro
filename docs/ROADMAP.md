@@ -37,7 +37,7 @@
 | 13 | Admin, Staff & Platform Operations | ✅ Done — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Slice v4: read-only order/payment operations console (order & shipment oversight, return/refund/dispute intake, payment/refund trail) with refund issuance tightened to finance/administrator. Slice v5: platform settings (`/staff/settings` — marketplace/commission/shipping/feature/notification as one audited singleton; COD gate, platform-owned payment window, new-store shipping seeds, new-account notification defaults); finance/operations now carry real §4 surfaces and the phase Gate is closed. Deferred: 13.3 seller verification (not yet scoped) and store *content* management (deliberate — seller-owned) |
 | 14 | Reviews, Ratings & Trust | ✅ Done — `apps/reviews` (verified-buyer `create_review` proving a delivered/completed order item, one review per user+product DB constraint, server-computed product/store `rating_average`/`rating_count` inside every review transaction), staff moderation (`InStaffGroup` hide with reason + audit, restore, report auto-flag at 3 distinct reporters), seller reply (once, own store), eligibility verdict driving the edit form; `backend/tests/test_reviews.py` + frontend review UI/tests; seller-reply notification wired with Phase 15 (§15.3) |
 | 15 | Messaging & Notifications | 🔄 Slice v1 shipped — `apps/messaging` (participant-scoped `Conversation` with order/product context and reuse-or-create threads, `Message`, per-participant read state, unread counts, report → moderation status, store-owner + staff access checks) and `apps/notifications` (`Notification` + `NotificationPreference` email gating via `GET`/`PUT /api/v1/notification-preferences`); endpoints `/api/v1/conversations/…`, `/api/v1/seller/conversations/`, `/api/v1/notifications/…`; UI `ConversationInbox` at `/account/messages` + `/seller/messages`, `MessageStoreButton` (product/order/support starters), `NotificationBell` badge with `action_url` navigation; §15.3 wired for order placed / shipment / new message / review reply; gate 3/4 (Background jobs waits on §15.4). Open: attachment uploads, mute toggles, staff report console, remaining §15.3 events |
-| 16 | Promotions, Vouchers & Campaigns | 🔄 Slice v1 shipped — `apps/promotions` (platform/seller vouchers — percentage or fixed with min spend, max-discount cap, usage + per-user limits, start/end window, first-order rule, product/category targeting rows, funding attribution), `POST /api/v1/vouchers/validate/` previews a code against the caller's live cart through the same service checkout uses, and redemption is atomic inside `create_order`: the row-locked `VoucherUsage` ledger plus `voucher.redeemed` audit keep counters and discounts race-condition safe and auditable, and orders snapshot `voucher_code`/`discount_total` with the payment collecting the discounted total. Open: §16.2 promotions, §16.3 funding settlement, §16.4 voucher center + checkout UI |
+| 16 | Promotions, Vouchers & Campaigns | 🔄 Slices v1+v2 shipped — `apps/promotions` (platform/seller vouchers — percentage or fixed with min spend, max-discount cap, usage + per-user limits, start/end window, first-order rule, product/category targeting rows, funding attribution), `POST /api/v1/vouchers/validate/` previews a code against the caller's live cart through the same service checkout uses, and redemption is atomic inside `create_order`: the row-locked `VoucherUsage` ledger plus `voucher.redeemed` audit keep counters and discounts race-condition safe and auditable, and orders snapshot `voucher_code`/`discount_total` with the payment collecting the discounted total. Slice v2: automatic promotions (`services.evaluate_store_lines` — product discount, flash sale, bundle threshold, free-shipping waiver) priced into cart, checkout preview and orders as `promotion_discount` (checkout preview parity fixed), seller CRUD at `/api/v1/seller/promotions/`, and the §16.4 UI — cart promotion labels, checkout voucher entry, order/receipt discount rows, `/seller/promotions` desk. Open: §16.3 funding settlement, §16.4 voucher center + admin campaign console, Buy X Get Y engine |
 | 17 | Returns, Refunds & Disputes | ⬜ Not started |
 | 18 | Search, Recommendations & Discovery | ⬜ Not started |
 | 19 | Analytics & Reporting | ⬜ Not started |
@@ -1496,6 +1496,16 @@ Build the marketplace promotion engine.
 > is audit-logged (`voucher.redeemed`). Every rule is DB-constraint backed
 > and covered by `backend/tests/test_vouchers.py` + `test_vouchers_race.py`.
 
+> **Slice v2 (done):** the automatic promotion engine behind §16.2 — `Campaign`
+> / `Promotion` / `PromotionUsage` judged per line by
+> `promotions.services.evaluate_store_lines` (product discount, flash sale,
+> bundle threshold, free-shipping waiver), seller-scoped CRUD at
+> `/api/v1/seller/promotions/`, and the verdict carried as
+> `promotion_discount` on cart, checkout preview and order (netted against the
+> voucher's `discount_total` in one `grand_total`). The §16.4 UI lands with it:
+> cart promotion labels, checkout voucher entry, order/receipt discount rows and
+> the seller promotions desk.
+
 ### 16.1 Voucher engine
 
 -   [x] Platform vouchers
@@ -1514,12 +1524,28 @@ Build the marketplace promotion engine.
 
 ### 16.2 Promotions
 
--   [ ] Product discounts
--   [ ] Flash sale
--   [ ] Campaign
--   [ ] Free shipping promotion
--   [ ] Bundle discount
+-   [x] Product discounts
+-   [x] Flash sale
+-   [x] Campaign
+-   [x] Free shipping promotion
+-   [x] Bundle discount
 -   [ ] Buy X Get Y architecture
+
+> Discounts are judged by `apps.promotions.services.evaluate_store_lines`
+> (per-line entries, campaign windows, targeting rows, quantity thresholds)
+> and reach the cart as server numbers: `apps.cart.serializers` exposes a
+> per-line `promotion_savings` + `promotion_label`, a store-level
+> `promotion_discount`, and the net `items_total`. Checkout waives the shipping
+> fee when a `free_shipping` promotion qualifies
+> (`promotion_services.find_shipping_waiver`), and
+> `orders.services.create_order` snapshots the result as
+> `Order.promotion_discount` — already subtracted from `grand_total`, next to
+> the voucher's `discount_total`. Covered by `backend/tests/test_promotions.py`
+> (auto product discount, flash-sale window, bundle threshold, free-shipping
+> waiver, promo+voucher stacking in one order, seller CRUD API) and
+> `tests/test_checkout.py::test_checkout_preview_grand_total_is_net_of_auto_promotions`
+> (preview parity). Buy X Get Y stays a declared `Promotion.kind` with no
+> engine behind it yet.
 
 ### 16.3 Funding
 
@@ -1530,10 +1556,32 @@ Build the marketplace promotion engine.
 ### 16.4 Promotion UI
 
 -   [ ] Voucher center
--   [ ] Product promotion labels
--   [ ] Checkout voucher selection
--   [ ] Seller promotion management
+-   [x] Product promotion labels
+-   [x] Checkout voucher selection
+-   [x] Seller promotion management
 -   [ ] Admin campaign management
+
+> **Shipped:** the cart renders the engine's own verdict — a promotion chip on
+> the line (`frontend/src/components/ui/CartItem.jsx`), a Promotions row and the
+> server's net `items_total` in `CartSummary`; checkout takes a code
+> (`POST /api/v1/vouchers/validate/` for the inline verdict, then `?voucher_code=`
+> on the preview and `voucher_code` on order creation), shows Promotions and
+> Voucher rows above the total, and drops a code the server refuses on a later
+> re-price instead of displaying a discount that will not exist; order detail and
+> the receipt print the promotion + voucher lines from the order snapshot; and
+> `/seller/promotions` lists, creates, toggles and deactivates store-wide
+> promotions (`frontend/src/routes/seller/SellerPromotions.jsx` over
+> `frontend/src/data/promotions.js`, with the NAV entry in `SellerLayout`).
+> Checkout preview parity (`build_checkout_preview`) now subtracts
+> `promotion_discount` and prices an optional `voucher_code` through the same
+> service the order uses, so the summary can never quote a total the order
+> undercuts. The wire contracts are pinned by
+> `frontend/src/data/promotions.test.js` (voucher verdict + seller CRUD only
+> ever send a code or a rule, never an amount) and `frontend/src/data/cart.test.js`
+> (`promotion_discount` / `items_total` mapped straight off the engine's numbers).
+>
+> **Open:** the browse-side voucher center (the public endpoint
+> `GET /api/v1/vouchers/` exists, no UI yet) and the staff campaign console.
 
 ### Gate
 

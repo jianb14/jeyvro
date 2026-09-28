@@ -39,6 +39,7 @@ REGISTER = '/api/v1/auth/register'
 LOGIN = '/api/v1/auth/login'
 ADDRESSES = '/api/v1/auth/addresses/'
 VALIDATE = '/api/v1/vouchers/validate/'
+CHECKOUT = '/api/v1/checkout/'
 CHECKOUT_ORDERS = '/api/v1/checkout/orders'
 
 ADDRESS_PAYLOAD = {
@@ -155,6 +156,7 @@ def test_validate_endpoint_and_checkout_share_the_verdict():
         'subtotal': 400.0,
         'shipping_total': 50.0,
         'savings_total': 0.0,
+        'promotion_discount': 0.0,
         'discount_total': 40.0,
         'voucher_code': 'WELCOME10',
         'tax_total': 0.0,
@@ -172,6 +174,59 @@ def test_validate_endpoint_and_checkout_share_the_verdict():
     audit = AuditLog.objects.get(action='voucher.redeemed')
     assert audit.detail['code'] == 'WELCOME10'
     assert audit.detail['discount_total'] == '40.00'
+
+
+def test_checkout_preview_prices_an_applied_voucher_server_side():
+    """The preview judges the code with the same service as the order —
+    net totals now, and the order that follows charges exactly that."""
+    client = Client()
+    buyer = _sign_in(client, 'previewbuyer@example.com')
+    address_id = _add_address(client)
+    _seller, store = _make_active_store(
+        'previewseller@example.com', fee='50.00'
+    )
+    _product, variant = _make_product(store, price='200.00')
+    _cart_with(buyer, variant, quantity=2)  # 400.00 + 50.00 shipping
+    _platform_voucher()  # 10% → 40.00
+
+    body = client.get(f'{CHECKOUT}?voucher_code=welcome10').json()
+    assert body['voucher_error'] is None
+    assert body['voucher']['code'] == 'WELCOME10'
+    assert body['voucher']['discount_total'] == 40.0
+    totals = body['totals']
+    assert totals['discount_total'] == 40.0
+    assert totals['voucher_code'] == 'WELCOME10'
+    assert totals['grand_total'] == 410.0  # 400 + 50 − 40
+
+    # The order that follows agrees with the preview to the cent.
+    response = _checkout(client, address_id, 'WELCOME10')
+    assert response.status_code == 201, response.content
+    assert response.json()['totals']['grand_total'] == 410.0
+
+
+def test_checkout_preview_reports_a_refused_code_without_breaking():
+    """A stale/invalid code leaves the totals gross and explains why —
+    `create_order` stays the authoritative validator at place time."""
+    client = Client()
+    buyer = _sign_in(client, 'previewbad@example.com')
+    _add_address(client)
+    _seller, store = _make_active_store(
+        'previewbadseller@example.com', slug='preview-bad-store', fee='50.00'
+    )
+    _product, variant = _make_product(store, price='200.00')
+    _cart_with(buyer, variant, quantity=2)  # 400.00 + 50.00 shipping
+
+    response = client.get(f'{CHECKOUT}?voucher_code=nope-not-real')
+    assert response.status_code == 200
+    body = response.json()
+    assert body['voucher'] is None
+    assert body['voucher_error']['error'] == 'voucher_not_found'
+    assert body['voucher_error']['detail']
+    totals = body['totals']
+    assert totals['discount_total'] == 0.0
+    assert totals['voucher_code'] == ''
+    assert totals['grand_total'] == 450.0  # gross: 400 + 50
+    assert body['checkout_ready'] is True
 
 
 def test_unknown_code_is_rejected_and_codes_normalize():

@@ -7,6 +7,8 @@ their placeholders until orders/reviews exist (Phases 8/14).
 """
 from rest_framework import serializers
 
+from apps.promotions import services as promotion_services
+
 from .models import Brand, Category, Inventory, Product, ProductImage, Variant
 from . import services
 
@@ -127,6 +129,7 @@ class PublicProductSerializer(serializers.ModelSerializer):
     isNew = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     category_slug = serializers.SlugField(source='category.slug', read_only=True)
+    promotion_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -136,6 +139,7 @@ class PublicProductSerializer(serializers.ModelSerializer):
             'stock', 'isNew', 'category', 'category_slug',
             'store_name', 'store_slug', 'store_verified',
             'primary_image', 'images', 'variants', 'created_at',
+            'promotion_label',
         ]
 
     # --- server-resolved display values (§6 v1.3) ---
@@ -195,6 +199,10 @@ class PublicProductSerializer(serializers.ModelSerializer):
             url = image.image.url
             return request.build_absolute_uri(url) if request else url
         return None
+
+
+    def get_promotion_label(self, obj):
+        return promotion_services.resolve_product_promotion_label(obj)
 
 
 # --- Staff shapes (13.4 — catalog console & taxonomy management) -----------

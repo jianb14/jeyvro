@@ -165,6 +165,9 @@ function mapOrder(order) {
       subtotal: order.totals?.subtotal ?? 0,
       shipping: order.totals?.shipping_total ?? 0,
       savings: order.totals?.savings_total ?? 0,
+      promotionDiscount: order.totals?.promotion_discount ?? 0,
+      discount: order.totals?.discount_total ?? 0,
+      voucherCode: order.totals?.voucher_code || "",
       tax: order.totals?.tax_total ?? 0,
       grandTotal: order.totals?.grand_total ?? 0,
     },
@@ -200,10 +203,26 @@ function mapCheckout(data) {
       itemCount: data.totals?.item_count ?? 0,
       subtotal: data.totals?.subtotal ?? 0,
       savings: data.totals?.savings ?? 0,
+      promotionDiscount: data.totals?.promotion_discount ?? 0,
+      discount: data.totals?.discount_total ?? 0,
+      voucherCode: data.totals?.voucher_code || "",
       shipping: data.totals?.shipping_total ?? 0,
       tax: data.totals?.tax_total ?? 0,
       grandTotal: data.totals?.grand_total ?? 0,
     },
+    // §16.1 — the applied voucher verdict (or why it was refused), always
+    // server-computed; the UI renders it and never recalculates.
+    voucher: data.voucher
+      ? {
+          code: data.voucher.code,
+          title: data.voucher.voucher?.title ?? "",
+          discountTotal: data.voucher.discount_total ?? 0,
+          eligibleSubtotal: data.voucher.eligible_subtotal ?? 0,
+        }
+      : null,
+    voucherError: data.voucher_error
+      ? { code: data.voucher_error.error, detail: data.voucher_error.detail }
+      : null,
     issues: (data.issues ?? []).map((issue) => ({
       itemId: issue.item_id,
       title: issue.title,
@@ -219,16 +238,27 @@ function mapCheckout(data) {
   };
 }
 
-export async function fetchCheckout() {
-  return mapCheckout(await request(BASE, "/checkout/"));
+/**
+ * Checkout preview — pass the applied voucher code (if any) so the server
+ * returns net totals through the same service checkout uses (§16.1).
+ */
+export async function fetchCheckout(voucherCode = "") {
+  const query = voucherCode
+    ? `?voucher_code=${encodeURIComponent(voucherCode)}`
+    : "";
+  return mapCheckout(await request(BASE, `/checkout/${query}`));
 }
 
-export async function placeOrder(addressId, paymentMethod = "cod") {
+export async function placeOrder(addressId, paymentMethod = "cod", voucherCode = "") {
   const csrf = await ensureCsrfToken();
+  const body = { address_id: addressId, payment_method: paymentMethod };
+  // The wire contract sends a code, never an amount (§16) — and only when
+  // one is actually applied, so the plain body stays unchanged.
+  if (voucherCode) body.voucher_code = voucherCode;
   return mapOrder(
     await request(BASE, "/checkout/orders", {
       method: "POST",
-      body: { address_id: addressId, payment_method: paymentMethod },
+      body,
       csrf,
     })
   );

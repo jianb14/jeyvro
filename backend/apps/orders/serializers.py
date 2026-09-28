@@ -14,6 +14,8 @@ from apps.common.privacy import mask_name, mask_phone
 from apps.payments import adapters as payment_adapters
 from apps.payments.models import PaymentMethod
 from apps.payments.serializers import serialize_payment
+from apps.promotions import services as promotion_services
+from apps.promotions.serializers import serialize_voucher_preview
 from apps.stores.models import Store
 
 from . import services
@@ -83,13 +85,18 @@ class UpdateShipmentStatusSerializer(serializers.Serializer):
 
 
 
-def build_checkout_preview(cart, request=None):
+def build_checkout_preview(cart, request=None, voucher_code=''):
     """Checkout read shape: cart truth + per-store shipping + totals (§6).
 
     Reuses the cart payload (one implementation of line truth) and adds the
     fee each store charges, the payment options (with live availability from
     the adapter registry), an `issues` list for blocked lines, and the final
-    totals — the client only renders these numbers.
+    totals — the client only renders these numbers. The grand total is net of
+    the automatic promotion discount (§16.2) and, when `voucher_code` is
+    supplied, of the voucher discount (§16.1) — both judged by the same
+    services order creation uses, so this preview can never disagree with the
+    order that follows. A rejected code leaves the totals gross and surfaces
+    `voucher_error`; `create_order` stays the authoritative validator.
     """
     if cart is None:
         return {
@@ -102,13 +109,19 @@ def build_checkout_preview(cart, request=None):
                 'item_count': 0,
                 'subtotal': 0,
                 'savings': 0,
+                'promotion_discount': 0,
+                'items_total': 0,
                 'shipping_total': 0,
+                'discount_total': 0,
+                'voucher_code': '',
                 'tax_total': 0,
                 'grand_total': 0,
             },
             'issues': [],
             'payment_methods': payment_adapters.payment_method_options(),
             'checkout_ready': False,
+            'voucher': None,
+            'voucher_error': None,
         }
     payload = build_cart_payload(cart, request)
     stores = {
@@ -126,6 +139,11 @@ def build_checkout_preview(cart, request=None):
             if store is not None
             else (Decimal('0.00'), True)
         )
+        if store is not None:
+            waiver = promotion_services.find_shipping_waiver(store, subtotal)
+            if waiver is not None:
+                fee = Decimal('0.00')
+                is_free = True
         group['shipping_fee'] = float(fee)
         group['free_shipping'] = is_free
         shipping_total += fee
@@ -146,15 +164,55 @@ def build_checkout_preview(cart, request=None):
             })
 
     subtotal_total = Decimal(str(payload['totals']['subtotal']))
+    promotion_discount = Decimal(str(payload['totals']['promotion_discount']))
     tax_total = Decimal('0.00')  # §6: reserved slot, not computed yet
+
+    # §16.1 — an applied voucher is judged by the exact service checkout
+    # uses; a rejection is reported, never silently swallowed.
+    voucher_plan = None
+    voucher_error = None
+    voucher_code = (voucher_code or '').strip()
+    if voucher_code:
+        if request is not None and getattr(request, 'user', None) is not None:
+            store_lines = promotion_services.build_store_lines(
+                cart.items.select_related(
+                    'variant__product__store', 'variant__product__category'
+                )
+            )
+            try:
+                voucher_plan = promotion_services.evaluate_voucher(
+                    voucher_code, request.user, store_lines
+                )
+            except promotion_services.VoucherError as exc:
+                voucher_error = {'error': exc.code, 'detail': str(exc)}
+                voucher_code = ''
+        else:
+            voucher_error = {
+                'error': 'voucher_requires_user',
+                'detail': 'Sign in to apply a voucher.',
+            }
+            voucher_code = ''
+    voucher_discount = voucher_plan['discount_total'] if voucher_plan else Decimal('0.00')
+
     payload['totals'].update({
         'shipping_total': float(shipping_total),
+        'discount_total': float(voucher_discount),
+        'voucher_code': voucher_plan['voucher'].code if voucher_plan else '',
         'tax_total': float(tax_total),
-        'grand_total': float(subtotal_total + shipping_total + tax_total),
+        'grand_total': float(max(
+            Decimal('0.00'),
+            subtotal_total + shipping_total + tax_total - promotion_discount - voucher_discount,
+        )),
     })
     payload['issues'] = issues
     payload['payment_methods'] = payment_adapters.payment_method_options()
     payload['checkout_ready'] = bool(payload['items']) and not issues
+    payload['voucher'] = (
+        serialize_voucher_preview(voucher_plan)
+        if voucher_plan is not None
+        else None
+    )
+    payload['voucher_error'] = voucher_error
     return payload
 
 
@@ -379,6 +437,7 @@ def serialize_order(order):
             'subtotal': _money(order.subtotal),
             'shipping_total': _money(order.shipping_total),
             'savings_total': _money(order.savings_total),
+            'promotion_discount': _money(order.promotion_discount),
             'discount_total': _money(order.discount_total),
             'voucher_code': order.voucher_code,
             'tax_total': _money(order.tax_total),

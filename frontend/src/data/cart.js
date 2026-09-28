@@ -34,6 +34,9 @@ function mapItem(item) {
     seed: hashSeed(item.product_slug || item.sku || ""),
     storeSlug: item.store_slug,
     storeName: item.store_name,
+    // §16.2 — the engine's per-line verdict; the server computes, we render.
+    promotionSavings: item.promotion_savings ?? 0,
+    promotionLabel: item.promotion_label || "",
   };
 }
 
@@ -48,6 +51,7 @@ function mapCart(data) {
       storeName: group.store_name,
       itemCount: group.item_count,
       subtotal: group.subtotal,
+      promotionDiscount: group.promotion_discount ?? 0,
       items: (group.items ?? []).map(mapItem),
     })),
     totals: {
@@ -55,6 +59,8 @@ function mapCart(data) {
       itemCount: data.totals?.item_count ?? 0,
       subtotal: data.totals?.subtotal ?? 0,
       savings: data.totals?.savings ?? 0,
+      promotionDiscount: data.totals?.promotion_discount ?? 0,
+      itemsTotal: data.totals?.items_total ?? 0,
     },
   };
 }

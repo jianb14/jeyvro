@@ -3,13 +3,18 @@ import { cx } from "../../lib/cx";
 import { QuantityStepper } from "./QuantityStepper";
 import { Price } from "./Price";
 import { ProductArt } from "./ProductArt";
-import { AlertTriangleIcon, TrashIcon } from "./Icons";
+import { AlertTriangleIcon, PercentIcon, TrashIcon } from "./Icons";
+
+function formatP(n) {
+  return "₱" + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 /**
- * CartItem (Phase 7) — one server-truth cart line: live price and stock
+ * CartItem (Phase 7, §16.2) — one server-truth cart line: live price and stock
  * from the cart API, line total computed server-side. Quantity edits
  * leave through the caller, which calls the cart service (every change is
- * revalidated). Warnings surface the revalidation result per line.
+ * revalidated). Warnings surface the revalidation result per line; the
+ * promotion note renders the engine's own label and savings.
  */
 export function CartItem({ item, onQtyChange, onRemove, busy = false, className }) {
   const unavailable = !item.purchasable;
@@ -65,6 +70,16 @@ export function CartItem({ item, onQtyChange, onRemove, busy = false, className 
             {unavailable
               ? `${item.unavailableReason || "This item is no longer available."} Remove it to continue.`
               : `Only ${item.stock} left — reduce the quantity to continue.`}
+          </p>
+        )}
+
+        {/* §16.2 — the engine's per-line verdict: label and amount arrive
+            computed; this only renders them. */}
+        {item.promotionLabel && item.promotionSavings > 0 && (
+          <p className="flex items-center gap-1.5 text-xs text-moss-700 dark:text-moss-400">
+            <PercentIcon size={13} className="shrink-0" />
+            {item.promotionLabel} · you save{" "}
+            {formatP(item.promotionSavings)}
           </p>
         )}
 

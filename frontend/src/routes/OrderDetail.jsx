@@ -18,6 +18,7 @@ import { Modal } from "../components/ui/Modal";
 import { OrderStatusBadge } from "../components/ui/OrderStatusBadge";
 import { PaymentStatusBadge } from "../components/ui/PaymentStatusBadge";
 import { Price } from "../components/ui/Price";
+import { PercentIcon, TagIcon } from "../components/ui/Icons";
 import { Select } from "../components/ui/Select";
 import { Skeleton } from "../components/ui/Skeleton";
 import { Textarea } from "../components/ui/Textarea";
@@ -82,6 +83,10 @@ function formatDateTime(value) {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function formatP(n) {
+  return "₱" + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function OrderDetail() {
@@ -487,6 +492,25 @@ export function OrderDetail() {
                     <div className="flex items-center justify-between font-medium text-success-700 dark:text-success-400">
                       <span>You save</span>
                       <Price amount={order.totals.savings} size="sm" />
+                    </div>
+                  )}
+                  {order.totals.promotionDiscount > 0 && (
+                    <div className="flex items-center justify-between font-medium text-moss-700 dark:text-moss-400">
+                      <span className="flex items-center gap-1.5">
+                        <PercentIcon size={14} /> Promotions
+                      </span>
+                      <span className="tabular-nums">
+                        -{formatP(order.totals.promotionDiscount)}
+                      </span>
+                    </div>
+                  )}
+                  {order.totals.discount > 0 && (
+                    <div className="flex items-center justify-between font-medium text-moss-700 dark:text-moss-400">
+                      <span className="flex items-center gap-1.5">
+                        <TagIcon size={14} /> Voucher
+                        {order.totals.voucherCode ? ` (${order.totals.voucherCode})` : ""}
+                      </span>
+                      <span className="tabular-nums">-{formatP(order.totals.discount)}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between text-sand-600 dark:text-sand-300">

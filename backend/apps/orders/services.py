@@ -123,7 +123,9 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_cod
         subtotal = Decimal('0.00')
         shipping_total = Decimal('0.00')
         savings_total = Decimal('0.00')
+        promotion_discount_total = Decimal('0.00')
         store_plans = []
+        applied_promotions = []
         for store, store_items in groups.items():
             store_subtotal = Decimal('0.00')
             store_savings = Decimal('0.00')
@@ -139,16 +141,48 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_cod
                 if compare_at is not None:
                     store_savings += (compare_at - price) * item.quantity
                 store_lines.append((item, price, compare_at, line_total))
+
+            # Auto promotions (§16.2): windowed store-level / product rules
+            # evaluate against this store's line plan *before* vouchers stack.
+            engine_lines = [
+                promotion_services.line_entry(
+                    idx,
+                    item.variant.product,
+                    item.quantity,
+                    price,
+                    line_total,
+                )
+                for idx, (item, price, _compare_at, line_total) in enumerate(store_lines)
+            ]
+            store_promo_eval = promotion_services.evaluate_store_lines(store, engine_lines)
+            waiver = promotion_services.find_shipping_waiver(store, store_subtotal)
+            store_promo_discount = store_promo_eval['discount_total']
+            promotion_discount_total += store_promo_discount
+
             fee, _is_free = compute_shipping_fee(store, store_subtotal)
+            waived_fee = Decimal('0.00')
+            if waiver is not None and fee > Decimal('0.00'):
+                waived_fee = fee
+                fee = Decimal('0.00')
+
             subtotal += store_subtotal
             shipping_total += fee
             savings_total += store_savings
-            store_plans.append((store, store_lines, store_subtotal, fee))
+            store_plans.append({
+                'store': store,
+                'lines': store_lines,
+                'subtotal': store_subtotal,
+                'fee': fee,
+                'promo_discount': store_promo_discount,
+                'promo': store_promo_eval,
+                'waiver': waiver,
+                'waived_fee': waived_fee,
+            })
 
         # Vouchers (§16.1): the code is the only client input — whether it
-        # applies and what it is worth is decided here, against the same live
-        # line plan the order is built from. An invalid code fails the whole
-        # checkout; a discount is never silently dropped or trusted.
+        # applies and what it is worth is decided here, against the post-promo
+        # net store subtotals. An invalid code fails the whole checkout; a
+        # discount is never silently dropped or trusted.
         voucher_plan = None
         discount_total = Decimal('0.00')
         if voucher_code:
@@ -158,14 +192,14 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_cod
                     user,
                     [
                         {
-                            'store': store,
-                            'subtotal': store_subtotal,
+                            'store': plan['store'],
+                            'subtotal': max(Decimal('0.00'), plan['subtotal'] - plan['promo_discount']),
                             'lines': [
                                 (item.variant.product, line_total)
-                                for item, _price, _compare_at, line_total in store_lines
+                                for item, _price, _compare_at, line_total in plan['lines']
                             ],
                         }
-                        for store, store_lines, store_subtotal, _fee in store_plans
+                        for plan in store_plans
                     ],
                 )
             except promotion_services.VoucherError as exc:
@@ -173,7 +207,10 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_cod
             discount_total = voucher_plan['discount_total']
 
         tax_total = Decimal('0.00')  # §6: tax is not computed yet — slot reserved
-        grand_total = subtotal + shipping_total + tax_total - discount_total
+        grand_total = max(
+            Decimal('0.00'),
+            subtotal + shipping_total + tax_total - promotion_discount_total - discount_total,
+        )
 
         order = Order.objects.create(
             number=_generate_order_number(),
@@ -190,22 +227,23 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_cod
             shipping_total=shipping_total,
             savings_total=savings_total,
             voucher_code=voucher_plan['voucher'].code if voucher_plan else '',
+            promotion_discount=promotion_discount_total,
             discount_total=discount_total,
             tax_total=tax_total,
             grand_total=grand_total,
         )
 
-        for store, store_lines, store_subtotal, fee in store_plans:
+        for plan in store_plans:
             seller_order = SellerOrder.objects.create(
                 order=order,
-                store=store,
-                store_name=store.name,
+                store=plan['store'],
+                store_name=plan['store'].name,
                 status=SellerOrder.Status.PLACED,
-                subtotal=store_subtotal,
-                shipping_fee=fee,
-                total=store_subtotal + fee,
+                subtotal=plan['subtotal'],
+                shipping_fee=plan['fee'],
+                total=max(Decimal('0.00'), plan['subtotal'] + plan['fee'] - plan['promo_discount']),
             )
-            for item, price, compare_at, line_total in store_lines:
+            for item, price, compare_at, line_total in plan['lines']:
                 variant = item.variant
                 OrderItem.objects.create(
                     seller_order=seller_order,
@@ -241,6 +279,11 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_cod
                 promotion_services.redeem_voucher(voucher_plan, user, order)
             except promotion_services.VoucherError as exc:
                 raise CheckoutError(str(exc), code=exc.code) from exc
+
+        # Auto-promotion usage ledger (§16.2): record which promotion rules
+        # fired for this order so ledger + seller/platform reporting audits
+        # are complete.
+        promotion_services.record_promotion_usages(order, user, store_plans)
 
         # Payments (§6 v1.8): every order is immediately awaiting payment —
         # COD collects on delivery, online payments start through the adapter

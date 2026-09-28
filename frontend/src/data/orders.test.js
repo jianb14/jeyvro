@@ -248,6 +248,69 @@ describe("order accessors", () => {
     expect(checkout.totals.grandTotal).toBe(647);
     expect(checkout.items[0].price).toBe(299);
     expect(checkout.items[0].originalPrice).toBe(399);
+    // No promotions or voucher on this cart — stable defaults, not undefined.
+    expect(checkout.totals.promotionDiscount).toBe(0);
+    expect(checkout.totals.discount).toBe(0);
+    expect(checkout.totals.voucherCode).toBe("");
+    expect(checkout.voucher).toBeNull();
+    expect(checkout.voucherError).toBeNull();
+  });
+
+  it("passes the applied voucher to the preview and maps the server verdict", async () => {
+    const { fetchMock } = mockFetch({
+      ...CHECKOUT_PAYLOAD,
+      totals: {
+        ...CHECKOUT_PAYLOAD.totals,
+        promotion_discount: 59.8,
+        discount_total: 40,
+        voucher_code: "WELCOME10",
+        grand_total: 547.2, // net — the server subtracted, we only render
+      },
+      voucher: {
+        valid: true,
+        code: "WELCOME10",
+        voucher: { id: 1, code: "WELCOME10", title: "Welcome 10% off" },
+        eligible_subtotal: 400,
+        discount_total: 40,
+      },
+      voucher_error: null,
+    });
+    const checkout = await fetchCheckout("welcome10");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/v1/checkout/?voucher_code=welcome10"
+    );
+    expect(checkout.voucher).toEqual({
+      code: "WELCOME10",
+      title: "Welcome 10% off",
+      discountTotal: 40,
+      eligibleSubtotal: 400,
+    });
+    expect(checkout.voucherError).toBeNull();
+    expect(checkout.totals.promotionDiscount).toBe(59.8);
+    expect(checkout.totals.discount).toBe(40);
+    expect(checkout.totals.voucherCode).toBe("WELCOME10");
+    expect(checkout.totals.grandTotal).toBe(547.2);
+  });
+
+  it("maps a refused voucher code without breaking the preview", async () => {
+    mockFetch({
+      ...CHECKOUT_PAYLOAD,
+      voucher: null,
+      voucher_error: {
+        error: "voucher_min_spend",
+        detail: "Spend at least PHP 500.00 to use this voucher.",
+      },
+    });
+    const checkout = await fetchCheckout("nope");
+
+    expect(checkout.voucher).toBeNull();
+    expect(checkout.voucherError).toEqual({
+      code: "voucher_min_spend",
+      detail: "Spend at least PHP 500.00 to use this voucher.",
+    });
+    expect(checkout.totals.discount).toBe(0);
+    expect(checkout.totals.voucherCode).toBe("");
   });
 
   it("surfaces blocked lines as issues", async () => {
@@ -298,6 +361,35 @@ describe("order accessors", () => {
     expect(callWith("POST")[0]).toBe("/api/v1/checkout/orders");
     expect(order.dbId).toBe(42);
     expect(order.sellerOrders[0].storeId).toBe(9);
+  });
+
+  it("sends the applied voucher code with the order, and only then", async () => {
+    const { callWith } = mockFetch(ORDER_PAYLOAD, { status: 201 });
+    await placeOrder(7, "cod", "WELCOME10");
+    expect(JSON.parse(callWith("POST")[1].body)).toEqual({
+      address_id: 7,
+      payment_method: "cod",
+      voucher_code: "WELCOME10",
+    });
+  });
+
+  it("maps the order's promotion and voucher snapshots for display", async () => {
+    mockFetch(
+      {
+        ...ORDER_PAYLOAD,
+        totals: {
+          ...ORDER_PAYLOAD.totals,
+          promotion_discount: 20,
+          discount_total: 40,
+          voucher_code: "WELCOME10",
+        },
+      },
+      { status: 201 }
+    );
+    const order = await placeOrder(7, "cod", "WELCOME10");
+    expect(order.totals.promotionDiscount).toBe(20);
+    expect(order.totals.discount).toBe(40);
+    expect(order.totals.voucherCode).toBe("WELCOME10");
   });
 
   it("fetches and cancels one order by number", async () => {

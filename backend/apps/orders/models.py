@@ -102,6 +102,12 @@ class Order(TimeStampedModel):
     discount_total = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0.00')
     )
+    # Automatic-promotion snapshot (Phase 16 §16.2) — the summed line
+    # discounts the campaign engine applied; already subtracted from
+    # `grand_total` next to `discount_total`.
+    promotion_discount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00')
+    )
     tax_total = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0.00')
     )

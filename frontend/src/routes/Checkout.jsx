@@ -8,7 +8,7 @@
  * sends only the address id + chosen method — the client never computes or
  * sends money (marketplace-orders rule 1).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "../components/layout/Navbar";
 import { Alert } from "../components/ui/Alert";
@@ -17,7 +17,13 @@ import { Breadcrumb } from "../components/ui/Breadcrumb";
 import { Button } from "../components/ui/Button";
 import { Checkbox } from "../components/ui/Checkbox";
 import { EmptyState } from "../components/ui/EmptyState";
-import { ShoppingCartIcon, TagIcon, TruckIcon } from "../components/ui/Icons";
+import {
+  AlertCircleIcon,
+  PercentIcon,
+  ShoppingCartIcon,
+  TagIcon,
+  TruckIcon,
+} from "../components/ui/Icons";
 import { Input } from "../components/ui/Input";
 import { PaymentMethodCard } from "../components/ui/PaymentMethodCard";
 import { Price } from "../components/ui/Price";
@@ -26,6 +32,7 @@ import { Stepper } from "../components/ui/Stepper";
 import { useToast } from "../components/ui/ToastProvider";
 import * as authApi from "../data/auth";
 import { fetchCheckout, placeOrder } from "../data/orders";
+import { validateVoucher } from "../data/promotions";
 import { useCart } from "../features/cart/CartContext";
 import { useRequiredFields } from "../lib/formErrors";
 
@@ -51,6 +58,10 @@ const EMPTY_DRAFT = {
   postal_code: "",
   is_default: false,
 };
+
+function formatP(n) {
+  return "₱" + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 /** API address → the AddressCard display contract. */
 function toCard(address) {
@@ -84,6 +95,14 @@ export function Checkout() {
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("cod");
+  // §16.1 — a voucher is a code the server judges; the applied code lives
+  // here (and in a ref, so the re-price effects read the current one without
+  // re-running on every keystroke) and the amounts always come back priced.
+  const [appliedVoucher, setAppliedVoucher] = useState("");
+  const [voucherInput, setVoucherInput] = useState("");
+  const [voucherError, setVoucherError] = useState(null);
+  const [applyingVoucher, setApplyingVoucher] = useState(false);
+  const appliedVoucherRef = useRef("");
 
   const { fieldErrors, validate, clearField, setFieldErrors } = useRequiredFields(
     draft,
@@ -99,9 +118,9 @@ export function Checkout() {
     [setSearchParams]
   );
 
-  const refreshPreview = useCallback(async () => {
+  const refreshPreview = useCallback(async (voucherCode = appliedVoucherRef.current) => {
     try {
-      const data = await fetchCheckout();
+      const data = await fetchCheckout(voucherCode);
       setPreview(data);
       setPreviewError(null);
       return data;
@@ -151,7 +170,7 @@ export function Checkout() {
   useEffect(() => {
     if (step !== "review") return;
     let cancelled = false;
-    fetchCheckout()
+    fetchCheckout(appliedVoucherRef.current)
       .then((data) => {
         if (!cancelled) {
           setPreview(data);
@@ -165,6 +184,16 @@ export function Checkout() {
       cancelled = true;
     };
   }, [step]);
+
+  // A code the server refuses on a later re-price (cart changed under it,
+  // limit reached) is dropped the moment the preview says so — the order
+  // endpoint would refuse it too, so keeping it on screen would lie.
+  useEffect(() => {
+    if (!preview?.voucherError || !appliedVoucherRef.current) return;
+    appliedVoucherRef.current = "";
+    setAppliedVoucher("");
+    setVoucherError(preview.voucherError.detail);
+  }, [preview]);
 
   // Payment options are server truth (§6 v1.8): the active method is the
   // user's selection when offered by the server, otherwise the first
@@ -209,12 +238,48 @@ export function Checkout() {
     }
   }
 
+  /**
+   * §16.1 — the code goes to the server (which reads the cart itself) and the
+   * verdict comes back as a number to render. A refusal is shown inline; the
+   * preview is then re-priced with the code applied so every amount on screen
+   * is the server's own net figure.
+   */
+  async function applyVoucher() {
+    const code = voucherInput.trim();
+    if (!code || applyingVoucher) return;
+    setApplyingVoucher(true);
+    setVoucherError(null);
+    try {
+      const verdict = await validateVoucher(code);
+      appliedVoucherRef.current = verdict.code || code;
+      setAppliedVoucher(verdict.code || code);
+      setVoucherInput("");
+      await refreshPreview(appliedVoucherRef.current);
+    } catch (err) {
+      setVoucherError(err.data?.detail || err.message);
+    } finally {
+      setApplyingVoucher(false);
+    }
+  }
+
+  async function removeVoucher() {
+    appliedVoucherRef.current = "";
+    setAppliedVoucher("");
+    setVoucherError(null);
+    setVoucherInput("");
+    await refreshPreview("");
+  }
+
   async function submitOrder() {
     if (!selectedId) return;
     setPlacing(true);
     setPlaceError(null);
     try {
-      const order = await placeOrder(selectedId, activePaymentMethod);
+      const order = await placeOrder(
+        selectedId,
+        activePaymentMethod,
+        appliedVoucherRef.current
+      );
       refreshCart();
       push({ tone: "success", title: `Order ${order.number} placed` });
       navigate(`/orders/${order.number}`, { state: { justPlaced: true } });
@@ -228,7 +293,8 @@ export function Checkout() {
 
   const issues = preview?.issues ?? [];
   const totals = preview?.totals ?? {
-    itemCount: 0, subtotal: 0, savings: 0, shipping: 0, tax: 0, grandTotal: 0,
+    itemCount: 0, subtotal: 0, savings: 0, promotionDiscount: 0, discount: 0,
+    voucherCode: "", shipping: 0, tax: 0, grandTotal: 0,
   };
   const cards = useMemo(() => (addresses ?? []).map(toCard), [addresses]);
   const selectedAddress = useMemo(
@@ -663,6 +729,25 @@ export function Checkout() {
                         <Price amount={totals.savings} size="sm" />
                       </div>
                     )}
+                    {totals.promotionDiscount > 0 && (
+                      <div className="flex items-center justify-between font-medium text-moss-700 dark:text-moss-400">
+                        <span className="flex items-center gap-1.5">
+                          <PercentIcon size={14} /> Promotions
+                        </span>
+                        <span className="tabular-nums">
+                          -{formatP(totals.promotionDiscount)}
+                        </span>
+                      </div>
+                    )}
+                    {totals.discount > 0 && (
+                      <div className="flex items-center justify-between font-medium text-moss-700 dark:text-moss-400">
+                        <span className="flex items-center gap-1.5">
+                          <TagIcon size={14} /> Voucher
+                          {totals.voucherCode ? ` (${totals.voucherCode})` : ""}
+                        </span>
+                        <span className="tabular-nums">-{formatP(totals.discount)}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between text-sand-600 dark:text-sand-300">
                       <span className="flex items-center gap-1.5">
                         <TruckIcon size={14} /> Shipping
@@ -674,6 +759,68 @@ export function Checkout() {
                     </div>
                   </div>
                 )}
+
+                {/* §16.1 — the code is judged by the server against the live
+                    cart; the numbers above then come back already net. */}
+                <div className="flex flex-col gap-2 rounded-xl border border-dashed border-sand-300 p-3 dark:border-night-700">
+                  {appliedVoucher ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-sm font-medium text-moss-700 dark:text-moss-400">
+                        <TagIcon size={14} /> {appliedVoucher}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={removeVoucher}
+                        disabled={applyingVoucher}
+                        className="text-xs font-medium text-sand-500 underline-offset-2 hover:underline disabled:opacity-40 dark:text-sand-400"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-end gap-2">
+                      <Input
+                        label="Promo code"
+                        size="sm"
+                        value={voucherInput}
+                        onChange={(event) => {
+                          setVoucherInput(event.target.value);
+                          setVoucherError(null);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            applyVoucher();
+                          }
+                        }}
+                        placeholder="Enter a code"
+                        autoComplete="off"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        loading={applyingVoucher}
+                        disabled={!voucherInput.trim()}
+                        onClick={applyVoucher}
+                      >
+                        Apply
+                      </Button>
+                    </div>
+                  )}
+                  {voucherError && (
+                    <p className="flex items-start gap-1.5 text-xs text-danger-600 dark:text-danger-400">
+                      <AlertCircleIcon size={13} className="mt-0.5 shrink-0" />
+                      {voucherError}
+                    </p>
+                  )}
+                  {preview?.voucher && !voucherError && (
+                    <p className="text-xs text-sand-500 dark:text-sand-400">
+                      {preview.voucher.title || "Voucher applied"} — the server took{" "}
+                      {formatP(preview.voucher.discountTotal)} off this order.
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex items-baseline justify-between border-t border-sand-200 pt-4 dark:border-night-800">
                   <span className="text-sm font-medium text-sand-600 dark:text-sand-300">
                     Total

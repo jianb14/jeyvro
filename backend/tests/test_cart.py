@@ -129,6 +129,7 @@ def test_guest_cart_is_server_authoritative_across_requests(client):
     assert payload['owner'] == 'guest'
     assert payload['totals'] == {
         'line_count': 1, 'item_count': 2, 'subtotal': 598.0, 'savings': 200.0,
+        'promotion_discount': 0.0, 'items_total': 598.0,
     }
     item = payload['items'][0]
     assert item['price'] == 299.0           # server-resolved, never client-sent
@@ -154,6 +155,7 @@ def test_add_to_cart_increments_existing_line(client):
     assert payload['totals'] == {
         'line_count': 1, 'item_count': 4,
         'subtotal': 1196.0, 'savings': 400.0,
+        'promotion_discount': 0.0, 'items_total': 1196.0,
     }
 
 

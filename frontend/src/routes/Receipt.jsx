@@ -23,6 +23,10 @@ function formatDate(value, withTime = false) {
   });
 }
 
+function formatP(n) {
+  return "₱" + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function Section({ title, children }) {
   return (
     <section className="border-t border-sand-200 px-6 py-5 dark:border-night-800">
@@ -196,6 +200,23 @@ export function Receipt() {
                   <div className="flex justify-between font-medium text-success-700 dark:text-success-400">
                     <span>You saved</span>
                     <Price amount={order.totals.savings} size="sm" />
+                  </div>
+                )}
+                {order.totals.promotionDiscount > 0 && (
+                  <div className="flex justify-between font-medium text-moss-700 dark:text-moss-400">
+                    <span>Promotions</span>
+                    <span className="tabular-nums">
+                      -{formatP(order.totals.promotionDiscount)}
+                    </span>
+                  </div>
+                )}
+                {order.totals.discount > 0 && (
+                  <div className="flex justify-between font-medium text-moss-700 dark:text-moss-400">
+                    <span>
+                      Voucher
+                      {order.totals.voucherCode ? ` (${order.totals.voucherCode})` : ""}
+                    </span>
+                    <span className="tabular-nums">-{formatP(order.totals.discount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sand-600 dark:text-sand-300">

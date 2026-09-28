@@ -28,13 +28,21 @@ def _rejected(exc):
 
 
 class CheckoutPreviewView(APIView):
-    """GET /api/v1/checkout/ — cart truth + per-store shipping + totals."""
+    """GET /api/v1/checkout/ — cart truth + per-store shipping + totals.
+
+    Accepts an optional `voucher_code` query parameter: the preview then
+    judges it with the same service checkout uses and returns net totals
+    (or `voucher_error` + gross totals when the code is refused).
+    """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         cart = cart_services.get_or_create_cart(request)
-        return Response(serializers.build_checkout_preview(cart, request))
+        voucher_code = request.query_params.get('voucher_code', '')
+        return Response(
+            serializers.build_checkout_preview(cart, request, voucher_code)
+        )
 
 
 class CheckoutOrderView(APIView):
