@@ -37,8 +37,8 @@
 | 13 | Admin, Staff & Platform Operations | ✅ Done — Slice v1: seeded staff groups, seller approvals, store oversight, audit viewer. Slice v2: staff directory + audited role assignment (self/superuser/last-admin guards) and user management with session-revoking suspension. Slice v3: moderator catalog console (publish/reject + reason-gated takedown) and audited operations/administrator category & brand management. Slice v4: read-only order/payment operations console (order & shipment oversight, return/refund/dispute intake, payment/refund trail) with refund issuance tightened to finance/administrator. Slice v5: platform settings (`/staff/settings` — marketplace/commission/shipping/feature/notification as one audited singleton; COD gate, platform-owned payment window, new-store shipping seeds, new-account notification defaults); finance/operations now carry real §4 surfaces and the phase Gate is closed. Deferred: 13.3 seller verification (not yet scoped) and store *content* management (deliberate — seller-owned) |
 | 14 | Reviews, Ratings & Trust | ✅ Done — `apps/reviews` (verified-buyer `create_review` proving a delivered/completed order item, one review per user+product DB constraint, server-computed product/store `rating_average`/`rating_count` inside every review transaction), staff moderation (`InStaffGroup` hide with reason + audit, restore, report auto-flag at 3 distinct reporters), seller reply (once, own store), eligibility verdict driving the edit form; `backend/tests/test_reviews.py` + frontend review UI/tests; seller-reply notification wired with Phase 15 (§15.3) |
 | 15 | Messaging & Notifications | 🔄 Slice v1 shipped — `apps/messaging` (participant-scoped `Conversation` with order/product context and reuse-or-create threads, `Message`, per-participant read state, unread counts, report → moderation status, store-owner + staff access checks) and `apps/notifications` (`Notification` + `NotificationPreference` email gating via `GET`/`PUT /api/v1/notification-preferences`); endpoints `/api/v1/conversations/…`, `/api/v1/seller/conversations/`, `/api/v1/notifications/…`; UI `ConversationInbox` at `/account/messages` + `/seller/messages`, `MessageStoreButton` (product/order/support starters), `NotificationBell` badge with `action_url` navigation; §15.3 wired for order placed / shipment / new message / review reply; gate 3/4 (Background jobs waits on §15.4). Open: attachment uploads, mute toggles, staff report console, remaining §15.3 events |
-| 16 | Promotions, Vouchers & Campaigns | 🔄 Slices v1+v2 shipped — `apps/promotions` (platform/seller vouchers — percentage or fixed with min spend, max-discount cap, usage + per-user limits, start/end window, first-order rule, product/category targeting rows, funding attribution), `POST /api/v1/vouchers/validate/` previews a code against the caller's live cart through the same service checkout uses, and redemption is atomic inside `create_order`: the row-locked `VoucherUsage` ledger plus `voucher.redeemed` audit keep counters and discounts race-condition safe and auditable, and orders snapshot `voucher_code`/`discount_total` with the payment collecting the discounted total. Slice v2: automatic promotions (`services.evaluate_store_lines` — product discount, flash sale, bundle threshold, free-shipping waiver) priced into cart, checkout preview and orders as `promotion_discount` (checkout preview parity fixed), seller CRUD at `/api/v1/seller/promotions/`, and the §16.4 UI — cart promotion labels, checkout voucher entry, order/receipt discount rows, `/seller/promotions` desk. Open: §16.3 funding settlement, §16.4 voucher center + admin campaign console, Buy X Get Y engine |
-| 17 | Returns, Refunds & Disputes | ⬜ Not started |
+| 16 | Promotions, Vouchers & Campaigns | 🔄 Slices v1–v3 shipped — `apps/promotions` (platform/seller vouchers — percentage or fixed with min spend, max-discount cap, usage + per-user limits, start/end window, first-order rule, product/category targeting rows), `POST /api/v1/vouchers/validate/` previews a code against the caller's live cart through the same service checkout uses, and redemption is atomic inside `create_order`: the row-locked `VoucherUsage` ledger plus `voucher.redeemed` audit keep counters and discounts race-condition safe and auditable, and orders snapshot `voucher_code`/`discount_total` with the payment collecting the discounted total. Slice v2: automatic promotions (`services.evaluate_store_lines` — product discount, flash sale, bundle threshold, free-shipping waiver, buy-X-get-Y) priced into cart, checkout preview and orders as `promotion_discount` (checkout preview parity fixed), seller CRUD at `/api/v1/seller/promotions/`, and the §16.4 UI — cart promotion labels, checkout voucher entry, order/receipt discount rows, `/seller/promotions` desk. Slice v3: §16.3 funding settled server-side at redemption — `split_funding` splits every discount into `platform_amount`/`seller_amount` on the ledger (shared = 50/50, odd cent to the platform) under DB constraints, plus BXGY engine coverage. Open: §16.4 voucher center + admin campaign console |
+| 17 | Returns, Refunds & Disputes | ✅ Done — `apps/resolutions` (slices v1–v3). v1 return cases: server-verified eligibility and a return window snapshotted per case, per-line quantity caps, seller response, staff intervention/override, reverse-parcel tracking, and receipt-time line-scoped restock through the append-only stock ledger; refund arithmetic computed server-side from order snapshots (order-level discounts apportioned to the lines that enjoyed them, shipping back only on a fully returned slice), and the linked `OrderRequest` resolved by the case that answers it. v2 money movement: the case prices, `apps.payments` moves — `Refund.restock`/`Refund.return_case` keep manual refunds and case-paid payouts honest, `POST /api/v1/admin/returns/<ref>/refund` is finance/administrator-only and callable only after goods are received, partial settlements cap against the case then the payment, and the case follows its refund through the provider seam (`on_refund_settled`/`on_refund_failed`) with a refused gateway rolling the whole payout back. v3 disputes: `Dispute` (`JVDSP-…`) with append-only statements/evidence whose party is derived from the caller, staff claim + ruling with a mandatory reason that freezes the record, buyer withdrawal, and timeline + audit rows on every movement. Covered by `backend/tests/test_returns.py` (18 gate tests) |
 | 18 | Search, Recommendations & Discovery | ⬜ Not started |
 | 19 | Analytics & Reporting | ⬜ Not started |
 | 20 | Security, Compliance & Abuse Prevention | ⬜ Not started |
@@ -186,7 +186,7 @@ Final Production Audit
 Define the complete JEYVRO product before implementing the full
 marketplace.
 
-> **Single source of truth (PROJECT_CONTEXT §18):** the rules and lifecycles this phase defines must be written into `PROJECT_CONTEXT.md` — never into this roadmap; this file only references them. Known gaps PROJECT_CONTEXT does not yet cover: commission rules, voucher rules, and returns/refunds/disputes rules (seller registration/verification and store rules landed in PROJECT_CONTEXT v1.2). Add the remaining ones to PROJECT_CONTEXT first, then check the boxes below.
+> **Single source of truth (PROJECT_CONTEXT §18):** the rules and lifecycles this phase defines must be written into `PROJECT_CONTEXT.md` — never into this roadmap; this file only references them. Known gaps PROJECT_CONTEXT does not yet cover: commission rules (seller registration/verification and store rules landed in PROJECT_CONTEXT v1.2; voucher + promotion + funding rules in v1.14; returns/refunds/disputes rules in v1.15). Add the remaining ones to PROJECT_CONTEXT first, then check the boxes below.
 
 ### 0.1 Product definition
 
@@ -219,7 +219,7 @@ marketplace.
 -   [x] Inventory rules
 -   [x] Pricing rules
 -   [x] Discount rules
--   [ ] Voucher rules
+-   [x] Voucher rules — §6 (PROJECT_CONTEXT v1.14): server-verified codes judged by one service shared by preview and checkout, a row-locked atomic redemption ledger, the automatic promotion rules judged per line at every choke point, and §16.3 funding settled server-side into `platform_amount`/`seller_amount`
 -   [ ] Commission rules
 -   [ ] Payout rules
 -   [x] Shipping rules — per-store flat fee (`shipping_flat_fee`) + optional per-store free-shipping threshold; COD carries no extra fee; tax slot reserved (§6 v1.7)
@@ -1529,7 +1529,7 @@ Build the marketplace promotion engine.
 -   [x] Campaign
 -   [x] Free shipping promotion
 -   [x] Bundle discount
--   [ ] Buy X Get Y architecture
+-   [x] Buy X Get Y architecture
 
 > Discounts are judged by `apps.promotions.services.evaluate_store_lines`
 > (per-line entries, campaign windows, targeting rows, quantity thresholds)
@@ -1544,14 +1544,45 @@ Build the marketplace promotion engine.
 > (auto product discount, flash-sale window, bundle threshold, free-shipping
 > waiver, promo+voucher stacking in one order, seller CRUD API) and
 > `tests/test_checkout.py::test_checkout_preview_grand_total_is_net_of_auto_promotions`
-> (preview parity). Buy X Get Y stays a declared `Promotion.kind` with no
-> engine behind it yet.
+> (preview parity). Buy X get Y is no longer a declaration: `_apply_bxgy`
+> counts the buy product's units across the store slice, and once `buy_qty`
+> is met it discounts whole units of the get product at `value`% off, capped
+> by `get_qty` *and* by what earlier rules left on that line, so stacking
+> still cannot over-discount a line. The pair is DB-constrained (a
+> `buy_x_get_y` rule carries both products with positive quantities, no other
+> kind may carry either, and the rule is percentage-only) — shipped and
+> pinned by four tests in `backend/tests/test_promotions.py` (threshold, cap,
+> stacking order, constraints). The seller desk can build the rule for real:
+> `PromotionCreateSerializer` takes the buy/get pair, refuses a half-pair, a
+> fixed amount, or the pair on any other kind with field errors, and the view
+> re-checks that both products belong to the seller's own store (§10.3) before
+> writing anything — the same scoping the product/category targets now get,
+> so a rival's product id is a 400 rather than a foreign row.
 
 ### 16.3 Funding
 
--   [ ] Seller-funded
--   [ ] Platform-funded
--   [ ] Shared-funded
+-   [x] Seller-funded
+-   [x] Platform-funded
+-   [x] Shared-funded
+
+> **Slice v3 (shipped):** funding is no longer a note in the field —
+> `Voucher.funded_by` is now settled **server-side at redemption**.
+> `promotions.services.split_funding` is the only implementation: a
+> platform-funded discount is the platform's whole cost, a seller-funded one
+> is the store's, and a **shared** discount is split **50/50 with the odd cent
+> carried by the platform**, so the two shares always re-add to the exact
+> discount. `redeem_voucher` writes both shares onto every `VoucherUsage` row
+> (`platform_amount` / `seller_amount`) inside the same locked transaction that
+> spends the code, and the `voucher.redeemed` audit row records the split
+> beside the discount. Two DB constraints back it: a seller- or shared-funded
+> voucher must be **store-scoped** (a platform-scope voucher has no store to
+> charge, while a store's own code may still be platform-subsidised), and the
+> ledger refuses any row whose shares do not balance to the discount.
+> **Funding never changes what the customer pays** — the buyer always gets the
+> full discount; the split only decides who absorbs it once the order settles,
+> and seller payouts/commission reporting consume these shares when that tier
+> lands. Rules are in PROJECT_CONTEXT §6 (v1.14); covered by four new tests in
+> `backend/tests/test_vouchers.py`.
 
 ### 16.4 Promotion UI
 
@@ -1608,44 +1639,125 @@ Build the complete post-order resolution system.
 
 ### 17.1 Returns
 
--   [ ] Return request
--   [ ] Return reason
--   [ ] Return eligibility
--   [ ] Return window
--   [ ] Seller response
--   [ ] Admin intervention
--   [ ] Return shipment
--   [ ] Return status
+-   [x] Return request
+-   [x] Return reason
+-   [x] Return eligibility
+-   [x] Return window
+-   [x] Seller response
+-   [x] Admin intervention
+-   [x] Return shipment
+-   [x] Return status
+
+> **Slice v1 (shipped):** `apps/resolutions` turns the Phase 11 intake into an
+> adjudicable `ReturnCase`. Eligibility and the return window
+> (`RETURNS_WINDOW_DAYS`, default 7) are server verdicts served at
+> `GET /api/v1/orders/<number>/return-eligibility`, computed from fulfillment
+> snapshots, and the deadline is *snapshotted* onto the case so a later policy
+> change can neither reopen nor quietly expire a live case. Filing
+> (`POST /api/v1/orders/<number>/returns`) sends only a reason, a note, line
+> quantities and an optional intake link — the remaining-quantity cap, the
+> duplicate guard, the restock default (damaged/defective lines do not go back
+> on the shelf unless the seller says so) and the refund due are all decided
+> server-side inside one row-locked transaction. The seller desk
+> (`/api/v1/seller/returns/…`) answers approve/reject with a reason, books the
+> reverse parcel (`JVRTN-…` tracking minted server-side), and records receipt:
+> the only place stock moves, once per line (`restocked_at` is the idempotency
+> marker), through the row-locked catalog service so the append-only movement
+> history stays the single inventory truth. Whole-order cases (a return
+> spanning several stores) are staff-only, and a staff ruling on a case a
+> seller already decided is stored as an override with its own timeline event
+> and audit row. Every transition writes both a `ReturnEvent` (the
+> customer-safe timeline) and an `AuditLog` row, and the linked `OrderRequest`
+> becomes `resolved` once the case is decided.
+>
+> Refund *arithmetic* lands with the case (`refund_due`: line value minus the
+> order-level promotion/voucher discounts apportioned to the lines that
+> enjoyed them, plus a slice's shipping fee only when that whole slice comes
+> back) but **no money moves in this slice** — the payout is §17.2 and
+> disputes are §17.3. Covered by `backend/tests/test_returns.py`.
 
 ### 17.2 Refunds
 
--   [ ] Full refund
--   [ ] Partial refund
--   [ ] Refund calculation
--   [ ] Refund approval
--   [ ] Refund transaction
--   [ ] Refund status
--   [ ] Payment-provider refund integration point
+-   [x] Full refund
+-   [x] Partial refund
+-   [x] Refund calculation
+-   [x] Refund approval
+-   [x] Refund transaction
+-   [x] Refund status
+-   [x] Payment-provider refund integration point
+
+> **Slice v2 (shipped):** the case *prices* what it owes (slice v1) and
+> `apps.payments` *moves* it — the resolution service never touches the
+> ledger, it calls `payment_services.refund(payment, amount, …,
+> restock=False, return_case=case)`. The new `Refund.restock` flag is what
+> keeps the two honest: a manual staff refund still returns the whole order's
+> lines to the shelf on settlement (unchanged Phase 9 behaviour), while a
+> case-paid refund reverses the ledger without double-restocking what receipt
+> already returned, and `Refund.return_case` keeps the money record's lineage
+> to the case that authorised it.
+>
+> `POST /api/v1/admin/returns/<reference>/refund` is the payout, gated to
+> **finance/administrator** — the same §4 rule that already restricts manual
+> refunds — and it is callable only on a case whose goods were received, so
+> money never precedes the parcel. `amount` is optional (defaults to the
+> case's remaining balance) and supports partial settlements: the cap is
+> re-checked server-side against the case, then against the payment's own
+> refundable balance. Pending gateway refunds count as *committed* the moment
+> they are requested, so a second payout cannot double-pay while the first is
+> in flight.
+>
+> The case follows its own money through the existing provider seam: COD
+> settles synchronously, a hosted gateway stays `pending` until its
+> signature-verified webhook confirms, and only then does the case reach
+> `refunded` (`on_refund_settled` / `on_refund_failed` → timeline event +
+> `AuditLog` row + customer notification). A refused or unconfigured gateway
+> rolls the whole payout back — no `Refund` row, no "issued" event, money
+> unmoved. Covered by `backend/tests/test_returns.py` (14 gate tests).
 
 ### 17.3 Disputes
 
--   [ ] Dispute creation
--   [ ] Evidence
--   [ ] Customer statement
--   [ ] Seller statement
--   [ ] Staff review
--   [ ] Resolution
--   [ ] Resolution reason
--   [ ] Audit trail
+-   [x] Dispute creation
+-   [x] Evidence
+-   [x] Customer statement
+-   [x] Seller statement
+-   [x] Staff review
+-   [x] Resolution
+-   [x] Resolution reason
+-   [x] Audit trail
+
+> **Slice v3 (shipped):** the buyer escalation workflow lives in the same
+> `apps/resolutions` app — a `Dispute` (`JVDSP-…`, order- or slice-scoped)
+> records the reason and the buyer's opening statement, with optional links
+> to the Phase 11 intake it answers *and* the `ReturnCase` it escalates
+> (rejecting a return can be contested). Opening
+> (`POST /api/v1/orders/<number>/disputes`) is owner-scoped, refuses a
+> second open dispute for the same slice, and writes a `DisputeEvent` plus
+> an `AuditLog` row and a seller notification. Statements and evidence are
+> append-only child rows (`DisputeStatement` / `DisputeEvidence`, URL-based
+> like `Message.attachment_url` until the media phase) whose **party is
+> derived from the caller** — buyer, store owner or staff — never taken
+> from the client; the buyer adds them at `/api/v1/disputes/<ref>/…`, the
+> store answers with one statement + optional evidence at
+> `/api/v1/seller/disputes/<ref>/respond`, and support leaves notes at
+> `/api/v1/admin/disputes/<ref>/statements`. Staff (`support`/`operations`/
+> `administrator`, §4) claim a case (`…/review` → `under_review`,
+> idempotent) and rule it (`…/resolve` → `buyer_favor`/`seller_favor` with
+> a **mandatory reason**), which freezes the record (statements, evidence,
+> withdrawal and a second ruling all refused), resolves the linked intake,
+> and notifies both sides. The buyer may withdraw their own dispute while
+> it is undecided. Every movement writes the timeline row *and* the audit
+> row; money never moves here — a buyer win is settled through the §17.2
+> payout (finance/administrator). Covered by `backend/tests/test_returns.py`
+> (4 dispute gate tests, 18 total).
 
 ### Gate
 
--   [ ] Eligible return can be requested
--   [ ] Seller/admin can process return
--   [ ] Refund state is consistent with payment state
--   [ ] Disputes are auditable
--   [ ] Unauthorized users cannot alter disputes
--   [ ] Backend tests for money flows pass (PROJECT_CONTEXT §11)
+-   [x] Eligible return can be requested
+-   [x] Seller/admin can process return
+-   [x] Refund state is consistent with payment state
+-   [x] Disputes are auditable
+-   [x] Unauthorized users cannot alter disputes
+-   [x] Backend tests for money flows pass (PROJECT_CONTEXT §11)
 
 **Skills:** marketplace-orders, backend-feature, payments-skill
 
