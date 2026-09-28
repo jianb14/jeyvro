@@ -13,7 +13,8 @@ import { useTheme } from "../../lib/useTheme";
 import { useAuth } from "../../features/auth/AuthContext";
 import { useCart } from "../../features/cart/CartContext";
 import { getCategories } from "../../data/products";
-import { LogoMark, MenuIcon, XIcon, SunIcon, MoonIcon, SearchIcon, ShoppingCartIcon, HeartIcon } from "../ui/Icons";
+import { SearchAutocomplete } from "./SearchAutocomplete";
+import { LogoMark, MenuIcon, XIcon, SunIcon, MoonIcon, ShoppingCartIcon, HeartIcon } from "../ui/Icons";
 import { Button } from "../ui/Button";
 import { Avatar } from "../ui/Avatar";
 import { DropdownMenu } from "../ui/DropdownMenu";
@@ -55,7 +56,6 @@ function ThemeToggle() {
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [categories, setCategories] = useState([]);
-  const [input, setInput] = useState("");
   const { user, loading, logout } = useAuth();
   const { itemCount } = useCart();
   const navigate = useNavigate();
@@ -82,11 +82,11 @@ export function Navbar() {
     navigate("/");
   }
 
-  const submitSearch = (event) => {
-    event.preventDefault();
-    const q = input.trim();
+  // Suggestions and the full results page both live under /search, so the
+  // navbar never sends a shopper to a page that cannot show facets.
+  const runSearch = (q) => {
     setMobileOpen(false);
-    navigate(q ? `/products?q=${encodeURIComponent(q)}` : "/products");
+    navigate(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
   };
 
   return (
@@ -99,18 +99,15 @@ export function Navbar() {
           </span>
         </Link>
 
-        <form onSubmit={submitSearch} role="search" className="relative hidden flex-1 md:block">
-          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sand-400">
-            <SearchIcon size={16} />
-          </span>
-          <input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            aria-label="Search products"
-            placeholder="Search products…"
-            className={searchInputClass}
-          />
-        </form>
+        <SearchAutocomplete
+          className="hidden flex-1 md:block"
+          inputClassName={searchInputClass}
+          onSubmit={runSearch}
+          onSelect={(path) => {
+            setMobileOpen(false);
+            navigate(path);
+          }}
+        />
 
         <div className="ml-auto flex items-center gap-2">
           <Link
@@ -207,18 +204,14 @@ export function Navbar() {
 
       {mobileOpen && (
         <div className="animate-fade-in border-t border-sand-200 bg-sand-50 px-4 pb-5 pt-3 dark:border-night-800 dark:bg-night-950 md:hidden">
-          <form onSubmit={submitSearch} role="search" className="relative">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sand-400">
-              <SearchIcon size={16} />
-            </span>
-            <input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              aria-label="Search products"
-              placeholder="Search products…"
-              className={searchInputClass}
-            />
-          </form>
+          <SearchAutocomplete
+            inputClassName={searchInputClass}
+            onSubmit={runSearch}
+            onSelect={(path) => {
+              setMobileOpen(false);
+              navigate(path);
+            }}
+          />
 
           <div className="mt-3 flex flex-col gap-1">
             <Link

@@ -5,6 +5,7 @@ import { WishlistProvider } from "./features/wishlist/WishlistContext";
 import { ToastProvider } from "./components/ui/ToastProvider";
 import { Home } from "./routes/Home";
 import { Browse } from "./routes/Browse";
+import { Search } from "./routes/Search";
 import { ProductDetail } from "./routes/ProductDetail";
 import { Cart } from "./routes/Cart";
 import { Checkout } from "./routes/Checkout";
@@ -54,6 +55,7 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/products" element={<Browse />} />
               <Route path="/category/:slug" element={<Browse />} />
+              <Route path="/search" element={<Search />} />
               <Route path="/product/:slug" element={<ProductDetail />} />
               <Route path="/cart" element={<Cart />} />
               <Route

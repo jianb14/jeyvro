@@ -39,7 +39,7 @@
 | 15 | Messaging & Notifications | 🔄 Slice v1 shipped — `apps/messaging` (participant-scoped `Conversation` with order/product context and reuse-or-create threads, `Message`, per-participant read state, unread counts, report → moderation status, store-owner + staff access checks) and `apps/notifications` (`Notification` + `NotificationPreference` email gating via `GET`/`PUT /api/v1/notification-preferences`); endpoints `/api/v1/conversations/…`, `/api/v1/seller/conversations/`, `/api/v1/notifications/…`; UI `ConversationInbox` at `/account/messages` + `/seller/messages`, `MessageStoreButton` (product/order/support starters), `NotificationBell` badge with `action_url` navigation; §15.3 wired for order placed / shipment / new message / review reply; gate 3/4 (Background jobs waits on §15.4). Open: attachment uploads, mute toggles, staff report console, remaining §15.3 events |
 | 16 | Promotions, Vouchers & Campaigns | 🔄 Slices v1–v3 shipped — `apps/promotions` (platform/seller vouchers — percentage or fixed with min spend, max-discount cap, usage + per-user limits, start/end window, first-order rule, product/category targeting rows), `POST /api/v1/vouchers/validate/` previews a code against the caller's live cart through the same service checkout uses, and redemption is atomic inside `create_order`: the row-locked `VoucherUsage` ledger plus `voucher.redeemed` audit keep counters and discounts race-condition safe and auditable, and orders snapshot `voucher_code`/`discount_total` with the payment collecting the discounted total. Slice v2: automatic promotions (`services.evaluate_store_lines` — product discount, flash sale, bundle threshold, free-shipping waiver, buy-X-get-Y) priced into cart, checkout preview and orders as `promotion_discount` (checkout preview parity fixed), seller CRUD at `/api/v1/seller/promotions/`, and the §16.4 UI — cart promotion labels, checkout voucher entry, order/receipt discount rows, `/seller/promotions` desk. Slice v3: §16.3 funding settled server-side at redemption — `split_funding` splits every discount into `platform_amount`/`seller_amount` on the ledger (shared = 50/50, odd cent to the platform) under DB constraints, plus BXGY engine coverage. Slice v4 closes the last §16.4 gaps: the buyer **Voucher Center** at `/vouchers` (public, scope tabs, copy-to-clipboard over the public-safe `GET /api/v1/vouchers/` shape — no client-side discount math), and the staff **Campaign & Promotion Console** at `/staff/campaigns` (campaigns table with `promotion_count`, a create-platform-campaign modal the server forces to `scope=platform` with a `campaign.created` audit row, and a platform-wide promotions oversight tab that keeps deactivated rules visible). Access follows §4: campaign management is operations/administrator, promotion oversight adds finance — the console fetches each list only when the caller's role may read it. Covered by `backend/tests/test_promotions.py` (13 tests) + `frontend/src/data/promotions.test.js` (18 tests) |
 | 17 | Returns, Refunds & Disputes | ✅ Done — `apps/resolutions` (slices v1–v3). v1 return cases: server-verified eligibility and a return window snapshotted per case, per-line quantity caps, seller response, staff intervention/override, reverse-parcel tracking, and receipt-time line-scoped restock through the append-only stock ledger; refund arithmetic computed server-side from order snapshots (order-level discounts apportioned to the lines that enjoyed them, shipping back only on a fully returned slice), and the linked `OrderRequest` resolved by the case that answers it. v2 money movement: the case prices, `apps.payments` moves — `Refund.restock`/`Refund.return_case` keep manual refunds and case-paid payouts honest, `POST /api/v1/admin/returns/<ref>/refund` is finance/administrator-only and callable only after goods are received, partial settlements cap against the case then the payment, and the case follows its refund through the provider seam (`on_refund_settled`/`on_refund_failed`) with a refused gateway rolling the whole payout back. v3 disputes: `Dispute` (`JVDSP-…`) with append-only statements/evidence whose party is derived from the caller, staff claim + ruling with a mandatory reason that freezes the record, buyer withdrawal, and timeline + audit rows on every movement. Covered by `backend/tests/test_returns.py` (18 gate tests) |
-| 18 | Search, Recommendations & Discovery | ⬜ Not started |
+| 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
 | 19 | Analytics & Reporting | ⬜ Not started |
 | 20 | Security, Compliance & Abuse Prevention | ⬜ Not started |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
@@ -1771,24 +1771,74 @@ Create scalable product discovery.
 
 ### 18.1 Search
 
--   [ ] Keyword search
--   [ ] Search by product
--   [ ] Search by store
--   [ ] Search by category
--   [ ] Autocomplete
--   [ ] Search suggestions
--   [ ] Typo-tolerance strategy
--   [ ] Search filters
--   [ ] Search sorting
--   [ ] Faceted search
+-   [x] Keyword search
+-   [x] Search by product
+-   [x] Search by store
+-   [x] Search by category
+-   [x] Autocomplete
+-   [x] Search suggestions
+-   [x] Typo-tolerance strategy
+-   [x] Search filters
+-   [x] Search sorting
+-   [x] Faceted search
+
+> **Slice v1 (done):** `apps.search` ships the whole §18.1 surface on
+> `GET /api/v1/search/` (ranked, filtered, sorted, faceted, paginated) and
+> `GET /api/v1/search/suggest/` (autocomplete). Both are public — a shopper
+> searches before they have an account — and permission-safe *by construction*:
+> one function produces the searchable set (`searchable_products`, published
+> products from active stores), so results, facets, and suggestions all share a
+> single chokepoint and no non-sellable row is reachable through any of them.
+> Ranking is PostgreSQL full-text (`ts_rank` over a weighted `tsvector` — title
+> beats description, which beats category/brand, which beats store), not
+> insertion order; filters (store, category, brand, price, rating, availability)
+> compose, and the shelf
+> price used by the price filter and the price sort is the same
+> cheapest-active-variant rule the catalog renders, so the two can never
+> disagree. Facets are OR-counted — each facet lifts its own filter before
+> counting — so selecting one facet never zeroes its siblings. Typo tolerance is
+> layered: a `pg_trgm` similarity pass runs *only* when the strict pass returns
+> nothing, and when it fires the facet counts are rebuilt from the rescued set.
+> Covered by `backend/tests/test_search.py` (36 tests).
+> **Slice v1 frontend (done):** `/search` is the results page and the navbar box is
+> its entry point — one service backs both, so autocomplete and the full page can
+> never disagree on what matches. `src/data/search.js` is the only access point:
+> products ride the catalog's own `mapProduct` (a search card and a browse card
+> are literally the same shape) and facet rows are flattened into a camelCase
+> contract, so no render code touches the API's snake_case. The dropdown reads
+> `/suggest/` — prefix matches, *not* ranked results, because a shopper typing
+> "bask" needs "Basket" while still mid-word — debounced 250 ms, keyboard
+> navigable (ArrowUp/ArrowDown/Escape with one running index across all groups),
+> and any failure closes the panel rather than raising an error banner on a
+> keystroke; Enter still submits, so a broken suggest endpoint degrades to a plain
+> search box. Every piece of discovery state (query, each filter, sort, page)
+> lives in the URL, so a narrowed search is shareable and reloadable, and the
+> counts beside each filter come from the service's OR-facets — picking a
+> category never zeroes its siblings. A keyword search additionally answers with
+> the companion "Stores matching" / "Categories matching" strips, and a typo
+> rescue is disclosed through `fuzzy` instead of being passed off as an exact
+> match. Covered by `frontend/src/data/search.test.js` (7 tests); the frontend
+> suite is 16 files / 124 tests, lint and build green.
+> Deferred to v2/§18.2: index strategy (GIN/`SearchVectorField`), catalog's
+> legacy `?q=` `icontains` path migrating onto this service, and search
+> analytics.
 
 ### 18.2 Search infrastructure
 
--   [ ] PostgreSQL search foundation
+-   [x] PostgreSQL search foundation
 -   [ ] Search indexing strategy
 -   [ ] Meilisearch/Elasticsearch abstraction if needed
 -   [ ] Index synchronization
 -   [ ] Search analytics
+
+> **Slice v1 (done):** the foundation is PostgreSQL's own full-text stack —
+> weighted `tsvector`/`ts_rank` computed on the fly, plus the `pg_trgm`
+> extension (enabled by `apps/search/migrations/0001_enable_pg_trgm.py`, and a
+> *trusted* extension since PG 13 so it needs no superuser) for the typo
+> fallback. No external engine is warranted at this scale, and the service layer
+> is the seam a Meilisearch/Elasticsearch adapter would replace later.
+> **Index strategy is deliberately deferred:** it is measured work, not guessed
+> work, and there is no query pattern to measure against yet.
 
 ### 18.3 Discovery
 
@@ -1801,9 +1851,9 @@ Create scalable product discovery.
 
 ### Gate
 
--   [ ] Search returns relevant products
--   [ ] Filters work together
--   [ ] Search remains permission-safe
+-   [x] Search returns relevant products
+-   [x] Filters work together
+-   [x] Search remains permission-safe
 -   [ ] Index synchronization works
 
 **Skills:** marketplace-catalog, performance-skill
