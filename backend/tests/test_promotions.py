@@ -14,6 +14,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
 from django.test import Client
 from django.utils import timezone
@@ -544,4 +545,69 @@ def test_seller_api_builds_a_buy_x_get_y_rule_and_refuses_bad_ones():
     assert _post(kind='product_discount').status_code == 400
     assert Promotion.objects.filter(campaign__name='Bad BXGY').count() == 0
 
+
+
+def _make_staff(email, group):
+    """A staff user carrying one marketplace staff group."""
+    user = User.objects.create_user(
+        email=email,
+        first_name='Ops',
+        last_name='Person',
+        password=PASSWORD,
+        is_staff=True,
+    )
+    user.groups.add(Group.objects.get_or_create(name=group)[0])
+    return user
+
+
+def _client_for(user):
+    client = Client()
+    client.force_login(user)
+    return client
+
+
+def test_staff_campaign_console_is_group_gated():
+    """§16.4 — the console is administrator/operations only, and reads a plain list."""
+    ops = _make_staff('promo-ops@example.com', 'operations')
+    admin = _make_staff('promo-admin@example.com', 'administrator')
+    moderator = _make_staff('promo-mod@example.com', 'moderator')
+    customer = User.objects.create_user(
+        email='promo-buyer@example.com', password=PASSWORD
+    )
+    _seller, store, _product, _variant = _make_store_and_product('ConsoleStore')
+    campaign = Campaign.objects.create(
+        scope='seller',
+        store=store,
+        name='Seller Flash',
+        starts_at=timezone.now() - timedelta(days=1),
+        ends_at=timezone.now() + timedelta(days=5),
+    )
+    Promotion.objects.create(
+        campaign=campaign,
+        label='Seller Flash Rule',
+        kind='flash_sale',
+        discount_type='percentage',
+        value=Decimal('20.00'),
+    )
+
+    # Deny paths first: a non-operations staff group and a customer are both out.
+    assert _client_for(moderator).get('/api/v1/staff/campaigns/').status_code == 403
+    assert _client_for(customer).get('/api/v1/staff/campaigns/').status_code == 403
+
+    res = _client_for(ops).get('/api/v1/staff/campaigns/')
+    assert res.status_code == 200
+    body = res.json()
+    # A plain list (not the {count, items} envelope) — the console renders it directly.
+    assert isinstance(body, list)
+    row = next(c for c in body if c['id'] == campaign.id)
+    assert row['name'] == 'Seller Flash'
+    assert row['scope'] == 'seller'
+    assert row['store_name'] == 'ConsoleStore'
+    assert row['promotion_count'] == 1
+    assert row['is_active'] is True
+
+    # Finance supervises promotions, not campaigns.
+    finance = _make_staff('promo-fin@example.com', 'finance')
+    assert _client_for(finance).get('/api/v1/staff/campaigns/').status_code == 403
+    assert _client_for(admin).get('/api/v1/staff/campaigns/').status_code == 200
 

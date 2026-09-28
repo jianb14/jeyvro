@@ -25,7 +25,7 @@ import {
   PackageIcon,
 } from "../ui/Icons";
 import { NotificationBell } from "../ui/NotificationBell";
-import { MessageSquareIcon } from "../ui/Icons";
+import { MessageSquareIcon, TagIcon } from "../ui/Icons";
 
 
 const navRailClass = ({ isActive }) =>
@@ -113,6 +113,15 @@ export function Navbar() {
         </form>
 
         <div className="ml-auto flex items-center gap-2">
+          <Link
+            to="/vouchers"
+            aria-label="Voucher center"
+            title="Voucher center"
+            className="hidden size-10 items-center justify-center rounded-lg text-sand-600 transition-colors hover:text-moss-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 sm:inline-flex dark:text-sand-300 dark:hover:text-moss-300 dark:focus-visible:outline-moss-400"
+          >
+            <TagIcon size={20} />
+          </Link>
+
           <Link
             to="/wishlist"
             aria-label="Wishlist"
@@ -218,6 +227,13 @@ export function Navbar() {
               className="rounded-lg px-3 py-2.5 text-sm font-medium text-sand-700 hover:bg-sand-100 dark:text-sand-300 dark:hover:bg-night-800"
             >
               Cart{itemCount > 0 ? ` (${itemCount})` : ""}
+            </Link>
+            <Link
+              to="/vouchers"
+              onClick={() => setMobileOpen(false)}
+              className="rounded-lg px-3 py-2.5 text-sm font-medium text-sand-700 hover:bg-sand-100 dark:text-sand-300 dark:hover:bg-night-800"
+            >
+              Vouchers
             </Link>
             <Link
               to="/wishlist"

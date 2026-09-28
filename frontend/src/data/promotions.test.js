@@ -1,11 +1,49 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSellerPromotion,
+  createStaffCampaign,
   deactivateSellerPromotion,
+  fetchPublicVouchers,
   fetchSellerPromotions,
+  fetchStaffCampaigns,
+  fetchStaffPromotions,
   setSellerPromotionActive,
   validateVoucher,
 } from "./promotions";
+
+const VOUCHER_PAYLOAD = {
+  id: 12,
+  code: "WELCOME10",
+  title: "Welcome 10% off",
+  description: "First order treat.",
+  scope: "platform",
+  store_id: null,
+  store_name: null,
+  store_slug: null,
+  funded_by: "platform",
+  discount_type: "percentage",
+  value: 10,
+  min_spend: 500,
+  max_discount: 150,
+  first_order_only: true,
+  starts_at: "2026-09-01T00:00:00Z",
+  ends_at: "2026-12-31T23:59:59Z",
+  usage_limit: 100,
+  per_user_limit: 1,
+};
+
+const CAMPAIGN_PAYLOAD = {
+  id: 7,
+  name: "Harvest sale",
+  scope: "platform",
+  store_id: null,
+  store_name: null,
+  description: "September marketplace-wide sale.",
+  starts_at: "2026-09-20T00:00:00Z",
+  ends_at: "2026-09-30T23:59:59Z",
+  is_active: true,
+  promotion_count: 3,
+};
 
 const PROMOTION_PAYLOAD = {
   id: 3,
@@ -197,6 +235,164 @@ describe("seller promotion accessors", () => {
     await expect(fetchSellerPromotions()).rejects.toMatchObject({
       status: 404,
       message: "Store not found.",
+    });
+  });
+});
+
+describe("voucher center accessor", () => {
+  it("maps the public-safe voucher shape and never asks for counters", async () => {
+    const { fetchMock } = mockFetch([VOUCHER_PAYLOAD]);
+
+    const vouchers = await fetchPublicVouchers();
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/vouchers/");
+    expect(vouchers[0]).toEqual({
+      id: 12,
+      code: "WELCOME10",
+      title: "Welcome 10% off",
+      description: "First order treat.",
+      scope: "platform",
+      storeId: null,
+      storeName: "",
+      storeSlug: "",
+      fundedBy: "platform",
+      discountType: "percentage",
+      value: 10,
+      minSpend: 500,
+      maxDiscount: 150,
+      firstOrderOnly: true,
+      startsAt: "2026-09-01T00:00:00Z",
+      endsAt: "2026-12-31T23:59:59Z",
+      usageLimit: 100,
+      perUserLimit: 1,
+    });
+  });
+
+  it("sends the scope filter as a query param", async () => {
+    const { fetchMock } = mockFetch([VOUCHER_PAYLOAD]);
+
+    await fetchPublicVouchers({ scope: "platform" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/vouchers/?scope=platform");
+  });
+
+  it("prefers the store filter over the scope the server would ignore", async () => {
+    const { fetchMock } = mockFetch([VOUCHER_PAYLOAD]);
+
+    await fetchPublicVouchers({ store: "kalinga-crafts", scope: "seller" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/v1/vouchers/?store=kalinga-crafts"
+    );
+  });
+
+  it("keeps a null max_discount null instead of inventing a cap", async () => {
+    mockFetch([{ ...VOUCHER_PAYLOAD, max_discount: null, ends_at: null }]);
+
+    const [voucher] = await fetchPublicVouchers();
+
+    expect(voucher.maxDiscount).toBeNull();
+    expect(voucher.endsAt).toBeNull();
+  });
+
+  it("names the store behind a seller voucher so the card can link it", async () => {
+    mockFetch([
+      {
+        ...VOUCHER_PAYLOAD,
+        scope: "seller",
+        store_id: 9,
+        store_name: "Kalinga Crafts",
+        store_slug: "kalinga-crafts",
+      },
+    ]);
+
+    const [voucher] = await fetchPublicVouchers({ scope: "seller" });
+
+    expect(voucher.scope).toBe("seller");
+    expect(voucher.storeName).toBe("Kalinga Crafts");
+    expect(voucher.storeSlug).toBe("kalinga-crafts");
+  });
+});
+
+describe("staff campaign console accessors", () => {
+  it("lists campaigns from the plain list and maps the count the server sends", async () => {
+    const { fetchMock } = mockFetch([CAMPAIGN_PAYLOAD]);
+
+    const campaigns = await fetchStaffCampaigns();
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/staff/campaigns/");
+    expect(campaigns[0]).toEqual({
+      id: 7,
+      name: "Harvest sale",
+      scope: "platform",
+      storeId: null,
+      storeName: "",
+      description: "September marketplace-wide sale.",
+      startsAt: "2026-09-20T00:00:00Z",
+      endsAt: "2026-09-30T23:59:59Z",
+      isActive: true,
+      promotionCount: 3,
+    });
+  });
+
+  it("creates a platform campaign with the snake_case body only", async () => {
+    const { callWith } = mockFetch(CAMPAIGN_PAYLOAD, { status: 201 });
+
+    const campaign = await createStaffCampaign({
+      name: "Harvest sale",
+      description: "September marketplace-wide sale.",
+      startsAt: "2026-09-20T00:00",
+      endsAt: "2026-09-30T23:59",
+    });
+
+    const post = callWith("POST");
+    expect(post[0]).toBe("/api/v1/staff/campaigns/");
+    expect(JSON.parse(post[1].body)).toEqual({
+      name: "Harvest sale",
+      description: "September marketplace-wide sale.",
+      is_active: true,
+      starts_at: "2026-09-20T00:00",
+      ends_at: "2026-09-30T23:59",
+    });
+    expect(campaign.id).toBe(7);
+  });
+
+  it("omits blank dates so an always-on campaign stays always-on", async () => {
+    const { callWith } = mockFetch(CAMPAIGN_PAYLOAD, { status: 201 });
+
+    await createStaffCampaign({ name: "Always on", isActive: false });
+
+    expect(JSON.parse(callWith("POST")[1].body)).toEqual({
+      name: "Always on",
+      description: "",
+      is_active: false,
+    });
+  });
+
+  it("lists platform-wide promotions for oversight", async () => {
+    const { fetchMock } = mockFetch([PROMOTION_PAYLOAD]);
+
+    const promos = await fetchStaffPromotions();
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/staff/promotions/");
+    expect(promos[0]).toMatchObject({
+      id: 3,
+      kind: "flash_sale",
+      campaignName: "Harvest sale",
+      storeName: "Kalinga Crafts",
+      storeSlug: "kalinga-crafts",
+    });
+  });
+
+  it("surfaces the staff gate's refusal with the §8 envelope intact", async () => {
+    mockFetch(
+      { error: "forbidden", detail: "Staff access required." },
+      { ok: false, status: 403 }
+    );
+
+    await expect(fetchStaffCampaigns()).rejects.toMatchObject({
+      status: 403,
+      message: "Staff access required.",
     });
   });
 });

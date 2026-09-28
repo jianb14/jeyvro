@@ -4,7 +4,10 @@
  * The ONLY data access point for the promotion engine's wire contract:
  * - `validateVoucher` posts a code (never an amount) and returns the
  *   server's verdict for display;
- * - the seller CRUD accessors drive `/api/v1/seller/promotions/`.
+ * - `fetchPublicVouchers` feeds the browse-side voucher center;
+ * - the seller CRUD accessors drive `/api/v1/seller/promotions/`;
+ * - the staff accessors drive `/api/v1/staff/campaigns/` and
+ *   `/api/v1/staff/promotions/` (the operator console).
  * Every number here is computed by the backend — components render it and
  * never recalculate (marketplace rule 1).
  */
@@ -28,7 +31,60 @@ export function mapPromotion(p) {
     campaignName: p.campaign_name ?? "",
     startsAt: p.starts_at ?? null,
     endsAt: p.ends_at ?? null,
+    storeId: p.store_id ?? null,
     storeName: p.store_name ?? "",
+    storeSlug: p.store_slug ?? "",
+    // Buy-X-get-Y carries its own pair — the console renders which two
+    // products the rule couples, straight from the server's ids.
+    buyProductId: p.buy_product_id ?? null,
+    buyQty: p.buy_qty ?? null,
+    getProductId: p.get_product_id ?? null,
+    getQty: p.get_qty ?? null,
+  };
+}
+
+/**
+ * serialize_voucher (backend) → the component contract. Public-safe: the
+ * engine's counters are never exposed, so the center shows the rule and the
+ * window, and redemption stays a server verdict.
+ */
+export function mapVoucher(v) {
+  return {
+    id: v.id,
+    code: v.code ?? "",
+    title: v.title ?? "",
+    description: v.description ?? "",
+    scope: v.scope,
+    storeId: v.store_id ?? null,
+    // Store vouchers name and link their store; platform vouchers carry none.
+    storeName: v.store_name ?? "",
+    storeSlug: v.store_slug ?? "",
+    fundedBy: v.funded_by,
+    discountType: v.discount_type,
+    value: v.value ?? 0,
+    minSpend: v.min_spend ?? 0,
+    maxDiscount: v.max_discount ?? null,
+    firstOrderOnly: Boolean(v.first_order_only),
+    startsAt: v.starts_at ?? null,
+    endsAt: v.ends_at ?? null,
+    usageLimit: v.usage_limit ?? null,
+    perUserLimit: v.per_user_limit ?? null,
+  };
+}
+
+/** serialize_campaign (backend) → the component contract. */
+export function mapCampaign(c) {
+  return {
+    id: c.id,
+    name: c.name ?? "",
+    scope: c.scope,
+    storeId: c.store_id ?? null,
+    storeName: c.store_name ?? "",
+    description: c.description ?? "",
+    startsAt: c.starts_at ?? null,
+    endsAt: c.ends_at ?? null,
+    isActive: Boolean(c.is_active),
+    promotionCount: c.promotion_count ?? 0,
   };
 }
 
@@ -105,4 +161,56 @@ export async function deactivateSellerPromotion(id) {
     method: "DELETE",
     csrf,
   });
+}
+
+// --- Voucher center (public, §16.4) -----------------------------------------
+
+/**
+ * GET /api/v1/vouchers/ — the active vouchers the center browses. Public and
+ * anonymous-safe: the server returns only its public-safe voucher shape, so
+ * the page can render a code without ever learning the redemption counters.
+ * `store` narrows to one store's vouchers; otherwise `scope` picks
+ * `platform` / `seller` (the server ignores `scope` when `store` is sent).
+ */
+export async function fetchPublicVouchers({ store = "", scope = "" } = {}) {
+  const params = new URLSearchParams();
+  if (store) params.set("store", store);
+  else if (scope) params.set("scope", scope);
+  const query = params.toString();
+  const data = await request(BASE, `/vouchers/${query ? `?${query}` : ""}`);
+  return (Array.isArray(data) ? data : (data.items ?? [])).map(mapVoucher);
+}
+
+// --- Staff campaign & promotion console (§16.4) -----------------------------
+
+/** GET /api/v1/staff/campaigns/ — every campaign, newest first (plain list). */
+export async function fetchStaffCampaigns() {
+  const data = await request(BASE, "/staff/campaigns/");
+  return (Array.isArray(data) ? data : (data.items ?? [])).map(mapCampaign);
+}
+
+/**
+ * POST /api/v1/staff/campaigns/ — a platform-wide campaign. The staff accessor
+ * only ever sends the campaign's own fields; the server fixes the scope to
+ * `platform` and writes the `campaign.created` audit row itself, so a caller
+ * can never smuggle a store in or skip the trail.
+ */
+export async function createStaffCampaign(payload) {
+  const csrf = await ensureCsrfToken();
+  const body = {
+    name: payload.name,
+    description: payload.description ?? "",
+    is_active: payload.isActive ?? true,
+  };
+  if (payload.startsAt) body.starts_at = payload.startsAt;
+  if (payload.endsAt) body.ends_at = payload.endsAt;
+  return mapCampaign(
+    await request(BASE, "/staff/campaigns/", { method: "POST", body, csrf })
+  );
+}
+
+/** GET /api/v1/staff/promotions/ — platform-wide promotion oversight. */
+export async function fetchStaffPromotions() {
+  const data = await request(BASE, "/staff/promotions/");
+  return (Array.isArray(data) ? data : (data.items ?? [])).map(mapPromotion);
 }

@@ -12,6 +12,7 @@ import { OrderDetail } from "./routes/OrderDetail";
 import { Orders } from "./routes/Orders";
 import { Receipt } from "./routes/Receipt";
 import { Wishlist } from "./routes/Wishlist";
+import { Vouchers } from "./routes/Vouchers";
 import { Login } from "./routes/Login";
 import { Register } from "./routes/Register";
 import { Account } from "./routes/Account";
@@ -41,6 +42,7 @@ import { StaffOrders } from "./routes/staff/StaffOrders";
 import { StaffPayments } from "./routes/staff/StaffPayments";
 import { StaffReviews } from "./routes/staff/StaffReviews";
 import { StaffSettings } from "./routes/staff/StaffSettings";
+import { StaffCampaigns } from "./routes/staff/StaffCampaigns";
 
 function App() {
   return (
@@ -86,6 +88,7 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route path="/vouchers" element={<Vouchers />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/store/:slug" element={<Storefront />} />
@@ -155,6 +158,7 @@ function App() {
                 <Route path="taxonomy" element={<StaffTaxonomy />} />
                 <Route path="orders" element={<StaffOrders />} />
                 <Route path="payments" element={<StaffPayments />} />
+                <Route path="campaigns" element={<StaffCampaigns />} />
                 <Route path="reviews" element={<StaffReviews />} />
                 <Route path="settings" element={<StaffSettings />} />
                 <Route path="users" element={<StaffUsers />} />

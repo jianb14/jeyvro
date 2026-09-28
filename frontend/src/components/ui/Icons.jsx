@@ -76,6 +76,7 @@ export const PhoneIcon = (p) => <I {...p}><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19
 export const TruckIcon = (p) => <I {...p}><path d="M14 17V5a1 1 0 0 0-1-1H2v13h2M14 8h4l4 4v5h-2" /><circle cx="6.5" cy="17.5" r="2" /><circle cx="17.5" cy="17.5" r="2" /></I>;
 export const ShieldCheckIcon = (p) => <I {...p}><path d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10z" /><path d="m8.8 11.8 2.2 2.2 4.2-4.5" /></I>;
 export const TagIcon = (p) => <I {...p}><path d="M12.6 2.6 21 11a2 2 0 0 1 0 2.8l-7.2 7.2a2 2 0 0 1-2.8 0L2.6 12.6A2 2 0 0 1 2 11.2V4a2 2 0 0 1 2-2h7.2a2 2 0 0 1 1.4.6z" /><circle cx="7.5" cy="7.5" r="1.3" /></I>;
+export const MegaphoneIcon = (p) => <I {...p}><path d="M3 11v2a1 1 0 0 0 1 1h2l4 5V5L6 10H4a1 1 0 0 0-1 1z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 6a8.5 8.5 0 0 1 0 12" /></I>;
 export const FilterIcon = (p) => <I {...p}><path d="M3 5h18M6.5 12h11M10 19h4" /></I>;
 export const WalletIcon = (p) => <I {...p}><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z" /><path d="M16 7V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2M16 14h.01" /></I>;
 export const PercentIcon = (p) => <I {...p}><path d="m19 5-14 14" /><circle cx="7" cy="7" r="2.5" /><circle cx="17" cy="17" r="2.5" /></I>;

@@ -15,6 +15,7 @@ import {
   ClockIcon,
   CreditCardIcon,
   InboxIcon,
+  MegaphoneIcon,
   PackageIcon,
   SettingsIcon,
   ShieldCheckIcon,
@@ -41,6 +42,14 @@ const NAV = [
     label: "Payments",
     icon: CreditCardIcon,
     groups: ["support", "finance", "administrator"],
+  },
+  {
+    // Campaign management is operations/administrator only; the promotions
+    // oversight tab is also open to finance, which supervises money (§4).
+    to: "/staff/campaigns",
+    label: "Campaigns & promos",
+    icon: MegaphoneIcon,
+    groups: ["finance", "operations", "administrator"],
   },
   {
     to: "/staff/settings",

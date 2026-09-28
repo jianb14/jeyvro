@@ -16,7 +16,8 @@ class VoucherValidateSerializer(serializers.Serializer):
 
 
 def serialize_voucher(voucher):
-    """Public-safe voucher shape (the voucher center renders this later)."""
+    """Public-safe voucher shape (the voucher center renders this)."""
+    store = voucher.store
     return {
         'id': voucher.id,
         'code': voucher.code,
@@ -24,6 +25,8 @@ def serialize_voucher(voucher):
         'description': voucher.description,
         'scope': voucher.scope,
         'store_id': voucher.store_id,
+        'store_name': store.name if store else None,
+        'store_slug': store.slug if store else None,
         'funded_by': voucher.funded_by,
         'discount_type': voucher.discount_type,
         'value': float(voucher.value),

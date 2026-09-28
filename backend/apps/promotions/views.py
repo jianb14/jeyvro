@@ -53,7 +53,11 @@ class PublicVoucherListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        vouchers = Voucher.objects.filter(is_active=True).order_by('-created_at')
+        vouchers = (
+            Voucher.objects.filter(is_active=True)
+            .select_related('store')
+            .order_by('-created_at')
+        )
         store_slug = request.query_params.get('store')
         if store_slug:
             vouchers = vouchers.filter(store__slug=store_slug)
