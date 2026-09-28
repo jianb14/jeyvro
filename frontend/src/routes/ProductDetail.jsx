@@ -38,7 +38,8 @@ import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
 import { useQuickAdd } from "../features/cart/useQuickAdd";
 import { useWishlist } from "../features/wishlist/WishlistContext";
-import { getProductById, getProducts } from "../data/products";
+import { getProductById } from "../data/products";
+import { recommendations } from "../data/search";
 import { ProductReviews } from "../features/reviews/ProductReviews";
 import { recordRecentlyViewed } from "../lib/recentlyViewed";
 
@@ -53,6 +54,7 @@ export function ProductDetail() {
   const location = useLocation();
   const [state, setState] = useState({ slug, status: "loading", product: null, error: null });
   const [related, setRelated] = useState({ slug: null, items: [] });
+  const [similar, setSimilar] = useState({ slug: null, items: [] });
   const [selectedId, setSelectedId] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState(0);
@@ -77,14 +79,21 @@ export function ProductDetail() {
         setQuantity(1);
         setActiveImage(0);
         recordRecentlyViewed(product);
-        return getProducts({ category: product.categorySlug, pageSize: 6 }).catch(() => null);
+        // §18.3: "related" and "similar" are two different questions about the
+        // same product — same category/brand, versus nearest by text — and the
+        // old category filter answered the first one badly by including
+        // unranked results and by showing the seed's own siblings only.
+        // Both are requested together because both hang off the same page, and
+        // a failure in one must not blank the other.
+        return Promise.all([
+          recommendations({ kind: "related", seed: slug, limit: 4 }).catch(() => null),
+          recommendations({ kind: "similar", seed: slug, limit: 4 }).catch(() => null),
+        ]);
       })
-      .then((result) => {
-        if (cancelled || !result) return;
-        setRelated({
-          slug,
-          items: result.items.filter((item) => item.id !== slug).slice(0, 4),
-        });
+      .then(([relatedResult, similarResult]) => {
+        if (cancelled) return;
+        if (relatedResult) setRelated({ slug, items: relatedResult.items });
+        if (similarResult) setSimilar({ slug, items: similarResult.items });
       })
       .catch((err) => {
         if (!cancelled) {
@@ -117,6 +126,13 @@ export function ProductDetail() {
   const mainImage = gallery[activeImage] ?? gallery[0] ?? null;
   const showDiscount = Boolean(product && selected && selected.price === product.price);
   const fav = product ? isSaved(product.id) : false;
+  // "Similar" must never repeat a card "related" already showed: a second
+  // rail that re-lists the first one reads as a rendering bug, not as taste.
+  const relatedIds = new Set(related.items.map((item) => item.id));
+  const similarOnly =
+    similar.slug === slug
+      ? similar.items.filter((item) => !relatedIds.has(item.id))
+      : [];
 
   const addSelected = async () => {
     if (!selected) return;
@@ -445,9 +461,19 @@ export function ProductDetail() {
                 subtitle={
                   product.category
                     ? `More from ${product.category}`
-                    : "More from the catalog"
+                    : "More from the same maker"
                 }
                 products={related.items}
+                columns={4}
+                onAddToCart={quickAdd}
+              />
+            )}
+
+            {similarOnly.length > 0 && (
+              <ProductShelf
+                title="Similar finds"
+                subtitle="Closest in description to this product."
+                products={similarOnly}
                 columns={4}
                 onAddToCart={quickAdd}
               />

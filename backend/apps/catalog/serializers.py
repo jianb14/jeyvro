@@ -2,8 +2,9 @@
 
 The public product shape mirrors the data-layer contract (id/title/price/
 originalPrice/discount/rating/sold/stock/store/verified/isNew/category)
-so the Phase 6 mock→API swap stays trivial. `rating` and `sold` stay at
-their placeholders until orders/reviews exist (Phases 8/14).
+so the Phase 6 mock→API swap stays trivial. `rating` is server-computed by
+the review services (Phase 14) and `sold` is aggregated from order rows
+(§18.3), so both are read-only in the shape the frontend renders.
 """
 from rest_framework import serializers
 
@@ -169,7 +170,33 @@ class PublicProductSerializer(serializers.ModelSerializer):
         return float(obj.rating_average) if obj.rating_average is not None else None
 
     def get_sold(self, obj):
-        return 0  # order events arrive with Phase 8
+        """Units sold — real order data, read-only (§18.3 "popular").
+
+        Never a count of its own: that would turn a 12-card page into 12
+        queries. A view may hand a whole page over as `sold_map`; otherwise
+        one grouped query answers for the whole response and is cached on
+        the serializer, so the second card costs nothing. With neither — no
+        known instance to scope the query to — the honest answer is 0: the
+        field is display-only and never something a caller can set.
+        """
+        sold_map = self.context.get('sold_map')
+        if sold_map is not None:
+            return int(sold_map.get(obj.pk, 0))
+
+        from apps.orders.services import units_sold_map
+
+        source = self.root.instance
+        if source is None:
+            # No instance to scope a shared query to — answer for this row
+            # only, and deliberately uncached: caching it would hand later
+            # rows a map built from someone else's id.
+            return int(units_sold_map([obj.pk]).get(obj.pk, 0))
+
+        sold_map = getattr(self, '_sold_map', None)
+        if sold_map is None:
+            ids = [source.pk] if hasattr(source, 'pk') else [item.pk for item in source]
+            sold_map = self._sold_map = units_sold_map(ids)
+        return int(sold_map.get(obj.pk, 0))
 
     def get_stock(self, obj):
         total = 0

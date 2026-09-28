@@ -40,6 +40,7 @@
 | 16 | Promotions, Vouchers & Campaigns | 🔄 Slices v1–v3 shipped — `apps/promotions` (platform/seller vouchers — percentage or fixed with min spend, max-discount cap, usage + per-user limits, start/end window, first-order rule, product/category targeting rows), `POST /api/v1/vouchers/validate/` previews a code against the caller's live cart through the same service checkout uses, and redemption is atomic inside `create_order`: the row-locked `VoucherUsage` ledger plus `voucher.redeemed` audit keep counters and discounts race-condition safe and auditable, and orders snapshot `voucher_code`/`discount_total` with the payment collecting the discounted total. Slice v2: automatic promotions (`services.evaluate_store_lines` — product discount, flash sale, bundle threshold, free-shipping waiver, buy-X-get-Y) priced into cart, checkout preview and orders as `promotion_discount` (checkout preview parity fixed), seller CRUD at `/api/v1/seller/promotions/`, and the §16.4 UI — cart promotion labels, checkout voucher entry, order/receipt discount rows, `/seller/promotions` desk. Slice v3: §16.3 funding settled server-side at redemption — `split_funding` splits every discount into `platform_amount`/`seller_amount` on the ledger (shared = 50/50, odd cent to the platform) under DB constraints, plus BXGY engine coverage. Slice v4 closes the last §16.4 gaps: the buyer **Voucher Center** at `/vouchers` (public, scope tabs, copy-to-clipboard over the public-safe `GET /api/v1/vouchers/` shape — no client-side discount math), and the staff **Campaign & Promotion Console** at `/staff/campaigns` (campaigns table with `promotion_count`, a create-platform-campaign modal the server forces to `scope=platform` with a `campaign.created` audit row, and a platform-wide promotions oversight tab that keeps deactivated rules visible). Access follows §4: campaign management is operations/administrator, promotion oversight adds finance — the console fetches each list only when the caller's role may read it. Covered by `backend/tests/test_promotions.py` (13 tests) + `frontend/src/data/promotions.test.js` (18 tests) |
 | 17 | Returns, Refunds & Disputes | ✅ Done — `apps/resolutions` (slices v1–v3). v1 return cases: server-verified eligibility and a return window snapshotted per case, per-line quantity caps, seller response, staff intervention/override, reverse-parcel tracking, and receipt-time line-scoped restock through the append-only stock ledger; refund arithmetic computed server-side from order snapshots (order-level discounts apportioned to the lines that enjoyed them, shipping back only on a fully returned slice), and the linked `OrderRequest` resolved by the case that answers it. v2 money movement: the case prices, `apps.payments` moves — `Refund.restock`/`Refund.return_case` keep manual refunds and case-paid payouts honest, `POST /api/v1/admin/returns/<ref>/refund` is finance/administrator-only and callable only after goods are received, partial settlements cap against the case then the payment, and the case follows its refund through the provider seam (`on_refund_settled`/`on_refund_failed`) with a refused gateway rolling the whole payout back. v3 disputes: `Dispute` (`JVDSP-…`) with append-only statements/evidence whose party is derived from the caller, staff claim + ruling with a mandatory reason that freezes the record, buyer withdrawal, and timeline + audit rows on every movement. Covered by `backend/tests/test_returns.py` (18 gate tests) |
 | 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
+| 18b | Search, Recommendations & Discovery (cont.) | ✅ §18.3 Discovery — `GET /api/v1/search/recommendations/` (public, `?kind=`) serves five shelves from one ranking entry point, each reading back through the same `searchable_products` chokepoint: `trending` (units in a 30-day window) and `popular` (all-time units) fall back to newest because a quiet marketplace still needs a homepage, while `related` (category, then brand, best-rated first), `similar` (nearest by the same `pg_trgm` machinery the typo rescue uses) and `personalized` (categories/brands of the shopper's own `seen=` history ranked by how well they sell) return fewer items rather than padded ones. Frontend: Home swaps the old discount-sorted "trending" placeholder for real Trending + Best sellers rails and adds "Recommended for you" from the browser's own recently-viewed list (no account, no server-side profile), and the product page gains a "Similar finds" rail beside "You might also like" with no card repeated across the two. Covered by `backend/tests/test_recommendations.py` (24 tests) + `frontend/src/data/search.test.js` (14 tests) |
 | 19 | Analytics & Reporting | ⬜ Not started |
 | 20 | Security, Compliance & Abuse Prevention | ⬜ Not started |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
@@ -1842,12 +1843,59 @@ Create scalable product discovery.
 
 ### 18.3 Discovery
 
--   [ ] Trending products
--   [ ] Popular products
--   [ ] Recently viewed
--   [ ] Related products
--   [ ] Similar products
--   [ ] Personalized recommendations foundation
+-   [x] Trending products
+-   [x] Popular products
+-   [x] Recently viewed
+-   [x] Related products
+-   [x] Similar products
+-   [x] Personalized recommendations foundation
+
+> **Backend (done):** `GET /api/v1/search/recommendations/` is public and
+> permission-safe by the same construction as §18.1 — `?kind=` picks one of
+> five rankings and every one of them re-reads through `searchable_products()`,
+> so a shelf is never a second, sloppier product pipeline. The kind decides the
+> *ranking*, never the *visibility*.
+>
+> The five kinds deliberately degrade in two different ways. A *ranking*
+> (`trending`, `popular`) orders everything, so it falls back to newest when
+> there is nothing to rank — a marketplace with three orders still needs a
+> homepage. A *neighbourhood* (`related`, `similar`, `personalized`) makes a
+> claim about each product it shows, so it returns fewer items rather than padded
+> ones: a shelf labelled "related" containing an unrelated product is worse than
+> a shelf that is short. `similar` in particular is never topped up, because a
+> product sharing no trigram with the seed is not similar to it however good it
+> is.
+>
+> `trending` is units sold inside a 30-day window, `popular` is all-time units,
+> and both exclude cancelled/refunded orders via the same `NON_SELLING_STATUSES`
+> list `apps.orders` defines — a returned product cannot sit at the top of
+> trending. When nothing sold recently every windowed count is `NULL`, and
+> trending degrades to popular on its own rather than emptying out.
+>
+> `personalized` is the whole personalization *foundation*: the shopper's
+> history travels with the request as `seen=` and is discarded with it, so it
+> works for a signed-out visitor, needs no per-user row to leak or delete, and
+> cannot quietly become a tracking system. A seed that no longer resolves is a
+> `404` rather than a `500` (it is resolved inside the same validation `try`),
+> and a `kind` that needs a subject but was not given one names the missing
+> parameter instead of quietly serving the default shelf.
+> Covered by `backend/tests/test_recommendations.py` (24 tests).
+>
+> **Frontend (done):** Home's "Trending products" was a placeholder that sorted
+> by discount and called itself trending — now that order data exists it is
+> replaced outright by the real ranking, beside a "Best sellers" rail, and a
+> "Recommended for you" rail that appears only once the browser has a
+> recently-viewed history to rank. The product page keeps "You might also like"
+> and gains "Similar finds" beside it, with no card rendered in both.
+> `src/data/search.js` is still the only access point, so a shelf card and a
+> search card are the same `mapProduct` shape; kinds that would obviously 400
+> (`related` with no seed, `personalized` with no history) resolve to an empty
+> shelf in the browser rather than a failed request, while a genuine failure
+> still surfaces. Covered by `frontend/src/data/search.test.js` (14 tests).
+>
+> **Deferred:** `recently viewed` stays client-side (no cross-device history),
+> and collaborative per-user filtering is deliberately not started — it needs
+> the account system this stateless foundation was designed to avoid.
 
 ### Gate
 

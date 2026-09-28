@@ -25,6 +25,7 @@ import {
 } from "../components/ui/Icons";
 import { getCategories, getProducts } from "../data/products";
 import { fetchPlatformInfo } from "../data/platform";
+import { recommendations } from "../data/search";
 import { fetchPublicStores } from "../data/stores";
 import { getRecentlyViewed } from "../lib/recentlyViewed";
 
@@ -90,6 +91,9 @@ export function Home() {
   const [featuredError, setFeaturedError] = useState(null);
   const [trending, setTrending] = useState(null);
   const [trendingError, setTrendingError] = useState(null);
+  const [popular, setPopular] = useState(null);
+  const [popularError, setPopularError] = useState(null);
+  const [forYou, setForYou] = useState([]);
   const [stores, setStores] = useState(null);
   const [storesError, setStoresError] = useState(null);
   const [recent] = useState(() => getRecentlyViewed());
@@ -141,9 +145,11 @@ export function Home() {
 
   useEffect(() => {
     let alive = true;
-    // Trending foundation: biggest real discount, computed server-side,
-    // until order events bring true trend data (Phase 8).
-    getProducts({ sort: "discount", pageSize: 8 })
+    // §18.3: trending is now a real ranking — units sold inside the server's
+    // window, not the biggest markdown. Order data finally exists, so the
+    // placeholder that ranked by discount is gone rather than kept as a
+    // fallback: it was never "trending", and labelling it so was a lie.
+    recommendations({ kind: "trending", limit: 8 })
       .then((data) => {
         if (alive) setTrending(data.items);
       })
@@ -154,6 +160,46 @@ export function Home() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    // All-time best sellers, which is a different question from trending and a
+    // different answer: something can sell steadily for a year and never trend.
+    recommendations({ kind: "popular", limit: 8 })
+      .then((data) => {
+        if (alive) setPopular(data.items);
+      })
+      .catch(() => {
+        if (alive) setPopularError("Could not load best sellers.");
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    // Personalized from the visitor's own recently-viewed history (§18.3).
+    // It travels with the request and is discarded with it — no account, no
+    // server-side profile. A first visit resolves to an empty shelf, so this
+    // starts as `[]` and the section is simply not rendered.
+    const seen = recent.map((item) => item.id).filter(Boolean);
+    // No history means there is nothing to personalize from, and the shelf
+    // already starts empty — returning here is not "resetting" it, it is
+    // declining to ask a question with no answer.
+    if (seen.length === 0) return undefined;
+    recommendations({ kind: "personalized", seen, limit: 8 })
+      .then((data) => {
+        if (alive) setForYou(data.items);
+      })
+      .catch(() => {
+        // A failed suggestion is not a reason to interrupt the homepage.
+        if (alive) setForYou([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [recent]);
 
   useEffect(() => {
     let alive = true;
@@ -234,11 +280,21 @@ export function Home() {
 
         <ProductShelf
           title="Trending products"
-          subtitle="Biggest savings right now — ranked by real discount."
-          viewAllHref="/products?sort=discount"
+          subtitle="What the marketplace is actually buying right now."
+          viewAllHref="/products"
           products={trending}
           loading={trending === null && !trendingError}
           error={trendingError}
+          onAddToCart={addToCart}
+        />
+
+        <ProductShelf
+          title="Best sellers"
+          subtitle="All-time favourites, by units sold."
+          viewAllHref="/products"
+          products={popular}
+          loading={popular === null && !popularError}
+          error={popularError}
           onAddToCart={addToCart}
         />
 
@@ -302,6 +358,15 @@ export function Home() {
             title="Recently viewed"
             subtitle="Pick up where you left off."
             products={recent}
+            onAddToCart={addToCart}
+          />
+        )}
+
+        {forYou.length > 0 && (
+          <ProductShelf
+            title="Recommended for you"
+            subtitle="Based on what you've looked at — stays in this browser."
+            products={forYou}
             onAddToCart={addToCart}
           />
         )}

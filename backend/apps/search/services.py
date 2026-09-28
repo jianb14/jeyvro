@@ -22,7 +22,14 @@ Typo tolerance (§18.1) is layered rather than fussy: exact/prefix full-text
 match first, then a `pg_trgm` similarity pass only when the strict pass came
 back empty. That keeps the common case fast and index-friendly, and still lets
 "banan" find "banana basket" instead of a blank page.
+
+Recommendations (§18.3) reuse those foundations rather than growing a second
+product pipeline: trending and popular are the *order* rows read back as a
+ranking, related and similar are the *catalog* read as a neighbourhood, and
+every shelf still answers with only what `searchable_products()` would show,
+so a recommendation can never reach a draft or a suspended store either.
 """
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.postgres.search import (
@@ -36,14 +43,18 @@ from django.db.models import (
     DecimalField,
     Exists,
     F,
+    IntegerField,
     Max,
     Min,
     OrderBy,
     OuterRef,
     Q,
     Subquery,
+    Sum,
+    Value,
 )
 from django.db.models.functions import Coalesce, Greatest
+from django.utils import timezone
 
 from apps.catalog.models import Category, Product, Variant
 from apps.stores.models import Store
@@ -75,7 +86,13 @@ TRIGRAM_THRESHOLD = 0.3
 
 # Sort keys the API accepts. `relevance` is absent because rank is a computed
 # full-text score rather than a column, so `_sort_terms` handles it directly.
-SORT_KEYS = ('relevance', 'newest', 'price_asc', 'price_desc', 'rating')
+# `best_selling` and `trending` (§18.3) are order-derived the way price is
+# column-derived: both compile to a scalar subquery, never an aggregate, so
+# neither can drag a facet into a GROUP BY.
+SORT_KEYS = (
+    'relevance', 'newest', 'price_asc', 'price_desc', 'rating',
+    'best_selling', 'trending',
+)
 
 # Price buckets for the price facet (§18.1). Fixed server-side so the bands
 # never shift under the shopper between requests.
@@ -97,6 +114,24 @@ FACET_LIMIT = 20
 # the facet, and the sort can never drift apart on a string literal.
 PRICE_ALIAS = 'shelf_price'
 SIMILARITY_ALIAS = 'trigram_similarity'
+
+# --- §18.3 discovery ----------------------------------------------------------
+RECOMMENDATION_KINDS = ('trending', 'popular', 'related', 'similar', 'personalized')
+
+# A sale keeps a product "trending" for this long; older sales still rank it
+# under `popular`, which is what stops a marketplace's first best seller from
+# being frozen at #1 forever.
+TRENDING_WINDOW_DAYS = 30
+
+# Shelf sizing is bounded server-side so one request cannot ask the ranking to
+# materialize the whole catalog. The sales pool is bounded a second time
+# because ranking happens in Python: the permission filter runs first, then
+# the surviving rows are re-sorted, so the pool must already be small enough
+# to hold in memory.
+DEFAULT_RECOMMENDATION_LIMIT = 12
+MAX_RECOMMENDATION_LIMIT = 48
+SALES_CANDIDATE_POOL = 200
+MAX_SEEN_SLUGS = 20
 
 
 class SearchQueryError(ValueError):
@@ -245,6 +280,39 @@ def shelf_price():
     )
 
 
+def units_sold_subquery(*, windowed=False):
+    """Units sold as a correlated scalar subquery — the `shelf_price` pattern.
+
+    The reasoning is identical to price's: an aggregate would force a GROUP BY
+    that every facet query then has to work around, while a scalar subquery
+    filters, sorts and aggregates like an ordinary column. `windowed` narrows
+    it to the §18.3 trending window, which is the *only* difference between
+    the `best_selling` and `trending` sorts.
+
+    The exclusion list comes from `apps.orders` so this ranking and the "sold"
+    figure on a product card are computed from the same definition of a sale.
+    """
+    from apps.orders.models import OrderItem
+    from apps.orders.services import NON_SELLING_STATUSES
+
+    rows = OrderItem.objects.filter(
+        product=OuterRef('pk')
+    ).exclude(seller_order__status__in=NON_SELLING_STATUSES)
+    if windowed:
+        rows = rows.filter(
+            created_at__gte=timezone.now() - timedelta(days=TRENDING_WINDOW_DAYS)
+        )
+    return Coalesce(
+        Subquery(
+            rows.values('product')
+            .annotate(total=Sum('quantity'))
+            .values('total')[:1]
+        ),
+        Value(0),
+        output_field=IntegerField(),
+    )
+
+
 def _with_shelf_price(queryset):
     """Attach the shelf price as a filterable alias.
 
@@ -351,6 +419,14 @@ def _sort_terms(sort):
         return [shelf_price().desc()]
     if sort == 'rating':
         return [OrderBy(F('rating_average'), descending=True, nulls_last=True)]
+    if sort == 'best_selling':
+        # Units ever sold. Products nobody has bought land at 0, which sorts
+        # them last rather than hiding them — a sort must never change the
+        # result set, only its order.
+        return [units_sold_subquery().desc()]
+    if sort == 'trending':
+        # Units sold inside the trending window only (§18.3).
+        return [units_sold_subquery(windowed=True).desc()]
     raise SearchQueryError('invalid_parameter', f'"{sort}" is not a supported sort.')
 
 
@@ -672,4 +748,312 @@ def suggest(needle, limit=8):
         'stores': list(stores),
         'categories': list(categories),
     }
+
+
+# --- Recommendations (§18.3 Discovery) ---------------------------------------
+# One endpoint, five kinds, every one of them reading back through
+# `searchable_products()`. The kind decides the *ranking*, never the
+# *visibility* — a shelf is not a second, sloppier product pipeline.
+#
+# The kinds degrade in two different ways on purpose. A *ranking* (trending,
+# popular) orders everything, so it may fall back to newest — a marketplace
+# with three orders still needs a homepage. A *neighbourhood* (related,
+# similar, personalized) makes a claim about each product it shows, so it
+# returns fewer items rather than padded ones: a shelf labelled "related"
+# that contains an unrelated product is worse than a shelf that is short.
+
+
+def parse_recommendation_params(params):
+    """Validate `?kind= &seed= &seen= &limit=` into a plain dict.
+
+    Same contract as `parse_params`: bad input raises `SearchQueryError` for
+    the view to map onto the §8 envelope rather than being silently coerced
+    into a different shelf. A caller that names a kind without the subject
+    that kind needs is told which parameter is missing instead of quietly
+    receiving the default shelf and believing it got what it asked for.
+    """
+    kind = (params.get('kind') or 'trending').strip()
+    if kind not in RECOMMENDATION_KINDS:
+        raise SearchQueryError(
+            'invalid_parameter', f'"{kind}" is not a recommendation kind.'
+        )
+
+    raw_limit = (params.get('limit') or '').strip()
+    if raw_limit:
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError):
+            raise SearchQueryError('invalid_parameter', '"limit" must be a whole number.')
+        if limit < 1:
+            raise SearchQueryError('invalid_parameter', '"limit" must be 1 or greater.')
+        if limit > MAX_RECOMMENDATION_LIMIT:
+            raise SearchQueryError(
+                'invalid_parameter',
+                f'"limit" must be {MAX_RECOMMENDATION_LIMIT} or fewer.',
+            )
+    else:
+        limit = DEFAULT_RECOMMENDATION_LIMIT
+
+    seed = (params.get('seed') or '').strip()
+    if kind in ('related', 'similar') and not seed:
+        raise SearchQueryError(
+            'missing_parameter',
+            f'"{kind}" needs a "seed" product to build from.',
+        )
+
+    seen = [
+        slug.strip()
+        for slug in (params.get('seen') or '').split(',')
+        if slug.strip()
+    ][:MAX_SEEN_SLUGS]
+    if kind == 'personalized' and not seen:
+        raise SearchQueryError(
+            'missing_parameter',
+            '"personalized" needs at least one slug in "seen".',
+        )
+
+    return {'kind': kind, 'seed': seed, 'seen': seen, 'limit': limit}
+
+
+def recommendations(params):
+    """The shelf for one §18.3 kind — `{kind, products}` for the view to render.
+
+    Each kind is one branch because each is one genuinely different ranking
+    signal; a strategy table would only move the same five lines elsewhere.
+    """
+    kind, limit = params['kind'], params['limit']
+
+    if kind == 'trending':
+        products = _sales_shelf(limit, windowed=True)
+    elif kind == 'popular':
+        products = _sales_shelf(limit, windowed=False)
+    elif kind == 'related':
+        products = _related_shelf(params['seed'], limit)
+    elif kind == 'similar':
+        products = _similar_shelf(params['seed'], limit)
+    else:
+        products = _personalized_shelf(params['seen'], limit)
+
+    return {'kind': kind, 'products': products[:limit]}
+
+
+def _seed_product(slug):
+    """The sellable product a `related`/`similar` shelf is built around.
+
+    A slug that does not resolve to a published product in an active store is
+    refused before any ranking runs. That is not just tidiness: acknowledging
+    a draft by recommending "products like it" would leak that it exists.
+    """
+    try:
+        return searchable_products().get(slug=slug)
+    except Product.DoesNotExist:
+        raise SearchQueryError(
+            'not_found', f'No sellable product with the slug "{slug}".'
+        )
+
+
+def _ids(products):
+    return [product.pk for product in products]
+
+
+def _default_shelf(limit, exclude=()):
+    """Newest-first — the order the browse page uses before it has data."""
+    if limit <= 0:
+        return []
+    queryset = searchable_products()
+    if exclude:
+        queryset = queryset.exclude(pk__in=exclude)
+    return list(queryset.order_by('-created_at', '-pk')[:limit])
+
+
+def _by_rating(queryset, limit):
+    """Best-rated first, unrated last, newest as the tiebreaker.
+
+    `nulls_last` is the whole point: without it an unrated product could
+    outrank a reviewed one purely because NULL sorts high.
+    """
+    if limit <= 0:
+        return []
+    return list(
+        queryset.order_by(
+            OrderBy(F('rating_average'), descending=True, nulls_last=True),
+            '-created_at',
+        )[:limit]
+    )
+
+
+def _sales_shelf(limit, *, windowed):
+    """Order-derived shelf: `trending` (recent units) or `popular` (all units)."""
+    products = _in_sales_rank(_sales_ranks(windowed=windowed), limit)
+    if len(products) < limit:
+        products += _default_shelf(limit - len(products), exclude=_ids(products))
+    return products[:limit]
+
+
+def _sales_ranks(*, windowed):
+    """{product_id: position} from sales, best first — {} when nothing sold.
+
+    Three stable sorts rather than one composite key: newest sale first, then
+    all-time units, then (for trending) units inside the window. Python's
+    sort is stable, so each pass narrows the previous one without needing a
+    tuple that has to negate a datetime to sort it descending.
+
+    A cancelled or refunded order never got to be a sale, so it is excluded
+    using the same list `apps.orders` defines — a returned product cannot sit
+    at the top of "trending".
+    """
+    from apps.orders.models import OrderItem
+    from apps.orders.services import NON_SELLING_STATUSES
+
+    cutoff = timezone.now() - timedelta(days=TRENDING_WINDOW_DAYS)
+    rows = list(
+        OrderItem.objects
+        .exclude(seller_order__status__in=NON_SELLING_STATUSES)
+        .values('product_id')
+        .annotate(
+            units=Sum('quantity'),
+            recent=Sum('quantity', filter=Q(created_at__gte=cutoff)),
+            last_sale=Max('created_at'),
+        )
+    )
+    if not rows:
+        return {}
+
+    rows.sort(key=lambda row: row['last_sale'], reverse=True)
+    rows.sort(key=lambda row: row['units'], reverse=True)
+    if windowed:
+        # When nothing sold recently every `recent` is 0, this pass is a
+        # no-op, and trending degrades to popular on its own — which is the
+        # behaviour a quiet marketplace wants rather than an empty shelf.
+        # `or 0` because a filtered Sum over an empty window is NULL, and
+        # NULL cannot be compared.
+        rows.sort(key=lambda row: row['recent'] or 0, reverse=True)
+
+    return {row['product_id']: position for position, row in enumerate(rows)}
+
+
+def _in_sales_rank(ranks, limit, queryset=None):
+    """Resolve a rank map into products, in rank order, permission-filtered.
+
+    The permission filter runs *inside*, on the bounded candidate pool:
+    reordering in Python afterwards cannot resurrect a draft or a suspended
+    store's listing, because such a row is never fetched in the first place.
+    """
+    if not ranks:
+        return []
+    ids = list(ranks)[:SALES_CANDIDATE_POOL]
+    base = queryset if queryset is not None else searchable_products()
+    products = list(base.filter(pk__in=ids))
+    products.sort(key=lambda product: ranks[product.pk])
+    return products[:limit]
+
+
+def _related_shelf(seed_slug, limit):
+    """Same category — or, with no category, the same brand (§18.3 "related").
+
+    Category is the honest notion of "related" in a catalog, and brand is the
+    next best signal for a product nobody has filed yet — which is most of
+    them on a marketplace where filing is optional. Rated neighbours come
+    first because "more of the same kind" should still be *good* of that
+    kind; when neither scope applies the shelf falls back to newest rather
+    than leaving a product page with a dead end.
+    """
+    seed = _seed_product(seed_slug)
+
+    if seed.category_id:
+        neighbours = (
+            searchable_products()
+            .filter(category_id=seed.category_id)
+            .exclude(pk=seed.pk)
+        )
+        products = _by_rating(neighbours, limit)
+    elif seed.brand_id:
+        neighbours = (
+            searchable_products()
+            .filter(brand_id=seed.brand_id)
+            .exclude(pk=seed.pk)
+        )
+        products = _by_rating(neighbours, limit)
+    else:
+        # Filing is optional, so a product with neither a category nor a brand
+        # has no neighbourhood at all. This is the only branch allowed to
+        # leave the seed's context — there is no context to stay inside. When
+        # there *is* a neighbourhood and it is merely small, the shelf is
+        # short rather than padded: a shelf labelled "related" that shows an
+        # unrelated product is worse than one that shows less.
+        products = _default_shelf(limit, exclude=[seed.pk])
+
+    return products[:limit]
+
+
+def _similar_shelf(seed_slug, limit):
+    """Nearest by trigram similarity to the seed's own words (§18.3 "similar").
+
+    Reuses `_similarity_expression` — the same `pg_trgm` machinery the typo
+    rescue runs — so "similar" is a proven mechanism instead of a second
+    similarity implementation that could disagree with search. The threshold
+    differs on purpose: the rescue is guessing at a mistyped *query* and may
+    be forgiving (0.3), while this is comparing two real product texts, so
+    any shared trigram is evidence and zero is not.
+    """
+    seed = _seed_product(seed_slug)
+    needle = f'{seed.title} {seed.description}'.strip()[:MAX_QUERY_LENGTH]
+    if not needle:
+        return []
+
+    neighbours = (
+        searchable_products()
+        .exclude(pk=seed.pk)
+        .alias(**{SIMILARITY_ALIAS: _similarity_expression(needle)})
+        .filter(**{f'{SIMILARITY_ALIAS}__gt': 0})
+        .order_by(OrderBy(_similarity_expression(needle), descending=True), '-created_at')
+    )
+
+    # Deliberately not topped up. "Similar" is a claim about the two texts,
+    # so a product that shares no trigrams with the seed is not similar no
+    # matter how good it is; the shelf simply renders shorter (or not at all),
+    # which is the honest answer.
+    return list(neighbours[:limit])
+
+
+def _personalized_shelf(seen_slugs, limit):
+    """Popularity scoped to what this browser already looked at (§18.3).
+
+    The whole personalization *foundation*: history travels with the request
+    as `seen=` and is discarded with it, so the shelf works for a signed-out
+    visitor, needs no per-user row to leak or delete, and cannot become a
+    tracking system by accident. All it does is rank the categories and
+    brands of those products by how well they actually sell.
+    """
+    seen_products = list(searchable_products().filter(slug__in=seen_slugs))
+    if not seen_products:
+        # Slugs that no longer resolve mean the client's history has drifted
+        # from the catalog. Newest beats a shelf built on ghosts.
+        return _default_shelf(limit)
+
+    seen_ids = _ids(seen_products)
+    scope = Q()
+    category_ids = {p.category_id for p in seen_products if p.category_id}
+    brand_ids = {p.brand_id for p in seen_products if p.brand_id}
+    if category_ids:
+        scope |= Q(category_id__in=category_ids)
+    if brand_ids:
+        scope |= Q(brand_id__in=brand_ids)
+    if not scope:
+        # Seen products are all unfiled: no neighbourhood to recommend from,
+        # so scope to "not the same thing again" and order by what is newest.
+        return _default_shelf(limit, exclude=seen_ids)
+
+    neighbours = searchable_products().filter(scope).exclude(pk__in=seen_ids)
+
+    # Both passes stay inside the scope, so a short shelf stays short rather
+    # than being padded with products the shopper never showed interest in —
+    # that would make the personalization claim untrue rather than partial.
+    products = _in_sales_rank(_sales_ranks(windowed=False), limit, queryset=neighbours)
+    if len(products) < limit:
+        products += _by_rating(
+            neighbours.exclude(pk__in=_ids(products)),
+            limit - len(products),
+        )
+    return products[:limit]
 

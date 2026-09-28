@@ -12,6 +12,11 @@
  * through the catalog's own `mapProduct` so a search card and a browse card
  * are literally the same shape, and facet rows become a plain camelCase
  * contract instead of leaking the API's snake_case into render code.
+ *
+ * §18.3 Discovery adds the third surface, `recommendations/`, and it lives in
+ * this same file for the reason §18.1 put search here: a "you may also like"
+ * shelf that goes through a different mapper than the grid beside it is a
+ * shelf that eventually renders differently from the grid beside it.
  */
 
 import { request } from "../lib/api";
@@ -19,12 +24,32 @@ import { mapProduct } from "./products";
 
 const BASE = "/api/v1/search/";
 const SUGGEST = "/api/v1/search/suggest/";
+const RECOMMEND = "/api/v1/search/recommendations/";
 
 // Mirrored for efficiency, never trusted: the server re-validates both limits
 // and answers 400 with the §8 envelope. Holding them here just saves a round
 // trip on a keystroke the server was going to refuse anyway.
 export const MAX_QUERY_LENGTH = 120;
 export const MIN_SUGGEST_LENGTH = 2;
+
+// §18.3 shelf kinds, in the order they appear in the roadmap. Mirrored for the
+// same reason: the server owns the real list and answers 400 on anything else.
+export const RECOMMENDATION_KINDS = [
+  "trending",
+  "popular",
+  "related",
+  "similar",
+  "personalized",
+];
+
+/** A kind that needs a `seed`, or `seen` for personalized, before it can run. */
+export const SEEDED_KINDS = ["related", "similar"];
+
+// Mirrors `apps.search.services`. `seen` is trimmed client-side because the
+// history is a growing local list: sending 30 slugs to a 20-slug cap would be
+// a guaranteed 400, and the tail is the *oldest* view anyway.
+export const MAX_SEEN_SLUGS = 20;
+export const MAX_RECOMMENDATION_LIMIT = 48;
 
 /**
  * Sort keys `apps.search` accepts — deliberately *not* the catalog's list.
@@ -161,5 +186,47 @@ export async function getSuggestions(needle) {
     })),
     stores: (data.stores ?? []).map(mapStore),
     categories: (data.categories ?? []).map(mapCategory),
+  };
+}
+
+/**
+ * A §18.3 discovery shelf — trending, popular, related, similar or personalized
+ * — as `{kind, items}` with items already through the catalog's `mapProduct`.
+ *
+ * `kind` is echoed back from the response rather than the argument, so a shelf
+ * can never render under a heading it was not actually served (the server
+ * answers with the kind it ranked for, and is the only authority on it).
+ *
+ * The seeded kinds are refused *here* when the caller has no seed, and
+ * `personalized` is refused when the browser has no history. The server rejects
+ * both with a 400, and in each case the right answer is an empty shelf rather
+ * than an error — "related" with nothing to be related to is not a failure the
+ * shopper should be shown, and their own history being empty is the normal
+ * state of a first visit, not a fault.
+ */
+export async function recommendations({
+  kind = "trending",
+  seed = "",
+  seen = [],
+  limit = "",
+} = {}) {
+  const history = (Array.isArray(seen) ? seen : [])
+    .map((slug) => (slug ?? "").trim())
+    .filter(Boolean)
+    .slice(0, MAX_SEEN_SLUGS);
+
+  if (SEEDED_KINDS.includes(kind) && !seed) return { kind, items: [] };
+  if (kind === "personalized" && history.length === 0) return { kind, items: [] };
+
+  const params = new URLSearchParams();
+  params.set("kind", kind);
+  if (seed) params.set("seed", seed);
+  if (history.length > 0) params.set("seen", history.join(","));
+  if (limit) params.set("limit", String(limit));
+
+  const data = await request(RECOMMEND, `?${params}`);
+  return {
+    kind: data.kind ?? kind,
+    items: (data.items ?? []).map(mapProduct),
   };
 }

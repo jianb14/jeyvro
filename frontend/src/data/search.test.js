@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getSuggestions, searchResults } from "./search";
+import { getSuggestions, recommendations, searchResults } from "./search";
 
 const API_ITEM = {
   id: 7,
@@ -193,6 +193,87 @@ describe("search accessors", () => {
     mockFetch({ error: "query_too_long", detail: "Too long." }, { ok: false, status: 400 });
     await expect(searchResults({ q: "x".repeat(121) })).rejects.toMatchObject({
       status: 400,
+    });
+  });
+});
+
+describe("§18.3 recommendation shelves", () => {
+  it("maps a shelf through the same catalog mapper as search", async () => {
+    const fetchMock = mockFetch({ kind: "trending", count: 1, items: [API_ITEM] });
+
+    const data = await recommendations({ kind: "trending", limit: 8 });
+
+    // The same guarantees as a search card: identical shape, server-resolved price.
+    expect(data.kind).toBe("trending");
+    expect(data.items[0].id).toBe("woven-basket");
+    expect(data.items[0].variants[0].price).toBe(349);
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/search/recommendations/?");
+    expect(url).toContain("kind=trending");
+    expect(url).toContain("limit=8");
+    // Nothing to anchor and no history: neither key is invented.
+    expect(url).not.toContain("seed=");
+    expect(url).not.toContain("seen=");
+  });
+
+  it("trusts the kind the server says it ranked for", async () => {
+    mockFetch({ kind: "popular", count: 0, items: [] });
+    expect((await recommendations({ kind: "trending" })).kind).toBe("popular");
+  });
+
+  it("sends the seed for an item-to-item shelf", async () => {
+    const fetchMock = mockFetch({ kind: "related", count: 1, items: [API_ITEM] });
+    await recommendations({ kind: "related", seed: "woven-basket" });
+    expect(fetchMock.mock.calls[0][0]).toContain("seed=woven-basket");
+  });
+
+  it("sends the browser's own history as the personalization seed", async () => {
+    const fetchMock = mockFetch({ kind: "personalized", count: 1, items: [API_ITEM] });
+    await recommendations({ kind: "personalized", seen: [" woven-basket ", "", null] });
+    // Blank and missing entries are dropped rather than sent as `,,`.
+    expect(fetchMock.mock.calls[0][0]).toContain("seen=woven-basket");
+  });
+
+  it("caps the history at the server's limit, keeping the newest", async () => {
+    const fetchMock = mockFetch({ kind: "personalized", count: 0, items: [] });
+    const many = Array.from({ length: 30 }, (_, i) => `p-${i}`);
+    await recommendations({ kind: "personalized", seen: many });
+
+    const sent = new URL(fetchMock.mock.calls[0][0], "http://x").searchParams.get("seen");
+    expect(sent.split(",")).toHaveLength(20);
+    // Most-recent-first, so the tail is dropped rather than the head.
+    expect(sent.split(",")[0]).toBe("p-0");
+    expect(sent).not.toContain("p-25");
+  });
+
+  it("returns an empty shelf instead of calling an endpoint it knows will 400", async () => {
+    const fetchMock = mockFetch({});
+
+    // No seed: "related" has no subject. An empty shelf, not an error banner.
+    expect(await recommendations({ kind: "related" })).toEqual({
+      kind: "related",
+      items: [],
+    });
+    expect(await recommendations({ kind: "similar" })).toEqual({
+      kind: "similar",
+      items: [],
+    });
+    // No history: a first visit is not a failure.
+    expect(await recommendations({ kind: "personalized", seen: [] })).toEqual({
+      kind: "personalized",
+      items: [],
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a real failure rather than rendering an empty shelf", async () => {
+    mockFetch({ error: "not_found", detail: "No sellable product." }, { ok: false, status: 404 });
+    // A seed that no longer resolves must be visible, not silently dropped —
+    // otherwise a deleted product looks identical to one with no neighbours.
+    await expect(recommendations({ kind: "similar", seed: "gone" })).rejects.toMatchObject({
+      status: 404,
     });
   });
 });

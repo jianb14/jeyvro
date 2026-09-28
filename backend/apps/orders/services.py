@@ -8,7 +8,7 @@ only place stock changes), and the cart is cleared. Views stay thin (§8).
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 
@@ -46,6 +46,41 @@ class CheckoutError(ValueError):
     def __init__(self, message, *, code='checkout_rejected'):
         super().__init__(message)
         self.code = code
+
+
+# --- Sales aggregates (§18.3 discovery) --------------------------------------
+# The order rows are the only authority on what "sold" means. This exclusion
+# list is the same one `build_seller_dashboard` applies (§12.1), so a product
+# card, a seller's own numbers, and a recommendation shelf can never disagree
+# about which order states count as a sale.
+
+NON_SELLING_STATUSES = (
+    OrderStatus.CANCELLED,
+    OrderStatus.REFUNDED,
+    OrderStatus.REFUND_PENDING,
+)
+
+
+def units_sold_map(product_ids):
+    """{product_id: units sold} for one page of products — exactly one query.
+
+    Aggregated per product rather than counted per card: a serializer that
+    asked each row for its own total would turn a 12-item page into 12
+    queries. Only the caller's own product ids are ever aggregated, and the
+    result is a bare number, so nothing here can expose an order the caller
+    could not already see.
+    """
+    product_ids = {pk for pk in product_ids if pk is not None}
+    if not product_ids:
+        return {}
+    rows = (
+        OrderItem.objects
+        .filter(product_id__in=product_ids)
+        .exclude(seller_order__status__in=NON_SELLING_STATUSES)
+        .values('product_id')
+        .annotate(units=Sum('quantity'))
+    )
+    return {row['product_id']: row['units'] or 0 for row in rows}
 
 
 def compute_shipping_fee(store, subtotal):
