@@ -7,6 +7,10 @@ against the ledger under a row lock (the sequential loser path is proven
 here; the true concurrent case rides the same `select_for_update` the race
 tests exercise elsewhere), and every discount is auditable — one
 `VoucherUsage` row plus one `voucher.redeemed` AuditLog event per order.
+
+Section 16.3 settles the funding: every redemption splits the discount
+between the platform and the store it is charged to, server-side, into two
+ledger columns a database constraint keeps balanced.
 """
 from datetime import timedelta
 from decimal import Decimal
@@ -27,6 +31,7 @@ from apps.promotions.models import (
     Voucher,
     VoucherDiscountType,
     VoucherEligibility,
+    VoucherFunding,
     VoucherScope,
     VoucherUsage,
 )
@@ -524,12 +529,190 @@ def test_redeem_ledger_rechecks_counters_and_is_single_write_per_order():
     # Unique(voucher, order): one usage row per order, enforced by the DB.
     second = _platform_voucher(code='SECOND', per_user_limit=None)
     VoucherUsage.objects.create(
-        voucher=second, user=buyer, order=order, discount_amount=Decimal('1.00')
+        voucher=second,
+        user=buyer,
+        order=order,
+        discount_amount=Decimal('1.00'),
+        platform_amount=Decimal('1.00'),
     )
     with pytest.raises(IntegrityError), transaction.atomic():
         VoucherUsage.objects.create(
-            voucher=second, user=buyer, order=order, discount_amount=Decimal('1.00')
+            voucher=second,
+            user=buyer,
+            order=order,
+            discount_amount=Decimal('1.00'),
+            platform_amount=Decimal('1.00'),
         )
+
+
+# --- §16.3 discount funding ---------------------------------------------------
+
+
+def test_platform_funded_voucher_puts_the_whole_discount_on_the_platform():
+    """The default funder absorbs everything; the store slice is untouched."""
+    client = Client()
+    buyer = _sign_in(client, 'funding_platform@example.com')
+    address_id = _add_address(client)
+    _seller, store = _make_active_store('funding_store1@example.com', fee='0.00')
+    _product, variant = _make_product(store, price='200.00')
+    _cart_with(buyer, variant, quantity=2)
+    _platform_voucher(code='PLAT10', funded_by=VoucherFunding.PLATFORM)
+
+    response = _checkout(client, address_id, 'PLAT10')
+    assert response.status_code == 201, response.content
+
+    usage = VoucherUsage.objects.get(voucher__code='PLAT10')
+    assert usage.discount_amount == Decimal('40.00')
+    assert usage.platform_amount == Decimal('40.00')
+    assert usage.seller_amount == Decimal('0.00')
+    assert usage.store is None
+
+    audit = AuditLog.objects.get(action='voucher.redeemed')
+    assert audit.detail['funded_by'] == VoucherFunding.PLATFORM
+    assert audit.detail['platform_amount'] == '40.00'
+    assert audit.detail['seller_amount'] == '0.00'
+
+
+def test_seller_funded_voucher_charges_the_store_that_issued_it():
+    """A store-funded code is the store's cost, and names the store."""
+    client = Client()
+    buyer = _sign_in(client, 'funding_seller@example.com')
+    address_id = _add_address(client)
+    _seller, store = _make_active_store('funding_store2@example.com', fee='0.00')
+    _product, variant = _make_product(store, price='200.00')
+    _cart_with(buyer, variant, quantity=2)
+    Voucher.objects.create(
+        scope=VoucherScope.SELLER,
+        store=store,
+        funded_by=VoucherFunding.SELLER,
+        code='STOREFUND',
+        title='Store funds it',
+        discount_type=VoucherDiscountType.PERCENTAGE,
+        value=Decimal('10.00'),
+    )
+
+    response = _checkout(client, address_id, 'STOREFUND')
+    assert response.status_code == 201, response.content
+
+    usage = VoucherUsage.objects.get(voucher__code='STOREFUND')
+    assert usage.discount_amount == Decimal('40.00')
+    assert usage.platform_amount == Decimal('0.00')
+    assert usage.seller_amount == Decimal('40.00')
+    assert usage.store_id == store.id
+
+    # The customer still pays the discounted total either way — funding
+    # never changes what the buyer is charged.
+    assert response.json()['totals']['discount_total'] == 40.0
+
+
+def test_shared_funding_splits_the_discount_and_never_loses_a_cent():
+    """50/50, and the two shares always re-add to the exact discount."""
+    client = Client()
+    buyer = _sign_in(client, 'funding_shared@example.com')
+    address_id = _add_address(client)
+    _seller, store = _make_active_store('funding_store3@example.com', fee='0.00')
+    _product, variant = _make_product(store, price='200.00')
+    _cart_with(buyer, variant, quantity=2)
+    Voucher.objects.create(
+        scope=VoucherScope.SELLER,
+        store=store,
+        funded_by=VoucherFunding.SHARED,
+        code='SHARED5',
+        title='Split discount',
+        discount_type=VoucherDiscountType.FIXED,
+        value=Decimal('10.01'),  # an odd peso — the split cannot halve it
+    )
+
+    response = _checkout(client, address_id, 'SHARED5')
+    assert response.status_code == 201, response.content
+
+    usage = VoucherUsage.objects.get(voucher__code='SHARED5')
+    assert usage.discount_amount == Decimal('10.01')
+    assert usage.seller_amount == Decimal('5.01')  # the rounded half
+    assert usage.platform_amount == Decimal('5.00')  # the platform carries the rest
+    assert usage.platform_amount + usage.seller_amount == usage.discount_amount
+
+    # The service is the single implementation the ledger trusts.
+    voucher = Voucher.objects.get(code='SHARED5')
+    assert promotion_services.split_funding(voucher, Decimal('10.01')) == (
+        Decimal('5.00'),
+        Decimal('5.01'),
+    )
+
+
+def test_funding_must_be_payable_and_the_split_must_balance():
+    """Both funding rules are DB constraints, not service politeness."""
+
+    def _expect_integrity_error(factory):
+        with pytest.raises(IntegrityError), transaction.atomic():
+            factory()
+
+    _seller, store = _make_active_store('funding_store4@example.com')
+
+    # A platform-scope voucher has no store, so nobody can be charged for
+    # it: seller- and shared-funded codes must be store-scoped.
+    _expect_integrity_error(
+        lambda: Voucher.objects.create(
+            scope=VoucherScope.PLATFORM,
+            funded_by=VoucherFunding.SELLER,
+            code='NOSTORE1',
+            title='x',
+            discount_type=VoucherDiscountType.FIXED,
+            value=Decimal('10.00'),
+        )
+    )
+    _expect_integrity_error(
+        lambda: Voucher.objects.create(
+            scope=VoucherScope.PLATFORM,
+            funded_by=VoucherFunding.SHARED,
+            code='NOSTORE2',
+            title='x',
+            discount_type=VoucherDiscountType.FIXED,
+            value=Decimal('10.00'),
+        )
+    )
+    # The platform may still subsidise a store's own code.
+    Voucher.objects.create(
+        scope=VoucherScope.SELLER,
+        store=store,
+        funded_by=VoucherFunding.PLATFORM,
+        code='PLATSUBSIDY',
+        title='Platform funds this store code',
+        discount_type=VoucherDiscountType.FIXED,
+        value=Decimal('10.00'),
+    )
+
+    # The ledger refuses a row whose shares do not add up to the discount.
+    client = Client()
+    buyer = _sign_in(client, 'funding_balance@example.com')
+    address_id = _add_address(client)
+    _product, variant = _make_product(store, price='200.00')
+    _cart_with(buyer, variant, quantity=1)
+    response = _checkout(client, address_id)
+    assert response.status_code == 201, response.content
+    order = Order.objects.get(pk=response.json()['id'])
+    voucher = Voucher.objects.get(code='PLATSUBSIDY')
+
+    _expect_integrity_error(
+        lambda: VoucherUsage.objects.create(
+            voucher=voucher,
+            user=buyer,
+            order=order,
+            discount_amount=Decimal('10.00'),
+            platform_amount=Decimal('4.00'),
+            seller_amount=Decimal('4.00'),  # 8.00 ≠ 10.00
+        )
+    )
+    _expect_integrity_error(
+        lambda: VoucherUsage.objects.create(
+            voucher=voucher,
+            user=buyer,
+            order=order,
+            discount_amount=Decimal('10.00'),
+            platform_amount=Decimal('-1.00'),
+            seller_amount=Decimal('11.00'),
+        )
+    )
 
 
 

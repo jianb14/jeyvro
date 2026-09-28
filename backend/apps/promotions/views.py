@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import InStaffGroup, IsSeller
 from apps.audit.services import log_event
 from apps.cart import services as cart_services
+from apps.catalog.models import Category, Product
 from apps.stores.models import Store
 
 from . import serializers, services
@@ -122,6 +123,33 @@ class SellerPromotionListView(APIView):
         starts_at = data.pop('starts_at', None)
         ends_at = data.pop('ends_at', None)
         name = data.pop('name')
+        buy_product_id = data.pop('buy_product_id', None)
+        get_product_id = data.pop('get_product_id', None)
+
+        # §10.3: a seller may only ever point a rule at their own catalogue —
+        # another store's product or a category that does not exist is a 400,
+        # never a foreign row or a database error.
+        own_product_ids = set(
+            Product.objects.filter(store=store).values_list('id', flat=True)
+        )
+        foreign = [
+            pid for pid in (*product_ids, *[p for p in (buy_product_id, get_product_id) if p])
+            if pid not in own_product_ids
+        ]
+        if foreign:
+            return Response(
+                {'error': 'unknown_product', 'detail': 'Those products are not in your store.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if target_type == 'category' and category_ids:
+            known = set(
+                Category.objects.filter(id__in=category_ids).values_list('id', flat=True)
+            )
+            if set(category_ids) - known:
+                return Response(
+                    {'error': 'unknown_category', 'detail': 'Those categories do not exist.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         campaign = Campaign.objects.create(
             scope='seller',
@@ -132,6 +160,10 @@ class SellerPromotionListView(APIView):
             is_active=data.get('is_active', True),
         )
         label = data.pop('label', '') or name
+        if buy_product_id is not None:
+            data['buy_product_id'] = buy_product_id
+        if get_product_id is not None:
+            data['get_product_id'] = get_product_id
         promo = Promotion.objects.create(campaign=campaign, label=label, **data)
         if target_type == 'product' and product_ids:
             for pid in product_ids:

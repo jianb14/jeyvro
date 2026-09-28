@@ -1,7 +1,10 @@
-"""Promotion serializers (Phase 16 — ROADMAP §16.1) — declared shapes only.
+"""Promotion serializers (Phase 16 — ROADMAP §16.1–§16.3) — declared shapes only.
 
 The client sends a code, never an amount; everything else crosses the wire
 as server-resolved JSON numbers (the same contract as cart/orders).
+`funded_by` is a declaration of who pays for the code, never a split the
+client may influence — the split itself is settled server-side at redemption
+(§16.3) and never appears on the wire.
 """
 from rest_framework import serializers
 
@@ -21,6 +24,7 @@ def serialize_voucher(voucher):
         'description': voucher.description,
         'scope': voucher.scope,
         'store_id': voucher.store_id,
+        'funded_by': voucher.funded_by,
         'discount_type': voucher.discount_type,
         'value': float(voucher.value),
         'min_spend': float(voucher.min_spend),
@@ -62,6 +66,10 @@ def serialize_promotion(promo):
         'value': float(promo.value),
         'min_spend': float(promo.min_spend),
         'min_qty': promo.min_qty,
+        'buy_product_id': promo.buy_product_id,
+        'buy_qty': promo.buy_qty,
+        'get_product_id': promo.get_product_id,
+        'get_qty': promo.get_qty,
         'is_active': promo.is_active,
         'campaign_id': campaign.id if campaign else None,
         'campaign_name': campaign.name if campaign else None,
@@ -118,5 +126,36 @@ class PromotionCreateSerializer(serializers.Serializer):
     category_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, default=list
     )
+    # Buy X get Y (§16.2) — the pair is part of the rule, and only a
+    # buy-X-get-Y rule may carry it. The DB constraints agree; this is the
+    # friendly version that answers with field errors instead of a 500.
+    buy_product_id = serializers.IntegerField(required=False, min_value=1, default=None)
+    buy_qty = serializers.IntegerField(required=False, min_value=1, default=None)
+    get_product_id = serializers.IntegerField(required=False, min_value=1, default=None)
+    get_qty = serializers.IntegerField(required=False, min_value=1, default=None)
+
+    BXGY_PAIR_FIELDS = ('buy_product_id', 'buy_qty', 'get_product_id', 'get_qty')
+
+    def validate(self, attrs):
+        pair = {name: attrs.get(name) for name in self.BXGY_PAIR_FIELDS}
+        if attrs.get('kind') == 'buy_x_get_y':
+            missing = [name for name, value in pair.items() if value is None]
+            if missing:
+                raise serializers.ValidationError(
+                    {name: ['Required for a buy X get Y rule.'] for name in missing}
+                )
+            if attrs.get('discount_type') != 'percentage':
+                raise serializers.ValidationError(
+                    {'discount_type': ['A buy X get Y rule must be a percentage.']}
+                )
+        elif any(value is not None for value in pair.values()):
+            raise serializers.ValidationError(
+                {
+                    name: ['Only a buy X get Y rule may set the buy/get pair.']
+                    for name, value in pair.items()
+                    if value is not None
+                }
+            )
+        return attrs
 
 

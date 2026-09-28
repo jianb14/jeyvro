@@ -33,11 +33,14 @@ from .models import (
     PromotionUsage,
     Voucher,
     VoucherDiscountType,
+    VoucherFunding,
     VoucherScope,
     VoucherUsage,
 )
 
 MONEY = Decimal('0.01')
+# §16.3: a shared discount is split evenly — the seller's half, in percent.
+SHARED_FUNDING_SPLIT = Decimal('50.00')
 
 
 class VoucherError(ValueError):
@@ -109,6 +112,27 @@ def compute_discount(voucher, eligible_subtotal):
     if discount < 0:
         discount = Decimal('0.00')
     return discount
+
+
+def split_funding(voucher, amount):
+    """Who absorbs a discount of `amount` (§16.3) — (platform, seller).
+
+    The only funding implementation in the codebase. A platform-funded
+    discount is the platform's whole cost, a seller-funded one is the
+    store's, and a **shared** discount splits 50/50 with the odd cent
+    (a half peso that has to land somewhere) carried by the platform. Both
+    shares always re-add to exactly `amount`, which is what the ledger's
+    database constraint insists on.
+    """
+    total = _money(amount)
+    if total <= 0:
+        return Decimal('0.00'), Decimal('0.00')
+    if voucher.funded_by == VoucherFunding.SELLER:
+        return Decimal('0.00'), total
+    if voucher.funded_by == VoucherFunding.SHARED:
+        seller = _money(total * SHARED_FUNDING_SPLIT / Decimal('100'))
+        return total - seller, seller
+    return total, Decimal('0.00')
 
 
 def _has_prior_order(user):
@@ -223,12 +247,15 @@ def redeem_voucher(plan, user, order):
                 'You have already used this voucher.', code='voucher_user_limit'
             )
 
+    platform_amount, seller_amount = split_funding(voucher, plan['discount_total'])
     usage = VoucherUsage.objects.create(
         voucher=voucher,
         user=user,
         order=order,
         store=voucher.store,
         discount_amount=plan['discount_total'],
+        platform_amount=platform_amount,
+        seller_amount=seller_amount,
     )
     audit_services.log_event(
         user,
@@ -239,6 +266,11 @@ def redeem_voucher(plan, user, order):
             'scope': voucher.scope,
             'discount_total': str(plan['discount_total']),
             'eligible_subtotal': str(plan['eligible_subtotal']),
+            # §16.3: the funding split is part of the money trail, so it
+            # lands in the audit row beside the discount itself.
+            'funded_by': voucher.funded_by,
+            'platform_amount': str(platform_amount),
+            'seller_amount': str(seller_amount),
         },
     )
     return usage

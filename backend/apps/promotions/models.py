@@ -168,6 +168,17 @@ class Voucher(TimeStampedModel):
                 ),
                 name='voucher_scope_matches_store',
             ),
+            # §16.3: a seller- or shared-funded discount is charged to a
+            # store, so it can only exist on a store-scoped voucher — a
+            # platform voucher has nobody to split the cost with. A
+            # seller-scoped voucher may still be platform-funded.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(funded_by=VoucherFunding.PLATFORM)
+                    | models.Q(scope=VoucherScope.SELLER)
+                ),
+                name='voucher_funding_requires_store',
+            ),
         ]
 
     def save(self, *args, **kwargs):
@@ -238,7 +249,15 @@ class VoucherEligibility(TimeStampedModel):
 
 
 class VoucherUsage(TimeStampedModel):
-    """Append-only redemption ledger (§16.1) — the counter the limits trust."""
+    """Append-only redemption ledger (§16.1) — the counter the limits trust.
+
+    It doubles as the **settlement record** (§16.3): `platform_amount` and
+    `seller_amount` split `discount_amount` into the share the platform
+    absorbs and the share the store absorbs, written by the service at
+    redemption time and never editable. A database constraint keeps the two
+    shares non-negative and equal to the discount in total, so a ledger row
+    can never invent or lose a peso.
+    """
 
     voucher = models.ForeignKey(
         Voucher, on_delete=models.PROTECT, related_name='usages'
@@ -260,6 +279,18 @@ class VoucherUsage(TimeStampedModel):
         help_text='The funding store for seller vouchers; null for platform vouchers.',
     )
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    platform_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text='§16.3: the share of discount_amount the platform absorbs.',
+    )
+    seller_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text='§16.3: the share of discount_amount the store absorbs.',
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -271,6 +302,25 @@ class VoucherUsage(TimeStampedModel):
             models.CheckConstraint(
                 condition=models.Q(discount_amount__gt=0),
                 name='voucher_usage_discount_positive',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(platform_amount__gte=0) & models.Q(seller_amount__gte=0)
+                ),
+                name='voucher_usage_funding_non_negative',
+            ),
+            # The split must account for the whole discount and no more —
+            # enforced by the database, not only by the service that writes
+            # it. `platform = discount - seller` is the same statement as
+            # "the two shares re-add to the discount", and unlike an
+            # arithmetic expression a lookup against another column is
+            # valid CHECK SQL.
+            models.CheckConstraint(
+                condition=models.Q(
+                    platform_amount__exact=models.F('discount_amount')
+                    - models.F('seller_amount')
+                ),
+                name='voucher_usage_funding_splits_discount',
             ),
             models.UniqueConstraint(
                 fields=['voucher', 'order'], name='voucher_one_usage_per_order'
