@@ -382,9 +382,15 @@ class RequestKind(models.TextChoices):
 
 
 class RequestStatus(models.TextChoices):
-    """Intake status — Phase 11 records the request; Phase 17 decides it."""
+    """Intake status — Phase 11 records the request; Phase 17 decides it.
+
+    `resolved` is written by the Phase 17 resolution flow (returns/disputes)
+    when the case answering the intake row reaches a decision, so the staff
+    queue never carries a decided complaint that still reads as pending.
+    """
 
     PENDING = 'pending', 'Pending'
+    RESOLVED = 'resolved', 'Resolved'
     WITHDRAWN = 'withdrawn', 'Withdrawn'
 
 

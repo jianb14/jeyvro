@@ -313,12 +313,35 @@ def expire_overdue_payments(*, now=None):
     return expired
 
 
-def refund(payment, amount, *, reason='', actor=None):
-    """Refund against a captured payment — full or partial (§9.4).
+def _notify_return_case(refund, *, event):
+    """Let the return case follow its own money, when it has one (§17.2).
+
+    Payments stays the owner of the ledger; the case only needs to know the
+    outcome. Imported lazily so the two apps never import each other at load
+    time, and a case-less refund (a manual staff refund) does nothing.
+    """
+    if refund.return_case_id is None:
+        return
+    from apps.resolutions import services as resolution_services
+
+    handler = (
+        resolution_services.on_refund_settled
+        if event == 'settled'
+        else resolution_services.on_refund_failed
+    )
+    handler(refund)
+
+
+def refund(payment, amount, *, reason='', actor=None, restock=True,
+           return_case=None):
+    """Refund against a captured payment — full or partial (§9.4, §17.2).
 
     Row-locked and balance-checked, so parallel refund requests can never
     exceed what was captured. COD settles immediately (cash handed back by
     staff); a gateway refund stays pending until its webhook confirms.
+    `restock=False` says the caller already moved stock for the returned
+    lines (the Phase 17 case does) — the ledger still reverses, the
+    catalogue does not double-restock.
     """
     with transaction.atomic():
         payment = _lock_payment(payment.pk)
@@ -347,6 +370,8 @@ def refund(payment, amount, *, reason='', actor=None):
             amount=amount,
             reason=reason[:255],
             actor=actor,
+            restock=restock,
+            return_case=return_case,
         )
         adapter = adapters.get_adapter(payment.method)
         try:
@@ -367,6 +392,7 @@ def refund(payment, amount, *, reason='', actor=None):
                 record,
                 detail={'payment': payment.reference, 'amount': str(amount)},
             )
+            _notify_return_case(record, event='failed')
             return record
         record.save(update_fields=['gateway_reference', 'updated_at'])
         if outcome == RefundStatus.SUCCEEDED:
@@ -399,14 +425,18 @@ def _settle_refund(refund, *, actor=None):
     order = Order.objects.select_for_update().get(pk=payment.order_id)
     if is_full:
         payment.status = PaymentStatus.REFUNDED
-        for item in _order_items(order):
-            catalog_services.adjust_stock(
-                actor,
-                item.variant,
-                delta=item.quantity,
-                reason=StockMovement.Reason.RESTOCK,
-                note=f'refund {refund.reference}',
-            )
+        # `restock=False` means the caller already returned exactly the lines
+        # it wants back on the shelf (a Phase 17 return case) — reversing the
+        # ledger again here would double-count the catalogue.
+        if refund.restock:
+            for item in _order_items(order):
+                catalog_services.adjust_stock(
+                    actor,
+                    item.variant,
+                    delta=item.quantity,
+                    reason=StockMovement.Reason.RESTOCK,
+                    note=f'refund {refund.reference}',
+                )
         order.status = Order.Status.REFUNDED
         order.save(update_fields=['status', 'updated_at'])
         order.seller_orders.update(
@@ -426,6 +456,7 @@ def _settle_refund(refund, *, actor=None):
             'refunded_total': str(refunded_total),
         },
     )
+    _notify_return_case(refund, event='settled')
     return refund
 
 

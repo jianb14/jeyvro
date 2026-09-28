@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'apps.messaging',
     'apps.notifications',
     'apps.promotions',
+    'apps.resolutions',
 ]
 
 MIDDLEWARE = [
@@ -162,6 +163,11 @@ PAYMENTS_GATEWAY_SANDBOX = env('PAYMENTS_GATEWAY_SANDBOX', 'False').lower() in {
     'true',
     'yes',
 }
+
+# Returns (Phase 17) — how long after delivery a customer may file a return
+# (§17.1). Deploy-time policy like the payment window above; the resolution
+# policy module reads it, and the deadline is snapshotted onto each case.
+RETURNS_WINDOW_DAYS = int(env('RETURNS_WINDOW_DAYS', '7'))
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

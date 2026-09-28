@@ -205,6 +205,24 @@ class Refund(TimeStampedModel):
     )
     reason = models.CharField(max_length=255, blank=True)
     gateway_reference = models.CharField(max_length=128, blank=True)
+    return_case = models.ForeignKey(
+        'resolutions.ReturnCase',
+        on_delete=models.PROTECT,
+        related_name='refunds',
+        null=True,
+        blank=True,
+        help_text='The return case that authorised this refund (Phase 17).',
+    )
+    restock = models.BooleanField(
+        default=True,
+        help_text=(
+            'True = a settled full refund puts the order lines back on the '
+            'shelf (a manual staff refund). False = the caller already owns '
+            'the restock story — the Phase 17 returns flow has moved exactly '
+            'the returned lines, so the ledger reverses but the catalogue must '
+            'not double-restock.'
+        ),
+    )
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
