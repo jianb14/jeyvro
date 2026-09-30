@@ -33,6 +33,7 @@ from django.db.models import Count, Max, Min, Q, Sum
 from django.utils import timezone
 
 from apps.audit.models import AuditLog
+from apps.audit.services import log_event
 from apps.messaging.models import Conversation, Message
 from apps.orders.models import (
     Order,
@@ -94,6 +95,33 @@ COMPLETED_ORDER_STATUSES = frozenset(
 )
 CANCELLED_ORDER_STATUS = OrderStatus.CANCELLED
 REFUNDED_ORDER_STATUS = OrderStatus.REFUNDED
+
+
+def record_export(actor, *, report, start, end, rows):
+    """Record that a report left the building as a file (§20.3).
+
+    An export is the one sensitive operation with no domain object to hang
+    itself on — nothing in the database changed, a file simply went out — so
+    the row names its own subject (`reporting.export` + the report slug) and
+    `log_event` refuses a row that names neither.
+
+    It matters more here than anywhere else: these reports carry GMV, revenue,
+    commission and refund totals, so "who took the numbers, over which range,
+    and how many rows" is the first question asked after a file leaves.
+    `rows` is the count the file actually carries, not a guess at it.
+    """
+    log_event(
+        actor,
+        'analytics.exported',
+        detail={
+            'report': report,
+            'from': start.isoformat(),
+            'to': end.isoformat(),
+            'rows': rows,
+        },
+        object_type='reporting.export',
+        object_id=report,
+    )
 
 
 def _money(value):

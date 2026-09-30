@@ -42,7 +42,7 @@
 | 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
 | 18b | Search, Recommendations & Discovery (cont.) | ✅ §18.3 Discovery — `GET /api/v1/search/recommendations/` (public, `?kind=`) serves five shelves from one ranking entry point, each reading back through the same `searchable_products` chokepoint: `trending` (units in a 30-day window) and `popular` (all-time units) fall back to newest because a quiet marketplace still needs a homepage, while `related` (category, then brand, best-rated first), `similar` (nearest by the same `pg_trgm` machinery the typo rescue uses) and `personalized` (categories/brands of the shopper's own `seen=` history ranked by how well they sell) return fewer items rather than padded ones. Frontend: Home swaps the old discount-sorted "trending" placeholder for real Trending + Best sellers rails and adds "Recommended for you" from the browser's own recently-viewed list (no account, no server-side profile), and the product page gains a "Similar finds" rail beside "You might also like" with no card repeated across the two. Covered by `backend/tests/test_recommendations.py` (24 tests) + `frontend/src/data/search.test.js` (14 tests) |
 | 19 | Analytics & Reporting | ✅ Done — §19.1 platform money, §19.2 seller analytics (`/seller/analytics`, ownership-scoped; Phase 12 dashboard untouched per marketplace-sellers rule 4), §19.3 operational analytics (`DailyOperationsMetric`/`DailyStoreOpsMetric` + `admin/analytics/operations/` & `performance/`), §19.4 reports (five CSV exports at `admin/analytics/export/<report>/`, gate baked into the route) — all served from `apps.reporting` rollups written only by `manage.py rebuild_reporting`. Gate passed (reconciliation proven by partition + cross-table checks; §4 matrix on every read and export). **Deferred, documented:** Excel/PDF export (C3 — needs a new runtime dependency; a fake .xlsx is worse than none) and the Phase 12 dashboard extension (rule 4). Suite at the gate: 325 backend + 189 frontend tests, lint/build/migrations green |
-| 20 | Security, Compliance & Abuse Prevention | 🔄 §20.1 application security done — deny-by-default permissions + session-only auth, rate limiting (blanket + `auth`/`register`/`checkout`/`message` scopes) in front of the login lockout, CORS credentials fix, and the **public-tracking PII leak fixed** (a tracking number is a bearer token, not an identity); `docs/SECURITY_CHECKLIST.md` records all 11 items with evidence, `backend/tests/test_security_hardening.py` (11 tests), suite at review time: 336 backend tests + 189 frontend, lint/build/migrations green. §20.2 abuse controls and §20.3 audited sensitive operations still open |
+| 20 | Security, Compliance & Abuse Prevention | 🔄 §20.1 application security done — deny-by-default permissions + session-only auth, rate limiting (blanket + `auth`/`register`/`checkout`/`message` scopes) in front of the login lockout, CORS credentials fix, and the **public-tracking PII leak fixed** (a tracking number is a bearer token, not an identity); `docs/SECURITY_CHECKLIST.md` records all 11 items with evidence, `backend/tests/test_security_hardening.py` (11 tests), suite at review time: 336 backend tests + 189 frontend, lint/build/migrations green. §20.3 auditing done — `docs/AUDIT_COVERAGE.md` is the matrix of every sensitive operation and its action, three gaps closed (`analytics.exported` for the §19.4 CSVs, `product_price_changed`/`variant_price_changed`, and `store_profile_updated`, which turned a bare serializer save on the seller's shipping fee into an audited service), `backend/tests/test_audit_coverage.py` (7 tests). §20.2 abuse controls still open |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
 | 22 | Performance & Scalability | ⬜ Not started |
 | 23 | Deployment & Production Infrastructure | ⬜ Not started |
@@ -2197,18 +2197,54 @@ Perform continuous and dedicated security hardening.
 
 ### 20.3 Sensitive operations
 
--   [ ] Financial actions audited
--   [ ] Permission changes audited
--   [ ] Seller status changes audited
--   [ ] Refund actions audited
--   [ ] Admin actions audited
+-   [x] Financial actions audited
+-   [x] Permission changes audited
+-   [x] Seller status changes audited
+-   [x] Refund actions audited
+-   [x] Admin actions audited
+
+> **Slice v1 (done):** `docs/AUDIT_COVERAGE.md` is the coverage matrix — every
+> sensitive operation, the exact `action` name it writes, who the actor is, and
+> the test that proves it, plus the operations **deliberately not** audited with
+> the reason. Three gaps were closed, and the slice was opened by correcting a
+> plan: **shipment status transitions were already audited** (`shipment.status_updated`
+> ships inside the same atomic block as the status write, so the delivery-triggered
+> COD capture commits with the record of the transition) — the one *known* gap was
+> the §19.4 CSV exports, and reading the code turned up two more nobody had listed.
+>   * **`analytics.exported`** — a CSV is the rare sensitive operation with no
+>     domain object to hang itself on (nothing changed; a file went out), so
+>     `audit.log_event` now takes an explicit `object_type`/`object_id` and
+>     **raises** when it gets neither — a blank-subject row is a trail that
+>     proves nothing. Every served export records actor, report, range and the
+>     row count the file actually carries; a refused (403) or malformed (400)
+>     request writes nothing, because nothing left the building.
+>   * **`product_price_changed` / `variant_price_changed`** — a seller's own
+>     price edit is money the moment a buyer is asked for it, and it keeps its
+>     `from`/`to`. A retitle is not audited: a trail of every copy edit is noise.
+>   * **`store_profile_updated`** — `PATCH /stores/my/store` was a bare
+>     serializer save, so a seller could change the shipping fee with no record
+>     at all. The write moved into `stores.services.update_own_profile`, which
+>     keeps the fee's before/after and refuses a seller touching another store
+>     (the module's own "transitions live in services, never in views" rule).
+>
+> No migration: the audit model is unchanged. Covered by
+> `backend/tests/test_audit_coverage.py` (7 tests) — including one scenario
+> across domains asserting the matrix's action names, so the document cannot
+> rot into fiction.
 
 ### Gate
 
 -   [ ] Security checklist complete
 -   [ ] Permission tests pass
 -   [ ] Abuse controls verified
--   [ ] Sensitive operations produce audit records
+-   [x] Sensitive operations produce audit records
+
+> **Note:** the gate stays open — "security checklist complete", "permission
+> tests pass" and "abuse controls verified" are §20.1/§20.2 items, and §20.2
+> (spam, messaging abuse, suspicious orders, inventory abuse) is the next
+> slice. Audit **retention, export and alerting** are honestly deferred to the
+> deployment phase (Phase 23), as are production env values and a shared cache
+> for throttling.
 
 **Skills:** security, backend-feature
 

@@ -109,6 +109,10 @@ def update_product(seller_user, product_id, **fields):
     submit/unpublish/archive services (marketplace-catalog rule 4). The
     slug stays: it is the product's public identity, so a retitle never
     breaks existing links.
+
+    A **price** edit is money and is audited with its before/after (§20.3);
+    a retitle is not — the trail answers "what did it cost when I ordered?",
+    not "who typed in a description".
     """
     product = _get_owned_product(seller_user, product_id)
     if product.status == Product.Status.ARCHIVED:
@@ -118,10 +122,31 @@ def update_product(seller_user, product_id, **fields):
         'category', 'brand', 'attributes',
     )
     changed = [field for field in editable if field in fields]
+    money_before = {
+        field: getattr(product, field)
+        for field in ('base_price', 'compare_at_price')
+        if field in fields
+    }
     for field in changed:
         setattr(product, field, fields[field])
-    if changed:
-        product.save(update_fields=changed + ['updated_at'])
+    # One commit: the row and the record of its price move together, so the
+    # trail can never claim a price that was not actually written.
+    with transaction.atomic():
+        if changed:
+            product.save(update_fields=changed + ['updated_at'])
+        for field, old in money_before.items():
+            new = getattr(product, field)
+            if new != old:
+                log_event(
+                    seller_user,
+                    'product_price_changed',
+                    product,
+                    detail={
+                        'field': field,
+                        'from': None if old is None else str(old),
+                        'to': None if new is None else str(new),
+                    },
+                )
     return product
 
 
@@ -356,7 +381,8 @@ def update_variant(seller_user, product_id, variant_id, **fields):
     """Seller edits a variant's own fields (§12.2) — name/price/active/attrs.
 
     Stock never moves through here: on_hand changes go through adjust_stock
-    so every movement stays in the append-only history (§12.3).
+    so every movement stays in the append-only history (§12.3). A **price**
+    edit is money and is audited with its before/after (§20.3).
     """
     product = _get_owned_product(seller_user, product_id)
     if product.status == Product.Status.ARCHIVED:
@@ -364,10 +390,24 @@ def update_variant(seller_user, product_id, variant_id, **fields):
     variant = Variant.objects.get(pk=variant_id, product=product)
     editable = ('name', 'price', 'is_active', 'attributes')
     changed = [field for field in editable if field in fields]
+    old_price = variant.price if 'price' in fields else None
     for field in changed:
         setattr(variant, field, fields[field])
-    if changed:
-        variant.save(update_fields=changed + ['updated_at'])
+    # Same commit as the row it describes (§20.3).
+    with transaction.atomic():
+        if changed:
+            variant.save(update_fields=changed + ['updated_at'])
+        if 'price' in fields and variant.price != old_price:
+            log_event(
+                seller_user,
+                'variant_price_changed',
+                variant,
+                detail={
+                    'product': product.pk,
+                    'from': str(old_price),
+                    'to': str(variant.price),
+                },
+            )
     return variant
 
 

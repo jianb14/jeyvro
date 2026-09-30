@@ -58,5 +58,14 @@ leaking the buyer through it was the bug.
 - **20.2 abuse controls** (spam, messaging abuse, suspicious-order detection,
   inventory abuse) are the next slice; the throttling above is the floor, not
   the answer.
-- **20.3** audits sensitive operations; the §19.4 CSV exports are the known
-  unaudited surface and are the first item there.
+- **20.3 auditing is done** — `docs/AUDIT_COVERAGE.md` is the matrix of every
+  sensitive operation and the action it writes. It closed three real gaps: the
+  §19.4 CSV exports (`analytics.exported` — actor, report, range, row count), a
+  seller's own price edits (`product_price_changed` / `variant_price_changed`,
+  with before/after) and the seller store profile, where `PATCH /stores/my/store`
+  changed the **shipping fee** with no record at all (now
+  `store_profile_updated`, written by `stores.services.update_own_profile`).
+  What is still missing is **not** coverage but custody: audit retention, a
+  signed export, and alerting on money actions all land with Phase 23.
+- **Login/logout/auth events** are deliberately not in that matrix — they
+  belong to a security log, not the business audit trail.

@@ -126,6 +126,48 @@ def activate_store(staff_user, store, *, reason=''):
     return store
 
 
+def update_own_profile(seller_user, store, *, changes):
+    """Seller edits their own store profile (§12.1) — audit-logged (§20.3).
+
+    This is a service and not a serializer save because two of these fields
+    decide what a buyer is charged: the shipping fee and the free-shipping
+    threshold. Their before/after belongs in the trail — an order keeps the
+    fee it was placed with, so this is about answering "what was the fee
+    then?", not about rewriting what a customer owes. Everything else the
+    seller writes about their own store (description, policies, contact) is
+    recorded by field name only.
+    """
+    if store.user_id != seller_user.pk:
+        raise PermissionError('You may only edit your own store.')
+
+    money_fields = ('shipping_flat_fee', 'free_shipping_threshold')
+    before = {field: getattr(store, field) for field in changes}
+    for field, value in changes.items():
+        setattr(store, field, value)
+    store.save()
+    log_event(
+        seller_user,
+        'store_profile_updated',
+        store,
+        detail={
+            'changed': sorted(changes),
+            'money': {
+                field: {
+                    'from': None if before[field] is None else str(before[field]),
+                    'to': (
+                        None
+                        if getattr(store, field) is None
+                        else str(getattr(store, field))
+                    ),
+                }
+                for field in money_fields
+                if field in changes
+            },
+        },
+    )
+    return store
+
+
 def build_seller_dashboard(store):
     """Seller home aggregates — scoped to exactly one store (§12.1).
 

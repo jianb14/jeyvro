@@ -65,8 +65,12 @@ class MyStoreView(APIView):
             store, data=request.data, partial=True
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        # The write belongs to the service, not the serializer: a changed
+        # shipping fee is a money term and is audited (§20.3).
+        store = services.update_own_profile(
+            request.user, store, changes=serializer.validated_data
+        )
+        return Response(SellerStoreSerializer(store).data)
 
 
 class MyStoreDashboardView(APIView):

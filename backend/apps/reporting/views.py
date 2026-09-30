@@ -248,7 +248,7 @@ class StaffAnalyticsExportView(APIView):
         except ValueError as exc:
             return _bad_range(exc)
         try:
-            body, filename = exports.render(self.report, start, end)
+            body, filename, rows = exports.render(self.report, start, end)
         except exports.ExportTooLarge as exc:
             return Response(
                 {'error': 'export_too_large', 'detail': str(exc)},
@@ -262,6 +262,13 @@ class StaffAnalyticsExportView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # A CSV leaves the building with the money in it, so *what* was taken
+        # is recorded: who, which report, which range, how many rows. The row
+        # is written only for a served file — a refused or invalid request
+        # exports nothing, so it has nothing to leave a trace of.
+        services.record_export(
+            request.user, report=self.report, start=start, end=end, rows=rows
+        )
         response = HttpResponse(body, content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response

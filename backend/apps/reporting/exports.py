@@ -122,11 +122,12 @@ def _csv(headers, rows):
 
 
 def render(report, start, end):
-    """The CSV body and filename for one report (§19.4).
+    """The CSV body, filename and row count for one report (§19.4).
 
     An empty range still exports its header — a file with the columns and no
     rows is a truthful answer, where an empty body would look like a broken
-    download.
+    download. The row count comes back with the file so the caller can audit
+    *what* left the building, not just that something did (§20.3).
     """
     try:
         _title, serializer_class, rows_of = REPORTS[report]
@@ -142,4 +143,8 @@ def render(report, start, end):
     fields = list(serializer_class().fields)
     headers = [LABELS.get(name, name.replace('_', ' ').title()) for name in fields]
     rows = [[row.get(name, '') for name in fields] for row in payload]
-    return _csv(headers, rows), f'jeyvro-{report}-{start}-{end}.csv'
+    return (
+        _csv(headers, rows),
+        f'jeyvro-{report}-{start}-{end}.csv',
+        len(rows),
+    )
