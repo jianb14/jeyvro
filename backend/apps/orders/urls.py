@@ -31,4 +31,12 @@ urlpatterns = [
     path('admin/shipments/', views.StaffShipmentListView.as_view(), name='staff-shipment-list'),
     path('admin/requests/', views.StaffOrderRequestListView.as_view(), name='staff-order-request-list'),
 
+    # §20.2 v2: unpaid COD orders holding stock — reported, then a staff release.
+    path('admin/stale-cod/', views.StaffStaleCodListView.as_view(), name='staff-stale-cod-list'),
+    path(
+        'admin/stale-cod/<str:number>/release/',
+        views.StaffStaleCodReleaseView.as_view(),
+        name='staff-stale-cod-release',
+    ),
+
 ]

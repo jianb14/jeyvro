@@ -27,18 +27,21 @@ Contracts proven here, and the reasoning behind each:
    *starts* only — a 20/hour cap on the inbox list would be a speed bump on
    ordinary reading (§10.2).
 """
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth.models import Group
 from django.core.exceptions import PermissionDenied
 from django.test import Client
+from django.utils import timezone
 
 from apps.accounts.models import Address, User
 from apps.audit.models import AuditLog
+from apps.cart import services as cart_services
 from apps.cart.models import Cart
 from apps.catalog import services as catalog_services
-from apps.catalog.models import Product, Variant
+from apps.catalog.models import Inventory, Product, Variant
 from apps.messaging import services as messaging_services
 from apps.messaging.models import (
     Conversation,
@@ -49,7 +52,7 @@ from apps.messaging.models import (
 from apps.moderation import rules, services as moderation_services
 from apps.moderation.models import ContentFlag
 from apps.orders import services as order_services
-from apps.orders.models import OrderItem, OrderStatus, ShipmentStatus
+from apps.orders.models import Order, OrderItem, OrderStatus, ShipmentStatus
 from apps.reviews import services as review_services
 from apps.reviews.models import Review, ReviewStatus
 from apps.stores.models import Store
@@ -630,6 +633,172 @@ def test_the_status_filter_moves_a_flag_between_worklists():
 def test_an_unknown_kind_filter_is_rejected():
     moderator = _user('moderator-kind-filter@example.com', group='moderator')
     assert _client_for(moderator).get(f'{FLAGS}?kind=bogus').status_code == 400
+
+
+# --------------------------------------------------------------------------------------
+# Slice v2: stale COD reservations — surfaced to staff, never auto-cancelled (§20.2)
+#
+# The bug these cover: an unpaid COD order holds its stock reservation forever,
+# because `Payment.expires_at` is None for COD and `expire_overdue_payments`
+# excludes it. The product decision is that this is a *report*, not a reaper —
+# killing a slow-but-real COD order is worse than the leak it would fix.
+# --------------------------------------------------------------------------------------
+
+STALE_COD = '/api/v1/admin/stale-cod/'
+
+
+def _cod_order(slug, email, *, quantity=2, method='cod'):
+    """A placed order holding `quantity` units of its variant's stock."""
+    from apps.payments.models import PaymentMethod
+
+    _seller, _store, _product, variant = _catalog(slug)
+    buyer = _user(email)
+    address = _address(buyer)
+    cart = Cart.objects.get_or_create(user=buyer)[0]
+    cart_services.add_item(cart, variant, quantity=quantity)
+    order = order_services.create_order(
+        buyer, address.pk,
+        payment_method=PaymentMethod(method),
+    )
+    return order, variant, buyer
+
+
+def _age_order(order, days):
+    """Backdate an order so it crosses the review window."""
+    Order.objects.filter(pk=order.pk).update(
+        created_at=timezone.now() - timedelta(days=days)
+    )
+    order.refresh_from_db()
+    return order
+
+
+def test_an_unpaid_cod_order_is_never_cancelled_automatically():
+    """The whole point of the decision: age the order out and run every
+    automatic path that could touch it. Nothing moves."""
+    from apps.payments import services as payment_services
+
+    order, variant, _buyer = _cod_order('cod-never-auto', 'codauto@example.com')
+    _age_order(order, days=30)
+
+    expired = payment_services.expire_overdue_payments()
+    order.refresh_from_db()
+    inventory = Inventory.objects.get(variant=variant)
+
+    assert expired == []
+    assert order.status != OrderStatus.CANCELLED
+    # The reservation is deliberately still held — staff release it by hand.
+    assert inventory.reserved == 2
+
+
+def test_a_stale_cod_order_is_reported_to_staff():
+    order, _variant, _buyer = _cod_order('cod-report', 'codreport@example.com')
+    _age_order(order, days=30)
+
+    support = _user('codsupport@example.com', group='support')
+    data = _client_for(support).get(STALE_COD).data
+    assert data['count'] == 1
+    row = data['items'][0]
+    assert row['number'] == order.number
+    assert row['age_days'] >= 30
+    assert row['item_count'] == 2
+    assert row['payment_method'] == 'cod'
+
+
+def test_a_fresh_cod_order_is_not_reported():
+    """Staff should see the leak, not every order placed today."""
+    _cod_order('cod-fresh', 'codfresh@example.com')
+    support = _user('codfreshsupport@example.com', group='support')
+    assert _client_for(support).get(STALE_COD).data['count'] == 0
+
+
+def test_a_shipped_cod_order_is_never_reported_or_released():
+    """The guard that matters: a parcel in transit is a sale that already
+    happened. Releasing its stock would sell the same unit twice."""
+    order, variant, buyer = _cod_order('cod-shipped', 'codshipped@example.com')
+    _age_order(order, days=30)
+    seller_order = order.seller_orders.first()
+    shipment = order_services.create_shipment(
+        seller_order, carrier_code='manual', actor=buyer,
+    )
+    order_services.update_shipment_status(
+        shipment, ShipmentStatus.PICKED_UP, actor=buyer,
+    )
+
+    support = _user('codshipsupport@example.com', group='support')
+    client = _client_for(support)
+    assert client.get(STALE_COD).data['count'] == 0
+
+    refused = client.post(
+        f'{STALE_COD}{order.number}/release/',
+        {'reason': 'looks abandoned'}, content_type='application/json',
+    )
+    assert refused.status_code == 400
+    assert refused.data['error'] == 'not_stale_cod'
+    inventory = Inventory.objects.get(variant=variant)
+    assert inventory.reserved == 2, 'a dispatched parcel keeps its stock'
+
+
+def test_staff_releasing_a_stale_cod_reservation_is_audited():
+    order, variant, _buyer = _cod_order('cod-release', 'codrel@example.com')
+    _age_order(order, days=30)
+    support = _user('codrelsupport@example.com', group='support')
+
+    response = _client_for(support).post(
+        f'{STALE_COD}{order.number}/release/',
+        {'reason': 'Buyer unreachable for 30 days.'},
+        content_type='application/json',
+    )
+    assert response.status_code == 200
+
+    order.refresh_from_db()
+    assert order.status == OrderStatus.CANCELLED
+    # The whole point: the stock goes back on the shelf.
+    inventory = Inventory.objects.get(variant=variant)
+    assert inventory.reserved == 0
+    assert AuditLog.objects.filter(
+        action='order.cod_reservation_released',
+        object_id=str(order.pk),
+    ).exists()
+
+
+def test_releasing_stock_demands_a_reason():
+    order, variant, _buyer = _cod_order('cod-noreason', 'codnr@example.com')
+    _age_order(order, days=30)
+    support = _user('codnrsupport@example.com', group='support')
+
+    response = _client_for(support).post(
+        f'{STALE_COD}{order.number}/release/',
+        {'reason': '   '}, content_type='application/json',
+    )
+    assert response.status_code == 400
+    assert response.data['error'] == 'reason_required'
+    # Refused means untouched.
+    assert Inventory.objects.get(variant=variant).reserved == 2
+    order.refresh_from_db()
+    assert order.status != OrderStatus.CANCELLED
+
+
+def test_the_stale_cod_queue_is_staff_only():
+    buyer = _user('custodcurious@example.com')
+    assert _client_for(buyer).get(STALE_COD).status_code == 403
+    assert Client().get(STALE_COD).status_code in (401, 403)
+
+
+def test_an_unknown_order_number_is_a_404():
+    support = _user('cod404support@example.com', group='support')
+    response = _client_for(support).post(
+        f'{STALE_COD}JV-00000000-XXXXXX/release/',
+        {'reason': 'nope'}, content_type='application/json',
+    )
+    assert response.status_code == 404
+
+
+def test_the_review_window_is_configurable(settings):
+    settings.ORDERS_COD_RESERVATION_REVIEW_DAYS = 2
+    order, _variant, _buyer = _cod_order('cod-window', 'codwin@example.com')
+    _age_order(order, days=3)
+    support = _user('codwinsupport@example.com', group='support')
+    assert _client_for(support).get(STALE_COD).data['count'] == 1
 
 
 # --------------------------------------------------------------------------------------

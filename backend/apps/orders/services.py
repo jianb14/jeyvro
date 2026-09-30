@@ -5,8 +5,10 @@ the cart is re-validated against live server truth, the order is snapshotted
 (immutably), stock is reserved through the row-locked catalog services (the
 only place stock changes), and the cart is cleared. Views stay thin (§8).
 """
+from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
@@ -33,6 +35,7 @@ from .models import (
     RequestStatus,
     SellerOrder,
     Shipment,
+    ShipmentStatus,
 )
 
 
@@ -401,6 +404,116 @@ def cancel_order(user, number):
         payment_services.cancel_pending_payment(order, actor=user)
         audit_services.log_event(
             user, 'order.cancelled', order, detail={'number': order.number}
+        )
+    return order
+
+
+# --- §20.2 v2: stale COD reservations — surfaced, never auto-cancelled ---------
+
+
+def cod_reservation_review_days():
+    """Days an unpaid COD order may hold stock before staff are shown it."""
+    return int(getattr(settings, 'ORDERS_COD_RESERVATION_REVIEW_DAYS', 7))
+
+
+def cod_reservation_cutoff(*, now=None, days=None):
+    now = now or timezone.now()
+    days = cod_reservation_review_days() if days is None else days
+    return now - timedelta(days=days)
+
+
+def stale_cod_orders(*, now=None, days=None):
+    """COD orders still holding a reservation past the review window (§20.2 v2).
+
+    This is a **report, not a reaper**. An unpaid COD order is a real order —
+    the parcel may be genuinely in transit to a slow buyer — so nothing here
+    cancels anything automatically. Staff read this list and decide.
+
+    The filter is deliberately narrow, because a row that does not belong on
+    it is a real order a staff member might wrongly release:
+
+    - cash on delivery only (an online payment expires on its own schedule);
+    - payment still `pending` — never captured, never failed, never cancelled;
+    - order still pre-fulfilment, so a shipped order is never listed;
+    - **no parcel dispatched on any store slice** — the guard that matters.
+      A parcel in transit is a sale that already happened; releasing its stock
+      would sell the same unit twice.
+    """
+    cutoff = cod_reservation_cutoff(now=now, days=days)
+    dispatched_store_orders = Shipment.objects.exclude(
+        status=ShipmentStatus.PENDING
+    ).values('seller_order_id')
+    return (
+        Order.objects
+        .filter(
+            payment__method=PaymentMethod.COD,
+            payment__status=PaymentStatus.PENDING,
+            status__in=(OrderStatus.PLACED, OrderStatus.AWAITING_PAYMENT),
+            created_at__lte=cutoff,
+        )
+        .exclude(seller_orders__id__in=dispatched_store_orders)
+        .select_related('user', 'payment')
+        .prefetch_related(
+            'seller_orders__items', 'seller_orders__shipments',
+        )
+        .order_by('created_at')
+    )
+
+
+def is_stale_cod_order(order, *, now=None):
+    """Re-check the stale verdict at the moment of action, not from a snapshot.
+
+    A staff console renders a list; by the time the button is pressed the order
+    may have shipped, been paid, or been cancelled by the customer. Releasing
+    stock on a stale rendering of a *no-longer-stale* order is a double-sell,
+    so the decision re-asks the database rather than trusting the list.
+    """
+    return stale_cod_orders(now=now).filter(pk=order.pk).exists()
+
+
+def release_stale_cod_reservation(actor, number, *, reason):
+    """Staff releases a stale COD order's reservation — the human half (§20.2 v2).
+
+    The order is **cancelled**, not left dangling: releasing the stock while the
+    order still claims it would let the same unit be sold twice, so the two
+    always move together. A reason is mandatory — releasing a real buyer's
+    reservation is exactly the decision an audit trail has to explain later.
+    """
+    reason = (reason or '').strip()
+    if not reason:
+        raise CheckoutError(
+            'A reason is required to release reserved stock.',
+            code='reason_required',
+        )
+    with transaction.atomic():
+        order = Order.objects.select_for_update().filter(number=number).first()
+        if order is None:
+            raise Order.DoesNotExist(f'Order {number} not found.')
+        if not is_stale_cod_order(order):
+            raise CheckoutError(
+                'This order is not holding a stale COD reservation.',
+                code='not_stale_cod',
+            )
+        items = OrderItem.objects.filter(
+            seller_order__order=order
+        ).select_related('variant')
+        for item in items:
+            catalog_services.release_stock(item.variant, item.quantity)
+        order.status = Order.Status.CANCELLED
+        order.save(update_fields=['status', 'updated_at'])
+        order.seller_orders.update(
+            status=SellerOrder.Status.CANCELLED, updated_at=timezone.now()
+        )
+        payment_services.cancel_pending_payment(order, actor=actor)
+        audit_services.log_event(
+            actor,
+            'order.cod_reservation_released',
+            order,
+            detail={
+                'number': order.number,
+                'reason': reason,
+                'customer': order.user.email,
+            },
         )
     return order
 

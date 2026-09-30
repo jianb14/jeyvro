@@ -561,3 +561,61 @@ class StaffOrderRequestListView(APIView):
         return paginator.get_paginated_response(
             [serializers.serialize_staff_request_row(item) for item in page]
         )
+
+
+class StaffStaleCodListView(APIView):
+    """GET /api/v1/orders/admin/stale-cod/ — unpaid COD holding stock (§20.2 v2).
+
+    A read-only report. An unpaid cash-on-delivery order holds its stock
+    reservation with no expiry, so over time a seller's `available` count can be
+    pinned down by orders nobody intends to pay for. This endpoint *shows* them;
+    it never cancels anything, because a COD order may be a real parcel in
+    transit to a slow buyer (§9.1 — cash is due at delivery).
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['support', 'operations', 'administrator']
+
+    def get(self, request):
+        queryset = services.stale_cod_orders()
+        needle = request.query_params.get('q')
+        if needle:
+            queryset = queryset.filter(
+                Q(number__icontains=needle) | Q(user__email__icontains=needle)
+            )
+        paginator = CountItemsPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        return paginator.get_paginated_response(
+            [serializers.serialize_stale_cod_row(order) for order in page]
+        )
+
+
+class StaffStaleCodReleaseView(APIView):
+    """POST /api/v1/orders/admin/stale-cod/<number>/release/ — staff decision.
+
+    The human half of the report above: support/operations confirm the order is
+    genuinely dead, then release its reservation. The order is cancelled with
+    it — releasing stock while an order still claims it would sell the same unit
+    twice — and a reason is mandatory because this is the decision an audit
+    trail has to explain later.
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = ['support', 'operations', 'administrator']
+
+    def post(self, request, number):
+        reason = str(request.data.get('reason', '')).strip()
+        try:
+            order = services.release_stale_cod_reservation(
+                request.user, number, reason=reason,
+            )
+        except Order.DoesNotExist:
+            return Response(
+                {'error': 'not_found'}, status=status.HTTP_404_NOT_FOUND
+            )
+        except services.CheckoutError as exc:
+            return _rejected(exc)
+        return Response(
+            serializers.serialize_stale_cod_row(order),
+            status=status.HTTP_200_OK,
+        )

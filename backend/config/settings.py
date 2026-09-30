@@ -162,6 +162,17 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 PAYMENTS_PAYMENT_EXPIRY_HOURS = int(env('PAYMENTS_PAYMENT_EXPIRY_HOURS', '24'))
 PAYMENTS_GATEWAY_WEBHOOK_SECRET = env('PAYMENTS_GATEWAY_WEBHOOK_SECRET', '')
 PAYMENTS_GATEWAY_CHECKOUT_URL = env('PAYMENTS_GATEWAY_CHECKOUT_URL', '')
+
+# §20.2 v2 — how long an unpaid COD order is left holding its stock
+# reservation before it is *surfaced to staff*. This is a review threshold,
+# NOT a cancellation timer: a COD order is never auto-cancelled (§9.1 — cash
+# is due at delivery, so the payment has no window), because killing a slow
+# buyer's order whose parcel is genuinely in transit is worse than the leak it
+# would fix. Staff read the list and release the stock by hand
+# (`orders.services.release_stale_cod_reservation`).
+ORDERS_COD_RESERVATION_REVIEW_DAYS = int(
+    env('ORDERS_COD_RESERVATION_REVIEW_DAYS', '7')
+)
 PAYMENTS_GATEWAY_SANDBOX = env('PAYMENTS_GATEWAY_SANDBOX', 'False').lower() in {
     '1',
     'true',

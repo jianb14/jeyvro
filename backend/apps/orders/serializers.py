@@ -7,6 +7,7 @@ only the immutable snapshots written at creation.
 """
 from decimal import Decimal
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.cart.serializers import build_cart_payload
@@ -580,4 +581,35 @@ def serialize_staff_request_row(request):
         **serialize_order_request(request),
         'order_number': request.order.number,
         'customer_email': request.order.user.email,
+    }
+
+
+def serialize_stale_cod_row(order, *, now=None):
+    """One stale COD row — what stock is being held, and for how long (§20.2 v2).
+
+    `age_days` is the number a staff member actually acts on: it is how long
+    this reservation has been sitting on a seller's `available` count while
+    nobody paid. The order is reached through the normal staff detail route, so
+    this listing stays identifiers-and-money rather than a second copy of the
+    order.
+    """
+    payment = getattr(order, 'payment', None)
+    now = now or timezone.now()
+    return {
+        'number': order.number,
+        'status': order.status,
+        'created_at': order.created_at.isoformat(),
+        'age_days': max(0, (now - order.created_at).days),
+        'customer_email': order.user.email,
+        'ship_to_city': order.shipping_city,
+        'ship_to_province': order.shipping_province,
+        'grand_total': _money(order.grand_total),
+        'item_count': sum(
+            item.quantity
+            for seller_order in order.seller_orders.all()
+            for item in seller_order.items.all()
+        ),
+        'store_names': [so.store_name for so in order.seller_orders.all()],
+        'payment_method': payment.method if payment else None,
+        'payment_status': payment.status if payment else None,
     }

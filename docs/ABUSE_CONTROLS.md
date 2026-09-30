@@ -100,39 +100,47 @@ ordinary use (§10.2). `WriteOnlyScopedRateThrottle`
 (`apps/messaging/throttling.py`) waves safe methods through and counts only
 unsafe ones.
 
-## Not yet covered — slice v2/v3 (open, and one item is proven)
+## Slice v2: unpaid COD orders holding stock
 
-These are the §20.2 gaps that remain. They are listed here rather than left
-implicit so the page never implies the phase is finished.
+An unpaid **cash-on-delivery** order holds its stock reservation **forever**.
+`Payment.expires_at` is `None` for COD and `payments.services
+.expire_overdue_payments` explicitly `.exclude(method=PaymentMethod.COD)`, so
+the `expire_payments` cron never touches it. The only exits are the customer
+cancelling or a seller marking it delivered/failed — so a seller's `available`
+count can be pinned down indefinitely by orders nobody intends to pay for.
 
-### COD reservations are never released (proven, unfixed)
+Excluding COD from *payment* expiry is correct and stays: cash is due at
+delivery, so the payment has no window. The gap was that the **reservation**
+was bound to that same window.
 
-An unpaid **cash-on-delivery** order holds its stock reservation
-**forever**. `Payment.expires_at` is `None` for COD and
-`payments.services.expire_overdue_payments` explicitly
-`.exclude(method=PaymentMethod.COD)`, so the `expire_payments` cron never
-touches it. The only exits are the customer cancelling or a seller marking
-it delivered/failed.
+**The fix is a report, not a reaper.** An unpaid COD order may be a real parcel
+in transit to a slow buyer, so it is never cancelled automatically — killing it
+would be worse than the leak. Instead the order surfaces to staff, who release
+it by hand.
 
-The exclusion is deliberate and correct in itself — cash is due at delivery,
-so the *payment* has no window. The gap is that the **reservation** was bound
-to the payment window in the first place. A buyer can therefore check out, take
-the stock out of every seller's `available`, and never pay or cancel: an
-ordinary buyer who ordered and then changed their mind leaves the same hole.
+| Endpoint | Who | What |
+| --- | --- | --- |
+| `GET /api/v1/admin/stale-cod/` | support, operations, administrator | orders holding stock past the window (`?q=`) |
+| `POST /api/v1/admin/stale-cod/<number>/release/` | support, operations, administrator | release the reservation, with a reason |
 
-Verified by probe (asserted against `Inventory.reserved` before and after
-`expire_overdue_payments`): the reservation is still held after the cron runs.
-The probe is deliberately **not** committed — a test asserting a live bug is
-false comfort, and the fix ships with the test that pins the corrected
-behaviour.
+- The window is `ORDERS_COD_RESERVATION_REVIEW_DAYS` (default 7) and is a
+  **review** threshold, never a cancellation timer.
+- The list is narrow on purpose, because a row that does not belong on it is a
+  real order someone might wrongly release: COD only, payment still `pending`,
+  order still pre-fulfilment, and **no parcel dispatched on any store slice**. A
+  parcel in transit is a sale that already happened — releasing its stock would
+  sell the same unit twice.
+- `release_stale_cod_reservation` **re-checks the stale verdict at the moment of
+  the action**, not from the rendered list, so an order that shipped between the
+  list render and the click is refused.
+- The release **cancels the order with the stock**; releasing stock while an
+  order still claims it would double-sell. A reason is mandatory, and the action
+  writes `order.cod_reservation_released`.
 
-The open decision is a product one, not a coding one: a COD order that sits
-unpaid for N days may be **cancelled automatically** (releasing stock, as an
-expired online order does) or merely **surfaced to staff**. Auto-cancelling a
-COD order risks killing a legitimate slow buyer whose parcel is genuinely in
-transit, so the window and the treatment need a deliberate answer before code.
+## Not yet covered — slice v3 (open)
 
-### Still to design
+These are the §20.2 gaps that remain, listed so the page never implies the
+phase is finished.
 
 - **Per-order quantity ceiling** — `MAX_LINE_QUANTITY = 99` is per *line*, so
   a 20-line cart is 1,980 units. A total-units cap per order is missing.
