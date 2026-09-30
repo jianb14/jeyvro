@@ -100,6 +100,48 @@ ordinary use (§10.2). `WriteOnlyScopedRateThrottle`
 (`apps/messaging/throttling.py`) waves safe methods through and counts only
 unsafe ones.
 
+## Not yet covered — slice v2/v3 (open, and one item is proven)
+
+These are the §20.2 gaps that remain. They are listed here rather than left
+implicit so the page never implies the phase is finished.
+
+### COD reservations are never released (proven, unfixed)
+
+An unpaid **cash-on-delivery** order holds its stock reservation
+**forever**. `Payment.expires_at` is `None` for COD and
+`payments.services.expire_overdue_payments` explicitly
+`.exclude(method=PaymentMethod.COD)`, so the `expire_payments` cron never
+touches it. The only exits are the customer cancelling or a seller marking
+it delivered/failed.
+
+The exclusion is deliberate and correct in itself — cash is due at delivery,
+so the *payment* has no window. The gap is that the **reservation** was bound
+to the payment window in the first place. A buyer can therefore check out, take
+the stock out of every seller's `available`, and never pay or cancel: an
+ordinary buyer who ordered and then changed their mind leaves the same hole.
+
+Verified by probe (asserted against `Inventory.reserved` before and after
+`expire_overdue_payments`): the reservation is still held after the cron runs.
+The probe is deliberately **not** committed — a test asserting a live bug is
+false comfort, and the fix ships with the test that pins the corrected
+behaviour.
+
+The open decision is a product one, not a coding one: a COD order that sits
+unpaid for N days may be **cancelled automatically** (releasing stock, as an
+expired online order does) or merely **surfaced to staff**. Auto-cancelling a
+COD order risks killing a legitimate slow buyer whose parcel is genuinely in
+transit, so the window and the treatment need a deliberate answer before code.
+
+### Still to design
+
+- **Per-order quantity ceiling** — `MAX_LINE_QUANTITY = 99` is per *line*, so
+  a 20-line cart is 1,980 units. A total-units cap per order is missing.
+- **Suspicious-order signals** — high-value COD on a new account, many
+  distinct shipping addresses, repeat abandon/cancel. Same contract as this
+  slice: flag for a human, never auto-block the buyer.
+- **Account abuse** — disposable-email domains, a new-account purchase ceiling,
+  email verification before a high-value COD order.
+
 ## Blocks
 
 A block is **user-scoped, not conversation-scoped**: a buyer who blocks a
