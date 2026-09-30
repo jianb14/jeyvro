@@ -15,7 +15,7 @@ Give the operator team safe, audited control of the marketplace: they can see an
 
 ## Current honest state
 
-No Django admin/staff UI yet. Django admin registration lands with the scaffold (`backend-core`); the staff dashboard frontend follows the first domains (`admin-panel-skill` was the planned split — created by owner request; staff dashboard build order per `backend-feature`/`frontend-feature`).
+The staff console is **live** and group-based, not all-or-nothing (§4): applications, stores, users, team, audit log, catalog, taxonomy, orders, payments/shipments, campaigns, reviews, settings and the **analytics console** are all shipped (`/staff/*`, read through `src/data/staff.js`). Analytics itself is a **reporting aggregate** story (Phase 19): `apps.reporting` rollups written only by `manage.py rebuild_reporting` — §19.1 platform money, §19.2 seller analytics (`/seller/analytics`, ownership-scoped), and §19.3 operational analytics (`admin/analytics/operations/` + `…/performance/` — order status buckets, fulfillment, returns, refunds, support workload, seller performance), each with pinned definitions and its own gate (finance/administrator own the money; the read-only oversight groups own product activity and operations). §19.4 reports (CSV export) is still open.
 
 ## When to use
 

@@ -837,3 +837,81 @@ export async function fetchStaffAnalyticsProducts({
   return (data.items ?? []).map(mapTopProductRow);
 }
 
+// --- 19.3 Operations & seller performance ------------------------------------
+
+// Operational metrics are counts, not pesos, and their definitions are the
+// server's (§19.3): orders bucketed by where they stand at rebuild, parcels
+// created/delivered, cases filed/decided/received, refunds issued/settled,
+// and the support workload. The page renders them as given — no rate is
+// divided here (marketplace-admin rule 5).
+function operationCounts(row) {
+  return {
+    ordersOpen: row.orders_open ?? 0,
+    ordersCompleted: row.orders_completed ?? 0,
+    ordersCancelled: row.orders_cancelled ?? 0,
+    ordersRefunded: row.orders_refunded ?? 0,
+    shipmentsCreated: row.shipments_created ?? 0,
+    shipmentsDelivered: row.shipments_delivered ?? 0,
+    returnsFiled: row.returns_filed ?? 0,
+    returnsApproved: row.returns_approved ?? 0,
+    returnsRejected: row.returns_rejected ?? 0,
+    returnsReceived: row.returns_received ?? 0,
+    refundsIssued: row.refunds_issued ?? 0,
+    refundsSettled: row.refunds_settled ?? 0,
+    requestsFiled: row.requests_filed ?? 0,
+    conversationsOpened: row.conversations_opened ?? 0,
+    messagesSent: row.messages_sent ?? 0,
+    disputesOpened: row.disputes_opened ?? 0,
+    disputesResolved: row.disputes_resolved ?? 0,
+  };
+}
+
+export function mapOperationsTotals(totals) {
+  return {
+    start: totals.start ?? null,
+    end: totals.end ?? null,
+    ...operationCounts(totals),
+  };
+}
+
+export function mapOperationsDay(day) {
+  return { day: day.day, ...operationCounts(day) };
+}
+
+export function mapStorePerformanceRow(row) {
+  return {
+    storeId: row.store_id,
+    storeName: row.store__name ?? "",
+    shipmentsCreated: row.shipments_created ?? 0,
+    shipmentsDelivered: row.shipments_delivered ?? 0,
+    returnsFiled: row.returns_filed ?? 0,
+    returnsReceived: row.returns_received ?? 0,
+    disputesOpened: row.disputes_opened ?? 0,
+    requestsFiled: row.requests_filed ?? 0,
+    messagesSent: row.messages_sent ?? 0,
+  };
+}
+
+/** GET /api/v1/admin/analytics/operations/ — the operational day (§19.3). */
+export async function fetchStaffAnalyticsOperations({ from = "", to = "" } = {}) {
+  const query = buildQuery({ from, to });
+  const data = await request(ANALYTICS, `/operations/${query}`);
+  return {
+    start: data.start ?? null,
+    end: data.end ?? null,
+    totals: mapOperationsTotals(data.totals ?? {}),
+    days: (data.days ?? []).map(mapOperationsDay),
+  };
+}
+
+/** GET /api/v1/admin/analytics/performance/ — seller performance (§19.3). */
+export async function fetchStaffAnalyticsPerformance({
+  from = "",
+  to = "",
+  limit = "",
+} = {}) {
+  const query = buildQuery({ from, to, limit });
+  const data = await request(ANALYTICS, `/performance/${query}`);
+  return (data.items ?? []).map(mapStorePerformanceRow);
+}
+

@@ -4,10 +4,14 @@ Every endpoint here reads the **reporting aggregates** and never the
 transactional tables — that is the §17 promise the whole phase is built on, and
 it is why a busy marketplace's dashboard costs the same as a quiet one's.
 
-Grouping follows §4 as §6 v1.16 spells it out: the money figures (GMV, revenue,
-commission, refunds) and the store leaderboard belong to `finance` and
+Reads are group-gated per §4 as §6 v1.16 spells it out: the money figures (GMV,
+revenue, commission, refunds) and the store leaderboard belong to `finance` and
 `administrator`; product activity is open to the read-only oversight groups
-that already see those records. The seller endpoint is scoped by **ownership**
+that already see those records. §19.3 adds the operational reads (order status
+buckets, fulfillment, returns, refunds, support workload, seller performance) —
+counts of what happened, gated to those same oversight groups
+(`OPERATIONAL_GROUPS`) because operational truth is exactly what support and
+operations oversee. The seller endpoint is scoped by **ownership**
 instead: a seller reads their own store's aggregates, resolved from the
 session, and never another store's. Nothing here writes — the aggregates are
 rebuilt by `manage.py rebuild_reporting`, so a dashboard can never invent a
@@ -159,6 +163,65 @@ def _limit(request, default=10, cap=100):
     except (TypeError, ValueError):
         return default
     return max(1, min(value, cap))
+
+
+# --- The operational reads (§19.3) -------------------------------------------
+
+
+class StaffAnalyticsOperationsView(APIView):
+    """GET /api/v1/admin/analytics/operations/?from=&to= — the operational day.
+
+    Totals plus the daily series over the §19.3 counts: orders bucketed by
+    where they stand, parcels moved, cases filed and decided, refunds issued
+    and settled, and the support workload. Counts only — the pesos stay on the
+    summary endpoint this sits beside.
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = OPERATIONAL_GROUPS
+
+    def get(self, request):
+        try:
+            start, end = _range(request)
+        except ValueError as exc:
+            return _bad_range(exc)
+        return Response({
+            'start': start,
+            'end': end,
+            'totals': serializers.OperationsTotalsSerializer(
+                services.operations_totals(start, end)
+            ).data,
+            'days': serializers.DailyOperationsMetricSerializer(
+                services.operations_series(start, end), many=True
+            ).data,
+        })
+
+
+class StaffAnalyticsPerformanceView(APIView):
+    """GET /api/v1/admin/analytics/performance/?from=&to=&limit= — seller performance.
+
+    Per-store operational totals for the range from the store rollups (§19.3):
+    parcels sent and delivered, returns received, disputes opened, requests
+    filed and messages sent — store-sliced records only, biggest deliverer
+    first.
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    required_groups = OPERATIONAL_GROUPS
+
+    def get(self, request):
+        try:
+            start, end = _range(request)
+        except ValueError as exc:
+            return _bad_range(exc)
+        return Response({
+            'start': start,
+            'end': end,
+            'items': serializers.StorePerformanceRowSerializer(
+                services.store_performance(start, end, limit=_limit(request)),
+                many=True,
+            ).data,
+        })
 
 
 # --- The seller's own window (§19.2) ----------------------------------------

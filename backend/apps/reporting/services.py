@@ -33,13 +33,36 @@ from django.db.models import Count, Max, Min, Q, Sum
 from django.utils import timezone
 
 from apps.audit.models import AuditLog
-from apps.orders.models import Order, OrderItem, OrderStatus, SellerOrder
-from apps.payments.models import PaymentTransaction
+from apps.messaging.models import Conversation, Message
+from apps.orders.models import (
+    Order,
+    OrderItem,
+    OrderRequest,
+    OrderStatus,
+    SellerOrder,
+    Shipment,
+)
+from apps.payments.models import PaymentTransaction, Refund
 from apps.platform import services as platform_services
 from apps.promotions.models import PromotionScope, PromotionUsage, VoucherUsage
+from apps.resolutions.models import (
+    Dispute,
+    DisputeEvent,
+    DisputeEventKind,
+    ReturnCase,
+    ReturnEvent,
+    ReturnEventKind,
+    ReturnStatus,
+)
 from apps.reviews.models import Review, ReviewStatus
 
-from .models import DailyPlatformMetric, DailyProductMetric, DailyStoreMetric
+from .models import (
+    DailyOperationsMetric,
+    DailyPlatformMetric,
+    DailyProductMetric,
+    DailyStoreMetric,
+    DailyStoreOpsMetric,
+)
 
 CENT = Decimal('0.01')
 ZERO = Decimal('0.00')
@@ -47,6 +70,30 @@ HUNDRED = Decimal('100')
 
 RATE_ACTION = 'platform_settings_update'
 RATE_FIELD = 'commission_rate_percent'
+
+# §19.3 — the operational count columns, listed once and reused by the
+# derivation, the totals read and the empty shape, so the three can never
+# drift apart as columns are added.
+OPERATIONS_FIELDS = (
+    'orders_open', 'orders_completed', 'orders_cancelled', 'orders_refunded',
+    'shipments_created', 'shipments_delivered',
+    'returns_filed', 'returns_approved', 'returns_rejected', 'returns_received',
+    'refunds_issued', 'refunds_settled',
+    'requests_filed', 'conversations_opened', 'messages_sent',
+    'disputes_opened', 'disputes_resolved',
+)
+STORE_OPS_FIELDS = (
+    'shipments_created', 'shipments_delivered', 'returns_filed',
+    'returns_received', 'disputes_opened', 'requests_filed', 'messages_sent',
+)
+
+# §19.3 order-status buckets: the terminal states are named, so "open" can
+# never silently swallow a status nobody thought about twice.
+COMPLETED_ORDER_STATUSES = frozenset(
+    {OrderStatus.DELIVERED, OrderStatus.COMPLETED}
+)
+CANCELLED_ORDER_STATUS = OrderStatus.CANCELLED
+REFUNDED_ORDER_STATUS = OrderStatus.REFUNDED
 
 
 def _money(value):
@@ -530,6 +577,154 @@ def _product_rows(day):
     return rows
 
 
+# --- §19.3 operational grain -------------------------------------------------
+#
+# Counts, not pesos: the money stays on the platform/store rows and these
+# tables record what *happened* — orders bucketed by where they stand now,
+# parcels moved, cases filed and decided, refunds issued and settled, and the
+# support workload. Every figure is a count over append-only records, so the
+# rebuild stays idempotent and a dashboard never runs a live OLTP query (§17).
+
+
+def _operations_row(day):
+    """The marketplace's operational counts for one day (§19.3).
+
+    Each family is one query over its own records; the order-status buckets
+    partition every order created that day, so they always re-add to the day's
+    creations and `orders_cancelled` mirrors the platform row exactly.
+    """
+    row = {field: 0 for field in OPERATIONS_FIELDS}
+
+    # Order status metrics — orders created that day, by status at rebuild.
+    for entry in (
+        Order.objects.filter(created_at__date=day)
+        .values('status')
+        .annotate(n=Count('id'))
+    ):
+        status, total = entry['status'], entry['n']
+        if status in COMPLETED_ORDER_STATUSES:
+            row['orders_completed'] += total
+        elif status == CANCELLED_ORDER_STATUS:
+            row['orders_cancelled'] += total
+        elif status == REFUNDED_ORDER_STATUS:
+            row['orders_refunded'] += total
+        else:
+            row['orders_open'] += total
+
+    # Fulfillment events — creation is the dispatch signal (no code writes
+    # `Shipment.shipped_at`), delivery carries its own timestamp.
+    row['shipments_created'] = Shipment.objects.filter(
+        created_at__date=day
+    ).count()
+    row['shipments_delivered'] = Shipment.objects.filter(
+        delivered_at__date=day
+    ).count()
+
+    # Returns — filed, decided (by the status the case moved to, so the
+    # seller response, the staff decision and the override count alike), and
+    # received.
+    # Returns — filed, decided, and received. A **decision** is an event of kind
+    # approved / rejected / admin-override, bucketed by the status the case
+    # moved to: every timeline row records the status at its moment, so the
+    # `kind` is what marks a decision (a goods-received row also carries
+    # `approved`, because the case was still approved when it was written).
+    row['returns_filed'] = ReturnCase.objects.filter(created_at__date=day).count()
+    decided = ReturnEvent.objects.filter(
+        created_at__date=day,
+        kind__in=[
+            ReturnEventKind.APPROVED,
+            ReturnEventKind.REJECTED,
+            ReturnEventKind.ADMIN_OVERRIDE,
+        ],
+    ).values_list('new_status', flat=True)
+    row['returns_approved'] = sum(
+        1 for new_status in decided if new_status == ReturnStatus.APPROVED
+    )
+    row['returns_rejected'] = sum(
+        1 for new_status in decided if new_status == ReturnStatus.REJECTED
+    )
+    row['returns_received'] = ReturnEvent.objects.filter(
+        created_at__date=day, kind=ReturnEventKind.RECEIVED
+    ).count()
+
+    # Refunds — a row created, and the ledger debit that actually moved the
+    # money (the pesos live on the platform row).
+    row['refunds_issued'] = Refund.objects.filter(created_at__date=day).count()
+    _captures, refunds = _ledger(day)
+    row['refunds_settled'] = refunds.count()
+
+    # Support workload — everything a person wrote or filed that day.
+    row['requests_filed'] = OrderRequest.objects.filter(
+        created_at__date=day
+    ).count()
+    row['conversations_opened'] = Conversation.objects.filter(
+        created_at__date=day
+    ).count()
+    row['messages_sent'] = Message.objects.filter(created_at__date=day).count()
+    row['disputes_opened'] = Dispute.objects.filter(created_at__date=day).count()
+    row['disputes_resolved'] = DisputeEvent.objects.filter(
+        created_at__date=day, kind=DisputeEventKind.RESOLVED
+    ).count()
+    return row
+
+
+def _store_operations_rows(day):
+    """{store_id: counts} for the day's store-sliced operational records.
+
+    Attribution follows the slice the record belongs to; a whole-order record
+    (no slice) belongs to the platform grain alone — see `DailyStoreOpsMetric`.
+    """
+    rows = {}
+
+    def bump(store_id, field, amount):
+        if store_id is None:
+            return
+        counts = rows.setdefault(store_id, {name: 0 for name in STORE_OPS_FIELDS})
+        counts[field] += amount
+
+    sources = (
+        (Shipment.objects.filter(created_at__date=day),
+         'seller_order__store_id', 'shipments_created'),
+        (Shipment.objects.filter(delivered_at__date=day),
+         'seller_order__store_id', 'shipments_delivered'),
+        (ReturnCase.objects.filter(created_at__date=day, seller_order__isnull=False),
+         'seller_order__store_id', 'returns_filed'),
+        (ReturnEvent.objects.filter(
+            created_at__date=day, kind=ReturnEventKind.RECEIVED,
+            case__seller_order__isnull=False,
+        ), 'case__seller_order__store_id', 'returns_received'),
+        (Dispute.objects.filter(created_at__date=day, seller_order__isnull=False),
+         'seller_order__store_id', 'disputes_opened'),
+        (OrderRequest.objects.filter(created_at__date=day, seller_order__isnull=False),
+         'seller_order__store_id', 'requests_filed'),
+        (Message.objects.filter(
+            created_at__date=day, conversation__store__isnull=False,
+        ), 'conversation__store_id', 'messages_sent'),
+    )
+    for queryset, store_path, field in sources:
+        for entry in queryset.values(store_path).annotate(n=Count('id')):
+            bump(entry[store_path], field, entry['n'])
+    return rows
+
+
+def _sync_operations(day, row):
+    """The day's operational row: recomputed, never hand-edited."""
+    DailyOperationsMetric.objects.update_or_create(day=day, defaults=row)
+
+
+def _sync_store_operations(day, rows):
+    """Same for the store slice — rows the derivation no longer produces go."""
+    stale = set(
+        DailyStoreOpsMetric.objects.filter(day=day).values_list('store_id', flat=True)
+    ) - set(rows)
+    if stale:
+        DailyStoreOpsMetric.objects.filter(day=day, store_id__in=stale).delete()
+    for store_id, defaults in rows.items():
+        DailyStoreOpsMetric.objects.update_or_create(
+            day=day, store_id=store_id, defaults=defaults
+        )
+
+
 def _sync_stores(day, rows):
     """Make the day's store rows match exactly what was derived — no more."""
     stale = set(
@@ -564,6 +759,8 @@ def _rebuild_day(day, changes, current_rate):
     """Recompute one day, end to end."""
     store_rows = _store_rows(day, changes, current_rate)
     product_rows = _product_rows(day)
+    operations_row = _operations_row(day)
+    store_ops_rows = _store_operations_rows(day)
     # A day normally lives under one rate. If finance changed the rate mid-day
     # each slice was still charged at its own capture-time rate; the column
     # records the rate the day ended on (§6 v1.16).
@@ -577,6 +774,10 @@ def _rebuild_day(day, changes, current_rate):
         )
         _sync_stores(day, store_rows)
         _sync_products(day, product_rows)
+        # §19.3: same transaction, same idempotency — the operational row is
+        # derived in the same pass as the money it sits beside.
+        _sync_operations(day, operations_row)
+        _sync_store_operations(day, store_ops_rows)
 
 
 def _data_window():
@@ -585,10 +786,14 @@ def _data_window():
     Reviews count as records too: a review-only day (a product reviewed long
     after its orders settled) still gets a store row, so the default rebuild
     range must reach back to the first review when that is the earliest fact
-    (§19.2).
+    (§19.2). §19.3 extends the same rule to the operational records — a day
+    whose only story is a message or a filed case still earns its rows.
     """
     first = last = None
-    for model in (Order, PaymentTransaction, Review):
+    for model in (
+        Order, PaymentTransaction, Review,
+        Shipment, Refund, OrderRequest, ReturnCase, Dispute, Conversation, Message,
+    ):
         window = model.objects.aggregate(
             first=Min('created_at'), last=Max('created_at')
         )
@@ -890,3 +1095,69 @@ def top_products(start, end, limit=10, store_id=None):
         )
         .order_by('-units_sold', 'product__title')[:limit]
     )
+
+
+# --- §19.3 operational reads -------------------------------------------------
+
+
+def _ops_clamp(start, end):
+    """Never serve a window the operational rollups do not cover yet."""
+    first = (
+        DailyOperationsMetric.objects.order_by('day')
+        .values_list('day', flat=True)
+        .first()
+    )
+    if first is None:
+        return None, None
+    return max(start, first), end
+
+
+def _empty_operations():
+    """The shape a dashboard can always render, even before the first rebuild."""
+    totals = {field: 0 for field in OPERATIONS_FIELDS}
+    totals['start'] = None
+    totals['end'] = None
+    return totals
+
+
+def operations_totals(start, end):
+    """Range totals, summed from the operational daily rows (§19.3).
+
+    Counts add up cleanly across days (unlike rates, which this returns as
+    their component counts so the server — never the client — owns any
+    division it later does).
+    """
+    start, end = _ops_clamp(start, end)
+    if start is None:
+        return _empty_operations()
+    totals = DailyOperationsMetric.objects.filter(
+        day__range=(start, end)
+    ).aggregate(**{field: Sum(field) for field in OPERATIONS_FIELDS})
+    for field in OPERATIONS_FIELDS:
+        totals[field] = totals[field] or 0
+    totals['start'] = start
+    totals['end'] = end
+    return totals
+
+
+def operations_series(start, end):
+    """The marketplace's operational rows in order — the chart's own data."""
+    return DailyOperationsMetric.objects.filter(day__range=(start, end)).order_by(
+        'day'
+    )
+
+
+def store_performance(start, end, limit=None):
+    """Per-store operational totals for the range, biggest deliverer first.
+
+    Store-sliced records only (whole-order records stay at the platform
+    grain); ordered by parcels delivered, then name, so an empty marketplace
+    still renders deterministically.
+    """
+    rows = (
+        DailyStoreOpsMetric.objects.filter(day__range=(start, end))
+        .values('store_id', 'store__name')
+        .annotate(**{field: Sum(field) for field in STORE_OPS_FIELDS})
+        .order_by('-shipments_delivered', 'store__name')
+    )
+    return list(rows[:limit]) if limit else list(rows)

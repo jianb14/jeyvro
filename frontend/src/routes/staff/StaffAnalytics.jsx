@@ -15,6 +15,12 @@
  * working page rather than a broken one, and never a half-drawn dashboard of
  * zeroes standing in for figures they were refused.
  *
+ * §19.3's operational section (order status, fulfillment, returns, refunds,
+ * support workload, seller performance) follows the same discipline against its
+ * own gate: the oversight groups get it, the moderator's page never requests
+ * it. Every figure is the server's count — the page divides nothing itself, so
+ * a rate can never be "roughly right" (marketplace-admin rule 5).
+ *
  * Bars are the one thing drawn here, and they are pure presentation: the width
  * is the server's number scaled against the busiest day in the same series,
  * never a figure the client invented.
@@ -35,6 +41,17 @@ import { useAuth } from "../../features/auth/AuthContext";
 import * as staffApi from "../../data/staff";
 
 const MONEY_GROUPS = ["finance", "administrator", "super_administrator"];
+
+// §19.3: operational counts are what support and operations oversee, so they
+// ride the same gate the API enforces (support / operations / finance /
+// administrator) — the page asks for exactly what its caller's roles allow.
+const OPERATIONAL_GROUPS = [
+  "support",
+  "operations",
+  "finance",
+  "administrator",
+  "super_administrator",
+];
 
 const RANGES = [
   { value: "7", label: "Last 7 days" },
@@ -93,11 +110,16 @@ export function StaffAnalytics() {
   const { user } = useAuth();
   const roles = user?.staff_roles ?? [];
   const canSeeMoney = roles.some((role) => MONEY_GROUPS.includes(role));
+  const canSeeOperations = roles.some((role) => OPERATIONAL_GROUPS.includes(role));
 
   const [range, setRange] = useState("30");
   const [summary, setSummary] = useState(null);
   const [stores, setStores] = useState([]);
   const [products, setProducts] = useState([]);
+  // §19.3 — the operational day and the store's operational totals, loaded
+  // only for the groups the API would serve.
+  const [operations, setOperations] = useState(null);
+  const [performance, setPerformance] = useState([]);
   // `loaded`, not `loading`, and only ever flipped inside the request's own
   // callbacks: a setState called synchronously in an effect body is a cascading
   // render, and a range change should keep the last figures on screen rather
@@ -120,13 +142,23 @@ export function StaffAnalytics() {
       ...params,
       limit: 10,
     });
+    // §19.3 — same discipline for the operational reads: a moderator's page
+    // never fires the request that would 403.
+    const operationsJob = canSeeOperations
+      ? staffApi.fetchStaffAnalyticsOperations(params)
+      : Promise.resolve(null);
+    const performanceJob = canSeeOperations
+      ? staffApi.fetchStaffAnalyticsPerformance({ ...params, limit: 10 })
+      : Promise.resolve([]);
 
-    Promise.all([summaryJob, storesJob, productsJob])
-      .then(([nextSummary, nextStores, nextProducts]) => {
+    Promise.all([summaryJob, storesJob, productsJob, operationsJob, performanceJob])
+      .then(([nextSummary, nextStores, nextProducts, nextOperations, nextPerformance]) => {
         if (cancelled) return;
         setSummary(nextSummary);
         setStores(nextStores);
         setProducts(nextProducts);
+        setOperations(nextOperations);
+        setPerformance(nextPerformance);
         setError(null);
         setLoaded(true);
       })
@@ -135,13 +167,15 @@ export function StaffAnalytics() {
         setSummary(null);
         setStores([]);
         setProducts([]);
+        setOperations(null);
+        setPerformance([]);
         setError(err.data?.detail || err.message);
         setLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [range, canSeeMoney]);
+  }, [range, canSeeMoney, canSeeOperations]);
 
   useEffect(load, [load]);
 
@@ -149,6 +183,11 @@ export function StaffAnalytics() {
 
   // The series arrives oldest first; a dashboard reads newest first.
   const days = useMemo(() => [...(summary?.days ?? [])].reverse(), [summary]);
+  // §19.3 operations read the newest day the same way.
+  const operationDays = useMemo(
+    () => [...(operations?.days ?? [])].reverse(),
+    [operations]
+  );
   const busiest = useMemo(
     () => Math.max(1, ...days.map((day) => Number(day.gmv))),
     [days]
@@ -421,6 +460,156 @@ export function StaffAnalytics() {
           )}
         </CardContent>
       </Card>
+      {canSeeOperations && operations ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Operations</CardTitle>
+            <CardDescription>
+              What the records show happened, day by day —{" "}
+              {formatDay(operations.start)} to {formatDay(operations.end)}.
+              Orders are bucketed by where they stand as of the last rebuild,
+              and a settled refund is counted from the ledger debit that moved
+              the money, not from when it was requested.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6 p-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Stat
+                label="Orders open"
+                value={operations.totals.ordersOpen.toLocaleString("en-PH")}
+                hint={`${operations.totals.ordersCancelled} cancelled · ${operations.totals.ordersRefunded} refunded`}
+              />
+              <Stat
+                label="Orders completed"
+                value={operations.totals.ordersCompleted.toLocaleString("en-PH")}
+                hint="delivered or completed in range"
+              />
+              <Stat
+                label="Parcels delivered"
+                value={operations.totals.shipmentsDelivered.toLocaleString("en-PH")}
+                hint={`${operations.totals.shipmentsCreated} parcel(s) sent`}
+              />
+              <Stat
+                label="Returns filed"
+                value={operations.totals.returnsFiled.toLocaleString("en-PH")}
+                hint={`${operations.totals.returnsApproved} approved · ${operations.totals.returnsRejected} rejected`}
+              />
+              <Stat
+                label="Refunds settled"
+                value={operations.totals.refundsSettled.toLocaleString("en-PH")}
+                hint={`${operations.totals.refundsIssued} refund(s) issued`}
+              />
+              <Stat
+                label="Support volume"
+                value={operations.totals.messagesSent.toLocaleString("en-PH")}
+                hint={`${operations.totals.requestsFiled} request(s) · ${operations.totals.disputesOpened} dispute(s)`}
+              />
+            </div>
+
+            {operationDays.length === 0 ? (
+              <p className="text-sm text-sand-500 dark:text-sand-400">
+                No operational rows in this range yet. Run{" "}
+                <code className="rounded bg-sand-100 px-1.5 py-0.5 text-xs dark:bg-night-800">
+                  python manage.py rebuild_reporting
+                </code>{" "}
+                to derive them from the records.
+              </p>
+            ) : (
+              <div className="max-h-96 overflow-y-auto">
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>Day</TH>
+                      <TH className="text-right">Completed</TH>
+                      <TH className="text-right">Delivered</TH>
+                      <TH className="text-right">Returns</TH>
+                      <TH className="text-right">Refunds</TH>
+                      <TH className="text-right">Messages</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {operationDays.map((day) => (
+                      <TR key={`ops-${day.day}`}>
+                        <TD>{formatDay(day.day)}</TD>
+                        <TD className="text-right tabular-nums">
+                          {day.ordersCompleted}
+                        </TD>
+                        <TD className="text-right tabular-nums">
+                          {day.shipmentsDelivered}
+                        </TD>
+                        <TD className="text-right tabular-nums">
+                          {day.returnsFiled}
+                        </TD>
+                        <TD className="text-right tabular-nums">
+                          {day.refundsSettled}
+                        </TD>
+                        <TD className="text-right tabular-nums">
+                          {day.messagesSent}
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+      {canSeeOperations && performance.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Seller performance</CardTitle>
+            <CardDescription>
+              Per-store operational totals for the range, busiest deliverer
+              first. Only records that name a store slice are attributed to a
+              store — a whole-order record belongs to the marketplace, not to
+              one seller, and is never split to look busier than it was.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Store</TH>
+                  <TH className="text-right">Sent</TH>
+                  <TH className="text-right">Delivered</TH>
+                  <TH className="text-right">Returns filed</TH>
+                  <TH className="text-right">Returns received</TH>
+                  <TH className="text-right">Disputes</TH>
+                  <TH className="text-right">Messages</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {performance.map((row) => (
+                  <TR key={`perf-${row.storeId}`}>
+                    <TD className="font-medium text-sand-900 dark:text-sand-100">
+                      {row.storeName}
+                    </TD>
+                    <TD className="text-right tabular-nums">
+                      {row.shipmentsCreated}
+                    </TD>
+                    <TD className="text-right tabular-nums">
+                      {row.shipmentsDelivered}
+                    </TD>
+                    <TD className="text-right tabular-nums">
+                      {row.returnsFiled}
+                    </TD>
+                    <TD className="text-right tabular-nums">
+                      {row.returnsReceived}
+                    </TD>
+                    <TD className="text-right tabular-nums">
+                      {row.disputesOpened}
+                    </TD>
+                    <TD className="text-right tabular-nums">
+                      {row.messagesSent}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

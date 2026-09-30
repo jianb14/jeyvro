@@ -26,6 +26,11 @@ def money(**kwargs):
     return models.DecimalField(default=ZERO, **MONEY, **kwargs)
 
 
+def counter():
+    """A non-negative whole count (§19.3 — operational metrics are counts)."""
+    return models.PositiveIntegerField(default=0)
+
+
 class DailyPlatformMetric(TimeStampedModel):
     """One marketplace-wide day (§19.1).
 
@@ -195,3 +200,123 @@ class DailyProductMetric(TimeStampedModel):
 
     def __str__(self):
         return f'{self.day} · product {self.product_id}: {self.units_sold} units'
+
+
+class DailyOperationsMetric(TimeStampedModel):
+    """The marketplace's operational day (§19.3) — what *happened*, as counts.
+
+    The money lives on `DailyPlatformMetric`; this table is the flow record
+    beside it, pinned definition by pinned definition so an operations
+    dashboard can never guess:
+
+    * **Order status** (`orders_open` / `orders_completed` /
+      `orders_cancelled` / `orders_refunded`) buckets the orders **created
+      that day** by where they stand **as of this rebuild** — status is
+      current-state, so a later rebuild re-derives the buckets from the same
+      orders (idempotent; a day's row only changes when an order's status
+      actually changed). `open` is everything not yet delivered, completed,
+      cancelled or refunded. The four buckets always re-add to the orders
+      created that day, and `orders_cancelled` mirrors
+      `DailyPlatformMetric.orders_cancelled` exactly (both are "created that
+      day, now cancelled").
+    * **Fulfillment**: `shipments_created` counts parcels **created** that
+      day — the seller's ship act (`Shipment.shipped_at` is never written by
+      any code path, so creation is the dispatch signal); `shipments_delivered`
+      counts `delivered_at` falling that day.
+    * **Returns**: `returns_filed` is cases opened that day;
+      `returns_approved` / `returns_rejected` count the day's **decision**
+      events (the seller response, the staff ruling or the admin override),
+      bucketed by the status the case moved to — one definition that covers
+      every path a decision can take (the *kind* is what marks a decision:
+      every timeline row records the case's status at its moment, so a
+      goods-received row written while the case was still approved also
+      carries "approved"); `returns_received` counts goods-received events.
+    * **Refunds**: `refunds_issued` counts `Refund` rows created that day;
+      `refunds_settled` counts the ledger's refund **debits** — the money
+      truth (§9). The peso amounts stay on the platform row; these are counts.
+    * **Support**: requests, conversations and messages created that day,
+      disputes opened, and `disputes_resolved` = staff rulings written that
+      day (a buyer's withdrawal is not a resolution and does not count).
+    """
+
+    day = models.DateField(unique=True)
+
+    # Order status metrics (orders created that day, by status at rebuild)
+    orders_open = counter()
+    orders_completed = counter()
+    orders_cancelled = counter()
+    orders_refunded = counter()
+
+    # Fulfillment events
+    shipments_created = counter()
+    shipments_delivered = counter()
+
+    # Returns (filed / decided / received)
+    returns_filed = counter()
+    returns_approved = counter()
+    returns_rejected = counter()
+    returns_received = counter()
+
+    # Refunds (counts; the money lives on the platform row)
+    refunds_issued = counter()
+    refunds_settled = counter()
+
+    # Support workload
+    requests_filed = counter()
+    conversations_opened = counter()
+    messages_sent = counter()
+    disputes_opened = counter()
+    disputes_resolved = counter()
+
+    class Meta:
+        ordering = ['-day']
+        verbose_name = 'daily operations metric'
+        verbose_name_plural = 'daily operations metrics'
+
+    def __str__(self):
+        return f'{self.day}: {self.orders_completed} completed, {self.shipments_delivered} delivered'
+
+
+class DailyStoreOpsMetric(TimeStampedModel):
+    """One store's operational day (§19.3 "seller performance").
+
+    The store-grain slice of the operational records, attributed by the
+    **store slice the record belongs to**: a shipment's `seller_order.store`,
+    a case's `seller_order.store`, a message's `conversation.store`. A
+    whole-order record (no slice) counts only at the platform grain — split
+    counts across stores would invent numbers the records do not carry, and
+    the parts are not required to re-add to a count the way pesos are.
+    Range reads sum these rows (never the transactional tables — §17) and the
+    performance endpoint serves them with the store's name.
+    """
+
+    day = models.DateField()
+    store = models.ForeignKey(
+        'stores.Store',
+        on_delete=models.PROTECT,
+        related_name='daily_ops_metrics',
+    )
+
+    shipments_created = counter()
+    shipments_delivered = counter()
+    returns_filed = counter()
+    returns_received = counter()
+    disputes_opened = counter()
+    requests_filed = counter()
+    messages_sent = counter()
+
+    class Meta:
+        ordering = ['-day', 'store_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['day', 'store'], name='reporting_store_ops_day_unique'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['store', 'day'], name='reporting_store_ops_idx'),
+        ]
+        verbose_name = 'daily store operations metric'
+        verbose_name_plural = 'daily store operations metrics'
+
+    def __str__(self):
+        return f'{self.day} · store {self.store_id}: {self.shipments_delivered} delivered'

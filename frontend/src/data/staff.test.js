@@ -12,6 +12,8 @@ import {
   fetchAdminUsers,
   fetchApplicationQueue,
   fetchAuditEvents,
+  fetchStaffAnalyticsOperations,
+  fetchStaffAnalyticsPerformance,
   fetchStaffAnalyticsProducts,
   fetchStaffAnalyticsStores,
   fetchStaffAnalyticsSummary,
@@ -965,6 +967,134 @@ describe("analytics accessors (19.1)", () => {
     const { fetchMock } = mockFetch({ start: "2026-09-01", end: "2026-09-30" });
     expect(await fetchStaffAnalyticsStores()).toEqual([]);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admin/analytics/stores/");
+  });
+});
+
+describe("operational analytics accessors (19.3)", () => {
+  it("maps the operational day — counts as the server derived them", async () => {
+    const { fetchMock } = mockFetch({
+      start: "2026-09-01",
+      end: "2026-09-30",
+      totals: {
+        start: "2026-09-01",
+        end: "2026-09-30",
+        orders_open: 3,
+        orders_completed: 12,
+        orders_cancelled: 1,
+        orders_refunded: 2,
+        shipments_created: 11,
+        shipments_delivered: 9,
+        returns_filed: 4,
+        returns_approved: 3,
+        returns_rejected: 1,
+        returns_received: 2,
+        refunds_issued: 3,
+        refunds_settled: 2,
+        requests_filed: 5,
+        conversations_opened: 6,
+        messages_sent: 27,
+        disputes_opened: 1,
+        disputes_resolved: 1,
+      },
+      days: [
+        {
+          day: "2026-09-29",
+          orders_open: 1,
+          orders_completed: 2,
+          orders_cancelled: 0,
+          orders_refunded: 0,
+          shipments_created: 2,
+          shipments_delivered: 1,
+          returns_filed: 1,
+          returns_approved: 1,
+          returns_rejected: 0,
+          returns_received: 0,
+          refunds_issued: 1,
+          refunds_settled: 0,
+          requests_filed: 2,
+          conversations_opened: 1,
+          messages_sent: 8,
+          disputes_opened: 0,
+          disputes_resolved: 0,
+        },
+      ],
+    });
+    const operations = await fetchStaffAnalyticsOperations({
+      from: "2026-09-01",
+      to: "2026-09-30",
+    });
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/admin/analytics/operations/?");
+    expect(url).toContain("from=2026-09-01");
+    expect(url).toContain("to=2026-09-30");
+
+    expect(operations.totals.ordersOpen).toBe(3);
+    expect(operations.totals.ordersCompleted).toBe(12);
+    expect(operations.totals.shipmentsDelivered).toBe(9);
+    expect(operations.totals.returnsFiled).toBe(4);
+    // Settled refunds are the ledger's count, kept distinct from the issued ones.
+    expect(operations.totals.refundsIssued).toBe(3);
+    expect(operations.totals.refundsSettled).toBe(2);
+    expect(operations.totals.messagesSent).toBe(27);
+    const [day] = operations.days;
+    expect(day.day).toBe("2026-09-29");
+    expect(day.messagesSent).toBe(8);
+  });
+
+  it("maps store performance rows without inventing a rate", async () => {
+    const { fetchMock } = mockFetch({
+      start: "2026-09-01",
+      end: "2026-09-30",
+      items: [
+        {
+          store_id: 8,
+          store__name: "Ilocos Weavers",
+          shipments_created: 4,
+          shipments_delivered: 3,
+          returns_filed: 1,
+          returns_received: 1,
+          disputes_opened: 0,
+          requests_filed: 2,
+          messages_sent: 11,
+        },
+      ],
+    });
+    const rows = await fetchStaffAnalyticsPerformance({
+      from: "2026-09-01",
+      to: "2026-09-30",
+      limit: 10,
+    });
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/admin/analytics/performance/?");
+    expect(url).toContain("limit=10");
+
+    const [row] = rows;
+    expect(row.storeId).toBe(8);
+    expect(row.storeName).toBe("Ilocos Weavers");
+    expect(row.shipmentsCreated).toBe(4);
+    expect(row.shipmentsDelivered).toBe(3);
+    expect(row.returnsReceived).toBe(1);
+    expect(row.messagesSent).toBe(11);
+    // Counts only: the page never divides two of them into a rate itself.
+    expect(row.ontimeRate).toBeUndefined();
+  });
+
+  it("renders zeroes for an unbuilt operations row instead of undefined", async () => {
+    mockFetch({ start: null, end: null, totals: {}, days: [] });
+    const operations = await fetchStaffAnalyticsOperations();
+    expect(operations.totals.ordersOpen).toBe(0);
+    expect(operations.totals.returnsFiled).toBe(0);
+    expect(operations.totals.disputesResolved).toBe(0);
+    expect(operations.totals.start).toBeNull();
+    expect(operations.days).toEqual([]);
+
+    const { fetchMock } = mockFetch({ items: [] });
+    expect(await fetchStaffAnalyticsPerformance()).toEqual([]);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/v1/admin/analytics/performance/"
+    );
   });
 });
 

@@ -41,7 +41,7 @@
 | 17 | Returns, Refunds & Disputes | ✅ Done — `apps/resolutions` (slices v1–v3). v1 return cases: server-verified eligibility and a return window snapshotted per case, per-line quantity caps, seller response, staff intervention/override, reverse-parcel tracking, and receipt-time line-scoped restock through the append-only stock ledger; refund arithmetic computed server-side from order snapshots (order-level discounts apportioned to the lines that enjoyed them, shipping back only on a fully returned slice), and the linked `OrderRequest` resolved by the case that answers it. v2 money movement: the case prices, `apps.payments` moves — `Refund.restock`/`Refund.return_case` keep manual refunds and case-paid payouts honest, `POST /api/v1/admin/returns/<ref>/refund` is finance/administrator-only and callable only after goods are received, partial settlements cap against the case then the payment, and the case follows its refund through the provider seam (`on_refund_settled`/`on_refund_failed`) with a refused gateway rolling the whole payout back. v3 disputes: `Dispute` (`JVDSP-…`) with append-only statements/evidence whose party is derived from the caller, staff claim + ruling with a mandatory reason that freezes the record, buyer withdrawal, and timeline + audit rows on every movement. Covered by `backend/tests/test_returns.py` (18 gate tests) |
 | 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
 | 18b | Search, Recommendations & Discovery (cont.) | ✅ §18.3 Discovery — `GET /api/v1/search/recommendations/` (public, `?kind=`) serves five shelves from one ranking entry point, each reading back through the same `searchable_products` chokepoint: `trending` (units in a 30-day window) and `popular` (all-time units) fall back to newest because a quiet marketplace still needs a homepage, while `related` (category, then brand, best-rated first), `similar` (nearest by the same `pg_trgm` machinery the typo rescue uses) and `personalized` (categories/brands of the shopper's own `seen=` history ranked by how well they sell) return fewer items rather than padded ones. Frontend: Home swaps the old discount-sorted "trending" placeholder for real Trending + Best sellers rails and adds "Recommended for you" from the browser's own recently-viewed list (no account, no server-side profile), and the product page gains a "Similar finds" rail beside "You might also like" with no card repeated across the two. Covered by `backend/tests/test_recommendations.py` (24 tests) + `frontend/src/data/search.test.js` (14 tests) |
-| 19 | Analytics & Reporting | 🔄 §19.1 Platform analytics done — `apps.reporting` rollups written only by `manage.py rebuild_reporting`, `/staff/analytics` over `data/staff.js`, `backend/tests/test_reporting.py`. §19.2 Seller analytics done — `GET /api/v1/seller/analytics/` (ownership-scoped totals + days + best sellers + voucher/review metrics + live inventory snapshot) with `/seller/analytics` over `data/seller.js`, `backend/tests/test_seller_analytics.py`; Phase 12 `/seller` dashboard untouched per marketplace-sellers rule 4 (documented deferral). §19.3 operational analytics and §19.4 reports still open |
+| 19 | Analytics & Reporting | 🔄 §19.1 Platform analytics done — `apps.reporting` rollups written only by `manage.py rebuild_reporting`, `/staff/analytics` over `data/staff.js`, `backend/tests/test_reporting.py`. §19.2 Seller analytics done — `GET /api/v1/seller/analytics/` (ownership-scoped totals + days + best sellers + voucher/review metrics + live inventory snapshot) with `/seller/analytics` over `data/seller.js`, `backend/tests/test_seller_analytics.py`; Phase 12 `/seller` dashboard untouched per marketplace-sellers rule 4 (documented deferral). §19.3 Operational analytics done — `DailyOperationsMetric`/`DailyStoreOpsMetric` + `admin/analytics/operations/` & `performance/` (order status buckets, fulfillment, returns, refunds, support, seller performance), `/staff/analytics` Operations + Seller performance sections, `backend/tests/test_operations_analytics.py` (7 tests). §19.4 reports still open |
 | 20 | Security, Compliance & Abuse Prevention | ⬜ Not started |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
 | 22 | Performance & Scalability | ⬜ Not started |
@@ -2002,12 +2002,52 @@ Provide useful operational and business intelligence.
 
 ### 19.3 Operational analytics
 
--   [ ] Order status metrics
--   [ ] Fulfillment metrics
--   [ ] Return metrics
--   [ ] Refund metrics
--   [ ] Support metrics
--   [ ] Seller performance
+-   [x] Order status metrics
+-   [x] Fulfillment metrics
+-   [x] Return metrics
+-   [x] Refund metrics
+-   [x] Support metrics
+-   [x] Seller performance
+
+> **Backend (done):** two new rollup tables carry the operational grain —
+> `DailyOperationsMetric` (one marketplace day) and `DailyStoreOpsMetric` (one
+> store-day) — written by the same `manage.py rebuild_reporting` pass, in the
+> same transaction as the money they sit beside, and recomputed from the records
+> like every other §19 table. `GET /api/v1/admin/analytics/operations/` serves
+> the range totals + daily series; `…/performance/` serves per-store
+> operational totals, both group-gated to the read-only oversight groups
+> (support / operations / finance / administrator — moderator included in
+> neither, §4).
+>
+> Every definition is pinned because a dashboard must never guess at one:
+> **order status** buckets the orders *created that day* by where they stand as
+> of the rebuild (`open` = anything not delivered/completed/cancelled/refunded;
+> the four buckets always re-add to the day's creations, and `orders_cancelled`
+> mirrors the platform row exactly — two derivations, cross-checked);
+> **fulfillment** counts parcels created (the seller's ship act — no code path
+> writes `Shipment.shipped_at`, so creation is the dispatch signal) and
+> `delivered_at`; **returns** count cases filed, and decisions taken by *event
+> kind* (approved / rejected / admin override) bucketed by the status the case
+> moved to — the kind, because every timeline row records the case's status at
+> its moment, so a goods-received row also carries "approved"; **refunds**
+> count `Refund` rows issued and, separately, the ledger's refund **debits**
+> that settled the money; **support** counts requests, conversations, messages,
+> disputes opened and staff rulings (a buyer's withdrawal is not a ruling).
+> **Seller performance** attributes only records that name a store slice — a
+> whole-order record belongs to the platform grain alone and is never split to
+> make a store look busier than it was. Covered by
+> `backend/tests/test_operations_analytics.py` (7 gate tests: derivation,
+> bucket/partition reconciliation, store attribution, §4 gating, range
+> validation, rebuild idempotency, support counts).
+>
+> **Frontend (done):** `/staff/analytics` grows an **Operations** section (6
+> stat cards + the daily operational table) and a **Seller performance** table,
+> read through `src/data/staff.js` (`fetchStaffAnalyticsOperations`,
+> `fetchStaffAnalyticsPerformance`). The load is role-shaped like the rest of
+> the page — a role that may not read operations never fires the request that
+> would 403 — and the page renders the server's counts as given, dividing
+> nothing itself, so no rate can ever be "roughly right"
+> (marketplace-admin rule 5).
 
 ### 19.4 Reports
 
