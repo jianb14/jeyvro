@@ -408,6 +408,44 @@ def serialize_shipment(shipment):
 
 
 
+def serialize_tracking_status(shipment):
+    """The **public** tracking projection — status only, no buyer PII (§10.3).
+
+    A tracking number is a bearer token, not an identity: whoever holds it
+    learns where the parcel is and when, never *who* it belongs to. The
+    recipient, the address, the goods, the shipping fee and the seller's own
+    handling notes stay with the order owner, the fulfilling seller and staff
+    — the same privacy ladder §6 v1.7 draws for addresses, applied here
+    because a tracking number is far easier to obtain than an order account.
+
+    Events are projected to status + timestamp only: a courier's prose and a
+    manually typed `description` can carry more than the journey needs.
+    """
+    return {
+        'tracking_number': shipment.tracking_number,
+        'carrier': shipment.carrier,
+        'carrier_name': shipment.carrier_name,
+        'shipping_method': shipment.shipping_method,
+        'status': shipment.status,
+        'shipped_at': shipment.shipped_at.isoformat() if shipment.shipped_at else None,
+        'estimated_delivery': (
+            shipment.estimated_delivery.isoformat()
+            if shipment.estimated_delivery
+            else None
+        ),
+        'delivered_at': (
+            shipment.delivered_at.isoformat() if shipment.delivered_at else None
+        ),
+        'tracking_events': [
+            {
+                'status': event.status,
+                'occurred_at': event.occurred_at.isoformat(),
+            }
+            for event in shipment.tracking_events.all()
+        ],
+    }
+
+
 def serialize_order(order):
     """Full order read shape: snapshots + payment + per-store slices (§6)."""
     seller_orders = list(order.seller_orders.all())

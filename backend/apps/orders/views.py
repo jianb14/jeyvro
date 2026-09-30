@@ -8,7 +8,7 @@ recomputed and snapshotted server-side.
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -47,6 +47,10 @@ class CheckoutPreviewView(APIView):
 
 class CheckoutOrderView(APIView):
     """POST /api/v1/checkout/orders — place the order (address + method)."""
+
+    # §20.1 — order placement reserves real stock, so it gets its own bucket
+    # rather than sharing the (generous) per-user allowance.
+    throttle_scope = 'checkout'
 
     permission_classes = [IsAuthenticated]
 
@@ -272,17 +276,42 @@ class SellerOrderShipView(APIView):
         )
 
 
+def _may_read_full_shipment(user, shipment):
+    """Who sees the whole parcel record: its buyer, its seller, and staff.
+
+    The same three parties the order itself trusts (§10.3) — a tracking number
+    is not a fourth one.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    return user.pk in {
+        shipment.seller_order.order.user_id,
+        shipment.seller_order.store.user_id,
+    }
+
+
 class ShipmentTrackView(APIView):
-    """GET /api/v1/shipments/track/<tracking_number>/ — public tracking status."""
+    """GET /api/v1/shipments/track/<tracking_number>/ — public tracking status.
+
+    Anonymous (and every other stranger) gets the **status projection only**:
+    no recipient name, no phone, no address, no goods, no seller's notes. The
+    full record is the order owner's, the fulfilling seller's and staff's.
+    """
+
+    permission_classes = [AllowAny]
 
     def get(self, request, tracking_number):
         shipment = get_object_or_404(
-            Shipment.objects.prefetch_related(
-                'items__order_item', 'tracking_events'
-            ),
+            Shipment.objects.select_related(
+                'seller_order__store', 'seller_order__order'
+            ).prefetch_related('items__order_item', 'tracking_events'),
             tracking_number=tracking_number,
         )
-        return Response(serializers.serialize_shipment(shipment))
+        if _may_read_full_shipment(request.user, shipment):
+            return Response(serializers.serialize_shipment(shipment))
+        return Response(serializers.serialize_tracking_status(shipment))
 
 
 class ShipmentEventUpdateView(APIView):

@@ -15,7 +15,11 @@ Every request is verified server-side: the backend — never the frontend — de
 
 ## Current honest state
 
-No backend exists yet (C5). The first security tasks with the scaffold: the auth decision (sessions vs JWT), then permission infrastructure **before the first domain endpoint ships**.
+The backend is live and session-authenticated, and **§20.1 is shipped** (2026): the project default is **deny by default** (`DEFAULT_PERMISSION_CLASSES = IsAuthenticated`, pinned `SessionAuthentication` — DRF's HTTP Basic default removed), and `tests/test_security_hardening.py::test_every_view_declares_its_own_permissions` walks the URLconf and **fails the gate** when a view class forgets to declare its permissions, so rule 2 below is enforced rather than trusted. Rate limiting is a blanket anon/user default plus `throttle_scope` buckets (`auth`, `register`, `checkout`, `message`) in front of the app-level login lockout (5 failures → 15 min); CORS is an allowlist **with `CORS_ALLOW_CREDENTIALS = True`** (without it, cross-origin session calls fail silently in production). Audit rows exist for refunds, returns/disputes, voucher redemption, store suspension, seller approval, staff role changes, user suspension, catalog moderation, order cancellation and payment failures.
+
+The slice was opened by a real finding: the public tracking endpoint had no permission class and returned the buyer's name, phone, address, goods and the seller's notes to anyone holding a tracking number. Fixed — a bearer token is not an identity (rule 11 below).
+
+`docs/SECURITY_CHECKLIST.md` records all eleven §20.1 items with a verdict and the file + test that proves each. Still open: **§20.2** abuse controls (spam, messaging abuse, suspicious-order detection, inventory abuse) and **§20.3** auditing the remaining sensitive operations (the §19.4 CSV exports are the known unaudited surface); production env values and a **shared cache** for throttling land with the deployment phase (LocMemCache is per-process, so multi-worker deploys need Redis before the rate limits mean anything).
 
 ## When to use
 
@@ -50,6 +54,8 @@ No backend exists yet (C5). The first security tasks with the scaffold: the auth
 7. Secrets live only in `.env` — never committed, never in logs or chat output (C7, §10.5).
 8. Sensitive staff actions (role changes, refunds, deletions, settings changes) write AuditLog rows (§9, §10.7).
 9. Modifying any auth/authz code requires re-reviewing the whole permission surface touched — not just the diff line.
+10. **Deny by default, and prove it** — a view that does not declare its own permissions is private, and the URLconf guard test fails the gate when one forgets (§20.1).
+11. **A bearer token is not an identity** — a public read (tracking number, reference code, public id) returns a *projection* with no buyer PII; the full record belongs to the owner, the fulfilling party and staff (§20.1).
 
 ## Best practices
 
@@ -77,7 +83,7 @@ The patterns above (plus `backend-core`/`backend-api`/`backend-feature` rules) c
 | CSRF | Django middleware + session policy (rule 6) |
 | CORS misconfig | Explicit allowlist, never `*` in prod (rule 6; `deployment` enforces in env) |
 | Auth failures | Password hashing, rate limiting on auth endpoints (rule 5) |
-| Sensitive data exposure | Serializers declare fields; no secrets in logs (C7, rule 7) |
+| Sensitive data exposure | Serializers declare fields; no secrets in logs (C7, rule 7); public reads return a redacted projection (rule 11) |
 | Broken file uploads | Type/size validation + storage rules (§8; `marketplace-catalog` rule 5) |
 | Rate/abuse | Throttling on auth + heavy public endpoints (`backend-api`) |
 | Missing audit | AuditLog on sensitive actions (rule 8) |
@@ -92,3 +98,4 @@ New threat classes get added here first, then enforced in the owning skill.
 - [ ] No secrets in code/logs/diffs; CORS allowlist correct
 - [ ] Auth endpoints rate-limited; password handling default
 - [ ] Allow **and** deny paths covered by tests
+- [ ] New/changed surface recorded in `docs/SECURITY_CHECKLIST.md` with the test that proves it

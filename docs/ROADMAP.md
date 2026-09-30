@@ -42,7 +42,7 @@
 | 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
 | 18b | Search, Recommendations & Discovery (cont.) | ✅ §18.3 Discovery — `GET /api/v1/search/recommendations/` (public, `?kind=`) serves five shelves from one ranking entry point, each reading back through the same `searchable_products` chokepoint: `trending` (units in a 30-day window) and `popular` (all-time units) fall back to newest because a quiet marketplace still needs a homepage, while `related` (category, then brand, best-rated first), `similar` (nearest by the same `pg_trgm` machinery the typo rescue uses) and `personalized` (categories/brands of the shopper's own `seen=` history ranked by how well they sell) return fewer items rather than padded ones. Frontend: Home swaps the old discount-sorted "trending" placeholder for real Trending + Best sellers rails and adds "Recommended for you" from the browser's own recently-viewed list (no account, no server-side profile), and the product page gains a "Similar finds" rail beside "You might also like" with no card repeated across the two. Covered by `backend/tests/test_recommendations.py` (24 tests) + `frontend/src/data/search.test.js` (14 tests) |
 | 19 | Analytics & Reporting | ✅ Done — §19.1 platform money, §19.2 seller analytics (`/seller/analytics`, ownership-scoped; Phase 12 dashboard untouched per marketplace-sellers rule 4), §19.3 operational analytics (`DailyOperationsMetric`/`DailyStoreOpsMetric` + `admin/analytics/operations/` & `performance/`), §19.4 reports (five CSV exports at `admin/analytics/export/<report>/`, gate baked into the route) — all served from `apps.reporting` rollups written only by `manage.py rebuild_reporting`. Gate passed (reconciliation proven by partition + cross-table checks; §4 matrix on every read and export). **Deferred, documented:** Excel/PDF export (C3 — needs a new runtime dependency; a fake .xlsx is worse than none) and the Phase 12 dashboard extension (rule 4). Suite at the gate: 325 backend + 189 frontend tests, lint/build/migrations green |
-| 20 | Security, Compliance & Abuse Prevention | ⬜ Not started |
+| 20 | Security, Compliance & Abuse Prevention | 🔄 §20.1 application security done — deny-by-default permissions + session-only auth, rate limiting (blanket + `auth`/`register`/`checkout`/`message` scopes) in front of the login lockout, CORS credentials fix, and the **public-tracking PII leak fixed** (a tracking number is a bearer token, not an identity); `docs/SECURITY_CHECKLIST.md` records all 11 items with evidence, `backend/tests/test_security_hardening.py` (11 tests), suite at review time: 336 backend tests + 189 frontend, lint/build/migrations green. §20.2 abuse controls and §20.3 audited sensitive operations still open |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
 | 22 | Performance & Scalability | ⬜ Not started |
 | 23 | Deployment & Production Infrastructure | ⬜ Not started |
@@ -2121,17 +2121,69 @@ Perform continuous and dedicated security hardening.
 
 ### 20.1 Application security
 
--   [ ] Authentication review
--   [ ] Authorization review
--   [ ] IDOR review
--   [ ] CSRF review
--   [ ] CORS review
--   [ ] XSS review
--   [ ] SQL injection review
--   [ ] Input validation review
--   [ ] File upload review
--   [ ] Rate limiting
--   [ ] Brute-force protection
+-   [x] Authentication review
+-   [x] Authorization review
+-   [x] IDOR review
+-   [x] CSRF review
+-   [x] CORS review
+-   [x] XSS review
+-   [x] SQL injection review
+-   [x] Input validation review
+-   [x] File upload review
+-   [x] Rate limiting
+-   [x] Brute-force protection
+
+> **Finding, fixed (the reason this slice exists):** the public tracking
+> endpoint `GET /api/v1/shipments/track/<tracking_number>/` declared **no
+> permission class** — it inherited the old project-wide `AllowAny` — and
+> returned the full parcel record: **`recipient_name`, `recipient_phone`,
+> `shipping_address_text`**, the goods, the shipping fee and the seller's own
+> `package_notes`. Anyone holding a tracking number could read who the parcel
+> belongs to and where they live, while the order's address sits on a §6 privacy
+> ladder and the project refuses even to confirm whether an email exists. A
+> tracking number is a **bearer token, not an identity**: the public projection
+> (`serialize_tracking_status`) now carries the journey — carrier, status,
+> shipped/estimated/delivered, events reduced to `status` + `occurred_at` — and
+> nothing else, while the whole record belongs to the order owner, the
+> fulfilling seller and staff. A signed-in stranger is redacted rather than
+> refused: public tracking is a feature; leaking the buyer through it was the
+> bug.
+>
+> **Deny by default (§10.1):** `DEFAULT_PERMISSION_CLASSES` is
+> `IsAuthenticated` and `DEFAULT_AUTHENTICATION_CLASSES` is
+> `SessionAuthentication` alone (DRF's default list also enables HTTP Basic,
+> which this API never intends). An AST sweep of every view found exactly **two**
+> classes relying on the global default — the tracking view above (now explicit)
+> and the method-aware review list (already correct) — and the full suite came
+> back green, so the flip closed nothing public. The two real gaps it closed:
+> a view that forgets to declare permissions is now **private**, and
+> `test_security_hardening.py::test_every_view_declares_its_own_permissions`
+> walks the URLconf and fails the gate when a new view forgets to speak for
+> itself (backend-api rule 6, enforced rather than trusted).
+>
+> **Rate limiting & brute force (§10.2):** a blunt default (anon + user, env-
+> configurable) plus `throttle_scope` buckets on the surfaces worth abusing —
+> `auth` (login, verification resend, password reset), `register`, `checkout`,
+> `message` — in front of the existing app-level lockout (5 failures → 15
+> minutes). Two DRF details were worth knowing and are now proven by tests:
+> a `ScopedRateThrottle` only bites when it is in `throttle_classes` (a view
+> without `throttle_scope` is a no-op), and DRF binds throttle config at
+> **import time**, so the suite lifts throttling by patching the attribute the
+> views read (`tests/conftest.py`) instead of the settings dict — no gate
+> depends on a wall clock.
+>
+> **CSRF & CORS (§10.4):** `CORS_ALLOW_CREDENTIALS = True` (it defaulted to
+> False, which would have broken every cross-origin session request in
+> production while the allowlist still looked correct), explicit
+> headers/methods, and both proven by tests: an unlisted origin gets no header,
+> a listed one gets it *with* credentials, and an unsafe method on a session
+> without the token is refused.
+>
+> **The gate artifact:** `docs/SECURITY_CHECKLIST.md` records all eleven items
+> with a verdict and the file + test that proves each, plus the gaps carried
+> forward honestly (production env values and a shared cache for throttling land
+> with Phase 23; 20.2 abuse controls and 20.3 auditing are the next slices).
+> Covered by `backend/tests/test_security_hardening.py` (11 tests).
 
 ### 20.2 Marketplace abuse
 

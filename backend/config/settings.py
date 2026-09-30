@@ -176,19 +176,58 @@ RETURNS_WINDOW_DAYS = int(env('RETURNS_WINDOW_DAYS', '7'))
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Django REST Framework
-# Foundation defaults: the health probe is public by design. Every domain
-# viewset added in later phases must declare its own permission class
-# explicitly (backend-api rule 6 — nothing ships public by accident).
+#
+# §20.1: **deny by default** (security skill rule 6). A view that forgets to
+# declare its permissions is now *private*, not public — the public surfaces
+# (auth, catalog, storefront, search, tracking, the health probe) opt out
+# explicitly, and `tests/test_security_hardening.py` fails the gate if a new
+# view forgets to speak for itself.
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    # Session auth only, pinned: DRF's default list also enables HTTP Basic,
+    # which this API never intends — a session cookie plus CSRF is the whole
+    # story, and Basic would let credentials ride in a header instead (§10.1).
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
     ],
     # {count, items} envelope on every list endpoint (§8)
     'DEFAULT_PAGINATION_CLASS': 'apps.common.pagination.CountItemsPagination',
     'PAGE_SIZE': 20,
     # {error, detail?, field_errors?} envelope on every DRF-handled error
     'EXCEPTION_HANDLER': 'apps.common.exceptions.jeyvro_exception_handler',
+
+    # §20.1 rate limiting. A blunt default (every endpoint) plus a few tight
+    # scopes on the endpoints worth abusing; rates are deploy-time config.
+    # The test suite lifts this wholesale (tests/conftest.py) and proves the
+    # behaviour explicitly with its own rates, so no gate depends on a clock.
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        # Views that set `throttle_scope` (login, register, checkout, message)
+        # draw from their own bucket here; a view without one is a no-op.
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        # DRF rate strings are `count/period` (`s`, `m`, `h`, `d`) — a bare
+        # number is not a rate at all, and it 500s every request the moment
+        # `parse_rate` meets it. `test_security_hardening.py` proves the shape.
+        'anon': env('THROTTLE_ANON_PER_MINUTE', '120/min'),
+        'user': env('THROTTLE_USER_PER_MINUTE', '600/min'),
+        # Scopes — declared per view via `throttle_scope`.
+        'auth': env('THROTTLE_AUTH_PER_MINUTE', '10/min'),
+        'register': env('THROTTLE_REGISTER_PER_HOUR', '10/hour'),
+        'checkout': env('THROTTLE_CHECKOUT_PER_MINUTE', '20/min'),
+        'message': env('THROTTLE_MESSAGE_PER_MINUTE', '30/min'),
+    },
+    'SCOPED_THROTTLES': {
+        'auth': 'rest_framework.throttling.ScopedRateThrottle',
+        'register': 'rest_framework.throttling.ScopedRateThrottle',
+        'checkout': 'rest_framework.throttling.ScopedRateThrottle',
+        'message': 'rest_framework.throttling.ScopedRateThrottle',
+    },
 }
 
 # CORS — dev allowlist for the Vite dev server. Never widen to '*' in
@@ -201,6 +240,24 @@ CORS_ALLOWED_ORIGINS = [
         'http://localhost:5173,http://127.0.0.1:5173',
     ).split(',')
     if origin.strip()
+]
+
+# Session auth travels with `credentials: 'include'`, so an allowlisted origin
+# must also be *told* it may send credentials — django-cors-headers defaults
+# this to False, which would silently break every cross-origin session request
+# in production while the allowlist still looked correct (§10.4).
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'authorization',
+    'content-type',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+CORS_ALLOW_METHODS = [
+    'delete', 'get', 'options', 'patch', 'post', 'put',
 ]
 
 # CSRF — the SPA posts with X-CSRFToken from the csrf cookie; the Vite dev

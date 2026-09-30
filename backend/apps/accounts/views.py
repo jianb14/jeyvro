@@ -48,6 +48,8 @@ class CsrfView(APIView):
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    # §20.1 — sign-up is the cheapest way to manufacture accounts.
+    throttle_scope = 'register'
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -62,6 +64,10 @@ class RegisterView(APIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    # §20.1 — the app-level lockout is the strict backstop; this is the cheap
+    # bucket in front of it, and the two together are what "brute-force
+    # protection" means here.
+    throttle_scope = 'auth'
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -184,6 +190,8 @@ class ResendVerificationView(APIView):
     """Always responds 200 — never reveals whether an email exists (§10)."""
 
     permission_classes = [AllowAny]
+    # §20.1 — another mail-send surface, same bucket.
+    throttle_scope = 'auth'
 
     def post(self, request):
         email = request.data.get('email', '')
@@ -197,6 +205,8 @@ class PasswordResetRequestView(APIView):
     """Always responds 200 — no user enumeration (§10)."""
 
     permission_classes = [AllowAny]
+    # §20.1 — mail-bomb surface, same bucket as login.
+    throttle_scope = 'auth'
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)

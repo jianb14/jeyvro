@@ -137,6 +137,8 @@ class ConversationDetailView(APIView):
 class SendMessageView(APIView):
     """Send a message to a conversation."""
     permission_classes = [IsAuthenticated]
+    # §20.1 — the messaging spam surface (a 20.2 control builds on this).
+    throttle_scope = 'message'
 
     def post(self, request, pk):
         try:
