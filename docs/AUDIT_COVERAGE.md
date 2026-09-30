@@ -39,6 +39,7 @@ Actions are named exactly as they appear in the `action` column.
 | --- | --- | --- | --- |
 | Order placed | `order.placed` | customer | `test_checkout.py` |
 | Order cancelled (pending payment voided) | `order.cancelled` | customer | `test_account_orders.py` |
+| **Stale COD reservation released (§20.2 v2)** | `order.cod_reservation_released` | support / operations / administrator | `test_abuse_controls.py` |
 | Payment captured (COD at delivery, or gateway webhook) | `payment.captured` | seller / system | `test_payments.py`, `test_payments_webhooks.py` |
 | Payment cancelled with its order | `payment.cancelled` | system | `test_payments.py` |
 | Payment expired unpaid | `payment.expired` | system (cron) | `test_payments.py` |

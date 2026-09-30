@@ -57,15 +57,25 @@ leaking the buyer through it was the bug.
   anything.
 - **20.2 abuse controls, slice v1 (spam & messaging) is done** —
   `docs/ABUSE_CONTROLS.md` is the matrix, `backend/tests/test_abuse_controls.py`
-  (48 tests) drives it. Two rules about how it behaves belong in this checklist:
+  (60 tests) drives it. Two rules about how it behaves belong in this checklist:
   **automatic content rules queue, they never censor** (a hit files a flag for a
   human; nothing is deleted, rewritten, or refused, and the author's own copy
   stays readable), and **a rule that cannot justify itself in a false-positive
   test does not ship** — the order-number, acronym, Tagalog, own-storefront and
   "giving a seller my email" cases are asserted as contracts, not left to hope.
   Messaging also gained user blocks and a write-only `conversation` throttle on
-  thread starts. Still open in §20.2: **inventory/quantity abuse and
-  suspicious-order detection** (slice v2) and **account abuse** (slice v3).
+  thread starts.
+- **20.2 abuse controls, slice v2 (stale-COD reservations) is done** —
+  `GET /api/v1/admin/stale-cod/` plus a staff release, gated to
+  support/operations/administrator, audited as `order.cod_reservation_released`.
+  Two rules belong in this checklist:
+  **a stock reservation is not a payment window** (COD was correctly exempt from
+  payment expiry, and the reservation was wrongly bound to that same window —
+  an unpaid COD order held its units forever), and **the system reports, a human
+  releases** — the fix is a worklist, not an auto-canceller, because an unpaid
+  COD order may be a real parcel in transit. Still open in §20.2: **the
+  per-order total-units ceiling and suspicious-order detection** (slice v3) and
+  **account abuse** (slice v4).
   The throttling above is the floor, not the answer.
 - **20.3 auditing is done** — `docs/AUDIT_COVERAGE.md` is the matrix of every
   sensitive operation and the action it writes. It closed three real gaps: the

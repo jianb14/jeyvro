@@ -42,7 +42,7 @@
 | 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
 | 18b | Search, Recommendations & Discovery (cont.) | ✅ §18.3 Discovery — `GET /api/v1/search/recommendations/` (public, `?kind=`) serves five shelves from one ranking entry point, each reading back through the same `searchable_products` chokepoint: `trending` (units in a 30-day window) and `popular` (all-time units) fall back to newest because a quiet marketplace still needs a homepage, while `related` (category, then brand, best-rated first), `similar` (nearest by the same `pg_trgm` machinery the typo rescue uses) and `personalized` (categories/brands of the shopper's own `seen=` history ranked by how well they sell) return fewer items rather than padded ones. Frontend: Home swaps the old discount-sorted "trending" placeholder for real Trending + Best sellers rails and adds "Recommended for you" from the browser's own recently-viewed list (no account, no server-side profile), and the product page gains a "Similar finds" rail beside "You might also like" with no card repeated across the two. Covered by `backend/tests/test_recommendations.py` (24 tests) + `frontend/src/data/search.test.js` (14 tests) |
 | 19 | Analytics & Reporting | ✅ Done — §19.1 platform money, §19.2 seller analytics (`/seller/analytics`, ownership-scoped; Phase 12 dashboard untouched per marketplace-sellers rule 4), §19.3 operational analytics (`DailyOperationsMetric`/`DailyStoreOpsMetric` + `admin/analytics/operations/` & `performance/`), §19.4 reports (five CSV exports at `admin/analytics/export/<report>/`, gate baked into the route) — all served from `apps.reporting` rollups written only by `manage.py rebuild_reporting`. Gate passed (reconciliation proven by partition + cross-table checks; §4 matrix on every read and export). **Deferred, documented:** Excel/PDF export (C3 — needs a new runtime dependency; a fake .xlsx is worse than none) and the Phase 12 dashboard extension (rule 4). Suite at the gate: 325 backend + 189 frontend tests, lint/build/migrations green |
-| 20 | Security, Compliance & Abuse Prevention | 🔄 §20.1 application security done — deny-by-default permissions + session-only auth, rate limiting (blanket + `auth`/`register`/`checkout`/`message` scopes) in front of the login lockout, CORS credentials fix, and the **public-tracking PII leak fixed** (a tracking number is a bearer token, not an identity); `docs/SECURITY_CHECKLIST.md` records all 11 items with evidence, `backend/tests/test_security_hardening.py` (11 tests), suite at review time: 336 backend tests + 189 frontend, lint/build/migrations green. §20.3 auditing done — `docs/AUDIT_COVERAGE.md` is the matrix of every sensitive operation and its action, three gaps closed (`analytics.exported` for the §19.4 CSVs, `product_price_changed`/`variant_price_changed`, and `store_profile_updated`, which turned a bare serializer save on the seller's shipping fee into an audited service), `backend/tests/test_audit_coverage.py` (7 tests). **§20.2 slice v1 (spam & messaging) done** — `apps.moderation` (pure content rules, one `ContentFlag` per subject, staff queue where support reads and only a moderator decides) on a **queue-never-censor** contract: a rule files a flag for a human and never rejects, edits, deletes or informs the author, so a false positive costs a queue row rather than a review. Messaging gained user-scoped `ConversationBlock`s and a write-only `conversation` throttle on thread starts. `docs/ABUSE_CONTROLS.md` + `backend/tests/test_abuse_controls.py` (48 tests) prove the catches *and* the false-positive guards; voucher abuse was already solid and needed nothing. Suite at this gate: **391 backend tests**, migrations + system check clean. Still open in §20.2: inventory/quantity abuse + suspicious-order detection (slice v2), account abuse (slice v3) |
+| 20 | Security, Compliance & Abuse Prevention | 🔄 §20.1 application security done — deny-by-default permissions + session-only auth, rate limiting (blanket + `auth`/`register`/`checkout`/`message` scopes) in front of the login lockout, CORS credentials fix, and the **public-tracking PII leak fixed** (a tracking number is a bearer token, not an identity); `docs/SECURITY_CHECKLIST.md` records all 11 items with evidence, `backend/tests/test_security_hardening.py` (11 tests), suite at review time: 336 backend tests + 189 frontend, lint/build/migrations green. §20.3 auditing done — `docs/AUDIT_COVERAGE.md` is the matrix of every sensitive operation and its action, three gaps closed (`analytics.exported` for the §19.4 CSVs, `product_price_changed`/`variant_price_changed`, and `store_profile_updated`, which turned a bare serializer save on the seller's shipping fee into an audited service), `backend/tests/test_audit_coverage.py` (7 tests). **§20.2 slice v1 (spam & messaging) done** — `apps.moderation` (pure content rules, one `ContentFlag` per subject, staff queue where support reads and only a moderator decides) on a **queue-never-censor** contract: a rule files a flag for a human and never rejects, edits, deletes or informs the author, so a false positive costs a queue row rather than a review. Messaging gained user-scoped `ConversationBlock`s and a write-only `conversation` throttle on thread starts. `docs/ABUSE_CONTROLS.md` + `backend/tests/test_abuse_controls.py` (60 tests) prove the catches *and* the false-positive guards; voucher abuse was already solid and needed nothing. **§20.2 slice v2 (stale-COD reservations) done** — an unpaid COD order held its stock reservation forever (payment expiry correctly excludes COD, and the reservation was wrongly bound to that same window); the fix is a staff worklist plus a manual, audited, reason-required release (`order.cod_reservation_released`) that never auto-cancels a possibly-in-transit parcel. Suite at this gate: **403 backend tests**, migrations + system check clean. Still open in §20.2: the per-order total-units ceiling + suspicious-order detection (slice v3), account abuse (slice v4) |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
 | 22 | Performance & Scalability | ⬜ Not started |
 | 23 | Deployment & Production Infrastructure | ⬜ Not started |
@@ -2196,9 +2196,10 @@ Perform continuous and dedicated security hardening.
         an append-only `VoucherUsage` ledger, and a row-locked redemption inside
         `create_order` make it race-safe and audited
         (`voucher.redeemed`). Nothing was added here.
--   [ ] Inventory abuse prevention — slice v2
--   [ ] Suspicious order detection foundation — slice v2
--   [ ] Account abuse controls — slice v3
+-   [x] Inventory abuse prevention — *slice v2* (the stale-COD reservation, below)
+-   [ ] Suspicious order detection foundation — slice v3
+-   [ ] Per-order total-units ceiling — slice v3
+-   [ ] Account abuse controls — slice v4
 
 > **Slice v1 (done) — spam & messaging.** The slice is built on one decision:
 > **the system queues, it does not censor.** An automatic rule never refuses a
@@ -2235,15 +2236,35 @@ Perform continuous and dedicated security hardening.
 > throttle is **write-only** (`WriteOnlyScopedRateThrottle`): the inbox list
 > and the starter are one endpoint, and a 20/hour cap on *reading* would be a
 > speed bump on ordinary use (§10.2). `docs/ABUSE_CONTROLS.md` is the coverage
-> matrix; `backend/tests/test_abuse_controls.py` (48 tests) drives it, and the
+> matrix; `backend/tests/test_abuse_controls.py` (60 tests) drives it, and the
 > false-positive guards are asserted as first-class contracts alongside the
 > catches. Audit: `content_flagged`, `content_flag_reopened`,
 > `content_flag_dismissed`, `content_flag_confirmed`, `conversation_blocked`,
 > `conversation_unblocked`.
 >
-> **Deferred, not overlooked:** inventory/quantity abuse and
-> suspicious-order detection (slice v2 — they need persistence and a risk
-> model, not a content rule), account abuse (slice v3), and audit retention /
+> **Slice v2 (done) — the stale-COD reservation.** The slice was opened by a
+> probe, not a hunch: an unpaid cash-on-delivery order held its stock
+> reservation **forever**, because `Payment.expires_at` is `None` for COD and
+> `expire_overdue_payments` explicitly excludes that method. One abandoned order
+> could therefore pin a seller's `available` count down indefinitely. Excluding
+> COD from *payment* expiry is **correct and stays** — cash is due at delivery,
+> so the payment has no window; the defect was that the reservation was bound to
+> that same window. The fix is deliberately a **report, not a reaper**: an unpaid
+> COD order may be a real parcel in transit to a slow buyer, and cancelling it
+> automatically would be worse than the leak. So `GET /api/v1/admin/stale-cod/`
+> and a staff release action (support/operations/administrator) exist, the list
+> excludes any order with a parcel **dispatched on any store slice** (releasing
+> the stock of a parcel in transit would sell the same unit twice), the release
+> **re-checks the stale verdict at the moment of the action** rather than
+> trusting the rendered list, it cancels the order together with the stock,
+> demands a reason and audits `order.cod_reservation_released`.
+> `ORDERS_COD_RESERVATION_REVIEW_DAYS` (default 7) is a review threshold, never a
+> cancellation timer. No migration. Suite at this gate: **403 backend tests**.
+
+> **Deferred, not overlooked:** the per-order total-units ceiling
+> (`MAX_LINE_QUANTITY = 99` is per *line*, so a 20-line cart is 1,980 units) and
+> suspicious-order detection (both slice v3 — they need persistence and a risk
+> model, not a content rule), account abuse (slice v4), and audit retention /
 > signed export / alerting (Phase 23).
 
 ### 20.3 Sensitive operations
@@ -2287,14 +2308,15 @@ Perform continuous and dedicated security hardening.
 
 -   [ ] Security checklist complete
 -   [ ] Permission tests pass
--   [ ] Abuse controls verified — *slice v1 done*; slices v2/v3 remain
+-   [ ] Abuse controls verified — *slices v1/v2 done*; v3/v4 remain
 -   [x] Sensitive operations produce audit records
 
 > **Note:** the gate stays open — "security checklist complete" and "permission
 > tests pass" are still §20.1 items, and §20.2 is **partly** done: slice v1
 > (spam, review and messaging abuse) shipped and is proven by
-> `docs/ABUSE_CONTROLS.md` + `tests/test_abuse_controls.py`, while **slices
-> v2/v3** (suspicious orders, inventory/quantity abuse, account abuse) remain
+> `docs/ABUSE_CONTROLS.md` + `tests/test_abuse_controls.py`, and **slice v2**
+> (the stale-COD reservation) shipped in `79aa255`, while **slices v3/v4**
+> (suspicious orders, the per-order quantity ceiling, account abuse) remain
 > — "abuse controls verified" cannot be ticked until they do. Audit
 > **retention, export and alerting** are honestly deferred to the deployment
 > phase (Phase 23), as are production env values and a shared cache for
