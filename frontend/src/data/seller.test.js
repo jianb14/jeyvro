@@ -6,9 +6,11 @@ import {
   fetchDashboard,
   fetchInventory,
   fetchMyProducts,
+  fetchSellerAnalytics,
   fetchSellerOrders,
   fetchStockHistory,
   mapSellerProduct,
+  mapStoreTotals,
   shipSellerOrder,
   submitProduct,
   uploadProductImage,
@@ -344,5 +346,132 @@ describe("seller accessors", () => {
     expect(url).toBe("/api/v1/catalog/my/products/3/images/");
     expect(options.body).toBeInstanceOf(FormData);
     expect(options.headers["Content-Type"]).toBeUndefined();
+  });
+});
+
+const ANALYTICS_PAYLOAD = {
+  start: "2026-09-01",
+  end: "2026-09-30",
+  totals: {
+    start: "2026-09-01",
+    end: "2026-09-30",
+    orders_count: 4,
+    units_sold: 9,
+    products_sold: 3,
+    voucher_redemptions: 2,
+    reviews_count: 5,
+    reviews_rating_sum: "18.00",
+    review_rating_avg: "3.60",
+    gross_sales: "4580.00",
+    merchandise: "4300.00",
+    shipping: "280.00",
+    promotion_discount: "0.00",
+    voucher_seller_share: "0.00",
+    voucher_discount: "120.00",
+    seller_funded_discount: "0.00",
+    captured_total: "4580.00",
+    refunded_total: "0.00",
+    revenue: "4580.00",
+    commission_base: "4300.00",
+    commission: "215.00",
+  },
+  days: [
+    {
+      day: "2026-09-29",
+      store_id: 10,
+      store_name: "Kalinga Crafts",
+      orders_count: 2,
+      units_sold: 5,
+      products_sold: 2,
+      is_active: true,
+      merchandise: "2500.00",
+      shipping: "150.00",
+      promotion_discount: "0.00",
+      voucher_seller_share: "0.00",
+      voucher_discount: "60.00",
+      voucher_redemptions: 1,
+      reviews_count: 3,
+      reviews_rating_sum: "12.00",
+      seller_funded_discount: "0.00",
+      gross_sales: "2650.00",
+      captured_total: "2650.00",
+      refunded_total: "0.00",
+      revenue: "2650.00",
+      commission_base: "2500.00",
+      commission: "125.00",
+      commission_rate_percent: "5.00",
+    },
+  ],
+  top_products: [
+    {
+      product_id: 3,
+      product__title: "Woven Basket",
+      store_id: 10,
+      store__name: "Kalinga Crafts",
+      units_sold: 6,
+      orders_count: 3,
+      merchandise: "2100.00",
+    },
+  ],
+  inventory: {
+    variants_tracked: 4,
+    low_stock_count: 1,
+    out_of_stock_count: 1,
+    units_on_hand: 19,
+  },
+};
+
+describe("seller analytics accessors (19.2)", () => {
+  it("requests the owned store's aggregates and maps every grain", async () => {
+    const fetchMock = mockFetch(ANALYTICS_PAYLOAD);
+    const data = await fetchSellerAnalytics({
+      from: "2026-09-01",
+      to: "2026-09-30",
+      limit: 10,
+    });
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/seller/analytics/?");
+    expect(url).toContain("from=2026-09-01");
+    expect(url).toContain("to=2026-09-30");
+    expect(url).toContain("limit=10");
+
+    // Money stays a string end to end — never a float (C6), and the store's
+    // ownership never travels as an id: the session scopes the read.
+    expect(data.totals.grossSales).toBe("4580.00");
+    expect(data.totals.commission).toBe("215.00");
+    expect(data.totals.reviewRatingAvg).toBe("3.60");
+    expect(data.totals.voucherRedemptions).toBe(2);
+    expect(data.days[0].grossSales).toBe("2650.00");
+    expect(data.days[0].storeId).toBe(10);
+    expect(data.days[0].reviewsCount).toBe(3);
+    expect(data.topProducts[0].productTitle).toBe("Woven Basket");
+    expect(data.topProducts[0].unitsSold).toBe(6);
+    expect(data.inventory).toEqual({
+      variantsTracked: 4,
+      lowStockCount: 1,
+      outOfStockCount: 1,
+      unitsOnHand: 19,
+    });
+  });
+
+  it("keeps an unrated store's average null instead of a zero", () => {
+    const unrated = mapStoreTotals({
+      ...ANALYTICS_PAYLOAD.totals,
+      review_rating_avg: null,
+    });
+    expect(unrated.reviewRatingAvg).toBeNull();
+
+    const empty = mapStoreTotals({});
+    expect(empty.reviewsCount).toBe(0);
+    expect(empty.voucherRedemptions).toBe(0);
+    expect(empty.voucherDiscount).toBe("0.00");
+    expect(empty.grossSales).toBe("0.00");
+  });
+
+  it("asks for the bare endpoint when no range is given", async () => {
+    const fetchMock = mockFetch(ANALYTICS_PAYLOAD);
+    await fetchSellerAnalytics();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/seller/analytics/");
   });
 });

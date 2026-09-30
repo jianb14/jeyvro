@@ -29,7 +29,7 @@ from datetime import datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
-from django.db.models import Max, Min, Q, Sum
+from django.db.models import Count, Max, Min, Q, Sum
 from django.utils import timezone
 
 from apps.audit.models import AuditLog
@@ -37,6 +37,7 @@ from apps.orders.models import Order, OrderItem, OrderStatus, SellerOrder
 from apps.payments.models import PaymentTransaction
 from apps.platform import services as platform_services
 from apps.promotions.models import PromotionScope, PromotionUsage, VoucherUsage
+from apps.reviews.models import Review, ReviewStatus
 
 from .models import DailyPlatformMetric, DailyProductMetric, DailyStoreMetric
 
@@ -156,6 +157,70 @@ def _voucher_shares(day):
     return shares
 
 
+def _voucher_activity(day):
+    """{(order_id, store_id): {'redemptions', 'discount'}} for the day (§19.2).
+
+    A redemption counts for **every store whose live slices the order
+    carried** — the voucher was used on their goods — and the discount (an
+    order-level figure) is apportioned across those stores in proportion to
+    their subtotals, the same "the parts re-add to the whole" rule the refund
+    arithmetic uses. A zero-value order still redeems: the count is real even
+    when there is no merchandise to carry the discount.
+    """
+    usages = list(
+        VoucherUsage.objects.filter(order__created_at__date=day)
+        .exclude(order__status=OrderStatus.CANCELLED)
+        .values('order_id', 'discount_amount')
+    )
+    if not usages:
+        return {}
+
+    weights = defaultdict(lambda: defaultdict(lambda: ZERO))
+    slices = (
+        SellerOrder.objects.filter(
+            order_id__in=[usage['order_id'] for usage in usages]
+        )
+        .exclude(
+            Q(status=OrderStatus.CANCELLED) | Q(order__status=OrderStatus.CANCELLED)
+        )
+        .values('order_id', 'store_id', 'subtotal')
+    )
+    for line in slices:
+        weights[line['order_id']][line['store_id']] += line['subtotal']
+
+    activity = {}
+    for usage in usages:
+        order_weights = weights.get(usage['order_id'], {})
+        parts = _apportion(_money(usage['discount_amount']), order_weights)
+        if not parts and order_weights:
+            parts = {store_id: ZERO for store_id in order_weights}
+        for store_id, part in parts.items():
+            row = activity.setdefault(
+                (usage['order_id'], store_id), {'redemptions': 0, 'discount': ZERO}
+            )
+            row['redemptions'] += 1
+            row['discount'] += part
+    return activity
+
+
+def _review_rows(day):
+    """{store_id: (count, rating_sum)} of the day's published reviews (§19.2).
+
+    Hidden and flagged rows stay out of the metric exactly as they stay out of
+    `recompute_store_rating` (§6): moderation pulls a review off the record
+    and off the figures with it.
+    """
+    rows = (
+        Review.objects.filter(created_at__date=day, status=ReviewStatus.PUBLISHED)
+        .values('store_id')
+        .annotate(reviews=Count('id'), rating_sum=Sum('rating'))
+    )
+    return {
+        row['store_id']: (row['reviews'], Decimal(row['rating_sum']))
+        for row in rows
+    }
+
+
 def _promotion_shares(day):
     """{(order_id, store_id): pesos of seller-scoped campaign discounts}.
 
@@ -255,6 +320,10 @@ def _empty_store_row(rate):
         'shipping': ZERO,
         'promotion_discount': ZERO,
         'voucher_seller_share': ZERO,
+        'voucher_discount': ZERO,
+        'voucher_redemptions': 0,
+        'reviews_count': 0,
+        'reviews_rating_sum': ZERO,
         'seller_funded_discount': ZERO,
         'gross_sales': ZERO,
         'captured_total': ZERO,
@@ -268,7 +337,13 @@ def _empty_store_row(rate):
 
 
 def _store_rows(day, changes, current_rate):
-    """{store_id: defaults} for every store that sold or was paid that day."""
+    """{store_id: defaults} for every store that sold, was paid, or was
+    reviewed that day (§19.1 extended by §19.2).
+
+    A review-only day still produces a row — money zeroed — because a metric
+    read from the rollups must exist for every day the records support, not
+    only the days an order landed (§19.2 "review metrics").
+    """
     rows = {}
 
     def row_for(store_id):
@@ -292,6 +367,12 @@ def _store_rows(day, changes, current_rate):
         row['promotion_discount'] += promotion_shares.get(
             (seller_order.order_id, seller_order.store_id), ZERO
         )
+
+    # --- Redemption grain: the vouchers this store's orders carried (§19.2) -
+    for (_order_id, store_id), activity in _voucher_activity(day).items():
+        row = row_for(store_id)
+        row['voucher_redemptions'] += activity['redemptions']
+        row['voucher_discount'] += activity['discount']
 
     line_rows = (
         OrderItem.objects.filter(seller_order__order__created_at__date=day)
@@ -344,10 +425,18 @@ def _store_rows(day, changes, current_rate):
             base, _rate_at(captured_at, changes, current_rate)
         )
 
+    # --- Voice grain: what customers said about the store that day (§19.2) --
+    for store_id, (reviews, rating_sum) in _review_rows(day).items():
+        row = row_for(store_id)
+        row['reviews_count'] += reviews
+        row['reviews_rating_sum'] += rating_sum
+
     # --- Finalize: exact money, derived columns, no private keys -----------
     for row in rows.values():
         row['products_sold'] = len(row.pop('_products'))
         row['voucher_seller_share'] = _money(row['voucher_seller_share'])
+        row['voucher_discount'] = _money(row['voucher_discount'])
+        row['reviews_rating_sum'] = row['reviews_rating_sum'].quantize(CENT)
         row['promotion_discount'] = _money(row['promotion_discount'])
         row['seller_funded_discount'] = (
             row['voucher_seller_share'] + row['promotion_discount']
@@ -491,9 +580,15 @@ def _rebuild_day(day, changes, current_rate):
 
 
 def _data_window():
-    """The window the records actually cover, ending no earlier than today."""
+    """The window the records actually cover, ending no earlier than today.
+
+    Reviews count as records too: a review-only day (a product reviewed long
+    after its orders settled) still gets a store row, so the default rebuild
+    range must reach back to the first review when that is the earliest fact
+    (§19.2).
+    """
     first = last = None
-    for model in (Order, PaymentTransaction):
+    for model in (Order, PaymentTransaction, Review):
         window = model.objects.aggregate(
             first=Min('created_at'), last=Max('created_at')
         )
@@ -641,6 +736,120 @@ def _empty_totals():
     }
 
 
+def store_totals(store_id, start, end):
+    """One store's range totals, summed from its daily rows (§19.2).
+
+    The mirror of `platform_totals` at the store grain: `products_sold` is the
+    distinct count taken from the product rows (a product sold on three days is
+    one product), and `review_rating_avg` is derived from the summed reviews —
+    None, not zero, when there are none, because "no rating yet" is not a
+    rating of zero.
+    """
+    start, end = _clamp(start, end)
+    if start is None:
+        return _empty_store_totals()
+
+    totals = DailyStoreMetric.objects.filter(
+        store_id=store_id, day__range=(start, end)
+    ).aggregate(
+        orders_count=Sum('orders_count'),
+        units_sold=Sum('units_sold'),
+        voucher_redemptions=Sum('voucher_redemptions'),
+        reviews_count=Sum('reviews_count'),
+        reviews_rating_sum=Sum('reviews_rating_sum'),
+        gross_sales=Sum('gross_sales'),
+        merchandise=Sum('merchandise'),
+        shipping=Sum('shipping'),
+        promotion_discount=Sum('promotion_discount'),
+        voucher_seller_share=Sum('voucher_seller_share'),
+        voucher_discount=Sum('voucher_discount'),
+        seller_funded_discount=Sum('seller_funded_discount'),
+        captured_total=Sum('captured_total'),
+        refunded_total=Sum('refunded_total'),
+        revenue=Sum('revenue'),
+        commission_base=Sum('commission_base'),
+        commission=Sum('commission'),
+    )
+    for key in (
+        'gross_sales', 'merchandise', 'shipping', 'promotion_discount',
+        'voucher_seller_share', 'voucher_discount', 'seller_funded_discount',
+        'captured_total', 'refunded_total', 'revenue',
+        'commission_base', 'commission', 'reviews_rating_sum',
+    ):
+        totals[key] = _money(totals[key])
+    for key in ('orders_count', 'units_sold', 'voucher_redemptions', 'reviews_count'):
+        totals[key] = totals[key] or 0
+    totals['products_sold'] = (
+        DailyProductMetric.objects.filter(store_id=store_id, day__range=(start, end))
+        .values('product_id')
+        .distinct()
+        .count()
+    )
+    totals['review_rating_avg'] = (
+        (totals['reviews_rating_sum'] / totals['reviews_count']).quantize(
+            CENT, rounding=ROUND_HALF_UP
+        )
+        if totals['reviews_count']
+        else None
+    )
+    totals['start'] = start
+    totals['end'] = end
+    return totals
+
+
+def _empty_store_totals():
+    """The shape a seller dashboard can always render, even with no data."""
+    zero = ZERO
+    return {
+        'start': None, 'end': None,
+        'orders_count': 0, 'units_sold': 0, 'products_sold': 0,
+        'voucher_redemptions': 0, 'reviews_count': 0, 'review_rating_avg': None,
+        'gross_sales': zero, 'merchandise': zero, 'shipping': zero,
+        'promotion_discount': zero, 'voucher_seller_share': zero,
+        'voucher_discount': zero, 'seller_funded_discount': zero,
+        'captured_total': zero, 'refunded_total': zero, 'revenue': zero,
+        'commission_base': zero, 'commission': zero,
+        'reviews_rating_sum': zero,
+    }
+
+
+def store_inventory_snapshot(store_id):
+    """The store's stock **right now** — a snapshot, deliberately not a rollup.
+
+    Stock level is current state, not a period metric: the records hold no
+    daily on-hand snapshot, so "inventory performance" pairs the period's
+    rollup figures (units sold) with the live counters the Phase 12 dashboard
+    already reads — and it is labeled as a snapshot on the page for exactly
+    that reason. Low stock uses the same comparison as that dashboard:
+    available ≤ the variant's own threshold.
+    """
+    from apps.catalog.models import Product, Variant  # local: reporting ↔ catalog
+
+    rows = (
+        Variant.objects.filter(product__store_id=store_id)
+        .exclude(product__status=Product.Status.ARCHIVED)
+        .select_related('inventory')
+    )
+    tracked = low = out = units = 0
+    for variant in rows:
+        inventory = getattr(variant, 'inventory', None)
+        if inventory is None:
+            continue
+        tracked += 1
+        available = inventory.available
+        units += max(0, available)
+        if available <= 0:
+            out += 1
+        if available <= inventory.low_stock_threshold:
+            low += 1
+    return {
+        'variants_tracked': tracked,
+        'low_stock_count': low,
+        'out_of_stock_count': out,
+        'units_on_hand': units,
+    }
+
+
 def store_leaderboard(start, end, limit=None):
     """Per-store totals for the range, biggest seller first (§19.2 preview)."""
     rows = (
@@ -663,11 +872,17 @@ def store_leaderboard(start, end, limit=None):
     return list(rows[:limit]) if limit else list(rows)
 
 
-def top_products(start, end, limit=10):
-    """Best-selling products for the range — units first (§19.2 preview)."""
+def top_products(start, end, limit=10, store_id=None):
+    """Best-selling products for the range — units first (§19.2).
+
+    One seller reads their own shelf by passing `store_id`; staff pass nothing
+    and get the whole marketplace.
+    """
+    rows = DailyProductMetric.objects.filter(day__range=(start, end))
+    if store_id is not None:
+        rows = rows.filter(store_id=store_id)
     return list(
-        DailyProductMetric.objects.filter(day__range=(start, end))
-        .values('product_id', 'product__title', 'store_id', 'store__name')
+        rows.values('product_id', 'product__title', 'store_id', 'store__name')
         .annotate(
             units_sold=Sum('units_sold'),
             orders_count=Sum('orders_count'),

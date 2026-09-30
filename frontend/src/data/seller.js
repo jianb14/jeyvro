@@ -1,9 +1,9 @@
 /**
- * Seller operations accessors (Phase 12) — the ONLY data access point for
- * the seller dashboard, product/variant management, inventory, and seller
- * orders. Same conventions as the other data modules: session cookies,
- * CSRF on unsafe methods, the §8 error envelope, and every shape mapped
- * here so components render API truth and never recompute numbers
+ * Seller operations accessors (Phase 12 + 19.2) — the ONLY data access point
+ * for the seller dashboard, product/variant management, inventory, seller
+ * orders, and the analytics page. Same conventions as the other data modules:
+ * session cookies, CSRF on unsafe methods, the §8 error envelope, and every
+ * shape mapped here so components render API truth and never recompute numbers
  * (marketplace-sellers rule 5).
  */
 
@@ -441,6 +441,109 @@ export function shipSellerOrder(
     ...(weightGrams ? { package_weight_grams: Number(weightGrams) } : {}),
     ...(items ? { items } : {}),
   });
+}
+
+// --- 19.2 Analytics ---------------------------------------------------------
+
+const ANALYTICS = "/seller/analytics";
+
+// Every figure below arrives pre-computed from the reporting aggregates: the
+// page renders what the server derived and never re-derives a number of its
+// own (§6 v1.16). Money stays a string — never a float — and the range is the
+// only input, validated server-side like every other §19 endpoint.
+export function mapStoreTotals(totals) {
+  return {
+    start: totals.start ?? null,
+    end: totals.end ?? null,
+    ordersCount: totals.orders_count ?? 0,
+    unitsSold: totals.units_sold ?? 0,
+    productsSold: totals.products_sold ?? 0,
+    voucherRedemptions: totals.voucher_redemptions ?? 0,
+    reviewsCount: totals.reviews_count ?? 0,
+    reviewsRatingSum: totals.reviews_rating_sum ?? "0.00",
+    // Null when nothing was reviewed: "no rating yet" is not a zero (§19.2).
+    reviewRatingAvg: totals.review_rating_avg ?? null,
+    grossSales: totals.gross_sales ?? "0.00",
+    merchandise: totals.merchandise ?? "0.00",
+    shipping: totals.shipping ?? "0.00",
+    promotionDiscount: totals.promotion_discount ?? "0.00",
+    voucherSellerShare: totals.voucher_seller_share ?? "0.00",
+    voucherDiscount: totals.voucher_discount ?? "0.00",
+    sellerFundedDiscount: totals.seller_funded_discount ?? "0.00",
+    capturedTotal: totals.captured_total ?? "0.00",
+    refundedTotal: totals.refunded_total ?? "0.00",
+    revenue: totals.revenue ?? "0.00",
+    commissionBase: totals.commission_base ?? "0.00",
+    commission: totals.commission ?? "0.00",
+  };
+}
+
+export function mapStoreDay(day) {
+  return {
+    day: day.day,
+    storeId: day.store_id,
+    storeName: day.store_name ?? "",
+    ordersCount: day.orders_count ?? 0,
+    unitsSold: day.units_sold ?? 0,
+    productsSold: day.products_sold ?? 0,
+    isActive: Boolean(day.is_active),
+    merchandise: day.merchandise ?? "0.00",
+    shipping: day.shipping ?? "0.00",
+    promotionDiscount: day.promotion_discount ?? "0.00",
+    voucherSellerShare: day.voucher_seller_share ?? "0.00",
+    voucherDiscount: day.voucher_discount ?? "0.00",
+    voucherRedemptions: day.voucher_redemptions ?? 0,
+    reviewsCount: day.reviews_count ?? 0,
+    reviewsRatingSum: day.reviews_rating_sum ?? "0.00",
+    sellerFundedDiscount: day.seller_funded_discount ?? "0.00",
+    grossSales: day.gross_sales ?? "0.00",
+    capturedTotal: day.captured_total ?? "0.00",
+    refundedTotal: day.refunded_total ?? "0.00",
+    revenue: day.revenue ?? "0.00",
+    commissionBase: day.commission_base ?? "0.00",
+    commission: day.commission ?? "0.00",
+    commissionRatePercent: day.commission_rate_percent ?? "0.00",
+  };
+}
+
+export function mapBestSellerRow(row) {
+  return {
+    productId: row.product_id,
+    productTitle: row.product__title ?? "",
+    storeId: row.store_id,
+    storeName: row.store__name ?? "",
+    unitsSold: row.units_sold ?? 0,
+    ordersCount: row.orders_count ?? 0,
+    merchandise: row.merchandise ?? "0.00",
+  };
+}
+
+/** Stock *now* — a live snapshot, never a period metric (§19.2). */
+export function mapInventorySnapshot(inventory) {
+  return {
+    variantsTracked: inventory.variants_tracked ?? 0,
+    lowStockCount: inventory.low_stock_count ?? 0,
+    outOfStockCount: inventory.out_of_stock_count ?? 0,
+    unitsOnHand: inventory.units_on_hand ?? 0,
+  };
+}
+
+/** GET /api/v1/seller/analytics/?from=&to= — the seller's own aggregates. */
+export async function fetchSellerAnalytics({ from = "", to = "", limit = "" } = {}) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (limit) params.set("limit", limit);
+  const query = params.toString();
+  const data = await request(BASE, `${ANALYTICS}/${query ? `?${query}` : ""}`);
+  return {
+    start: data.start ?? null,
+    end: data.end ?? null,
+    totals: mapStoreTotals(data.totals ?? {}),
+    days: (data.days ?? []).map(mapStoreDay),
+    topProducts: (data.top_products ?? []).map(mapBestSellerRow),
+    inventory: mapInventorySnapshot(data.inventory ?? {}),
+  };
 }
 
 

@@ -11,6 +11,7 @@ import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../features/auth/AuthContext";
 import { cx } from "../../lib/cx";
 import {
+  ChartIcon,
   InboxIcon,
   MessageSquareIcon,
   PackageIcon,
@@ -23,6 +24,7 @@ import {
 
 const NAV = [
   { to: "/seller", label: "Dashboard", icon: StoreIcon, end: true },
+  { to: "/seller/analytics", label: "Analytics", icon: ChartIcon },
   { to: "/seller/products", label: "Products", icon: TagIcon },
   { to: "/seller/inventory", label: "Inventory", icon: PackageIcon },
   { to: "/seller/promotions", label: "Promotions", icon: PercentIcon },

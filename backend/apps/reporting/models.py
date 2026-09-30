@@ -113,6 +113,30 @@ class DailyStoreMetric(TimeStampedModel):
         max_digits=5, decimal_places=2, default=ZERO
     )
 
+    # §19.2 seller analytics: what the store's discounts really moved, and
+    # what its customers said. Two definitions, pinned here because a seller
+    # dashboard must never guess at them:
+    #
+    # * `voucher_redemptions` counts redemptions **involving this store** —
+    #   every voucher redeemed on an order whose live slices include the
+    #   store, the store's own vouchers included. `voucher_discount` is the
+    #   part of those redemptions' discount that followed the store's lines
+    #   (an order-level discount is apportioned across the stores that took
+    #   part, exactly as the refund arithmetic apportions it), and the share
+    #   the store itself funded is already `voucher_seller_share`.
+    # * `reviews_count` / `reviews_rating_sum` are the day's **published**
+    #   reviews of the store's products and the stars they gave — hidden or
+    #   flagged rows stay out, matching `recompute_store_rating` (§6).
+    voucher_redemptions = models.PositiveIntegerField(default=0)
+    voucher_discount = money()
+    reviews_count = models.PositiveIntegerField(default=0)
+    reviews_rating_sum = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=ZERO,
+        help_text='Sum of the day\'s published review ratings; average = sum/count.',
+    )
+
     class Meta:
         ordering = ['-day', 'store_id']
         constraints = [

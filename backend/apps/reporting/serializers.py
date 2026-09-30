@@ -53,6 +53,48 @@ class PlatformTotalsSerializer(serializers.Serializer):
     commission = serializers.DecimalField(max_digits=16, decimal_places=2)
 
 
+class StoreTotalsSerializer(serializers.Serializer):
+    """One store's range headline (§19.2) — the seller's own numbers.
+
+    `review_rating_avg` is null when nothing was reviewed: "no rating yet" is
+    not a rating of zero, and the seed of it (`reviews_rating_sum` / count)
+    rides along so the average stays checkable.
+    """
+
+    start = serializers.DateField(allow_null=True)
+    end = serializers.DateField(allow_null=True)
+    orders_count = serializers.IntegerField()
+    units_sold = serializers.IntegerField()
+    products_sold = serializers.IntegerField()
+    voucher_redemptions = serializers.IntegerField()
+    reviews_count = serializers.IntegerField()
+    reviews_rating_sum = serializers.DecimalField(max_digits=12, decimal_places=2)
+    review_rating_avg = serializers.DecimalField(
+        max_digits=3, decimal_places=2, allow_null=True
+    )
+    gross_sales = serializers.DecimalField(max_digits=16, decimal_places=2)
+    merchandise = serializers.DecimalField(max_digits=16, decimal_places=2)
+    shipping = serializers.DecimalField(max_digits=16, decimal_places=2)
+    promotion_discount = serializers.DecimalField(max_digits=16, decimal_places=2)
+    voucher_seller_share = serializers.DecimalField(max_digits=16, decimal_places=2)
+    voucher_discount = serializers.DecimalField(max_digits=16, decimal_places=2)
+    seller_funded_discount = serializers.DecimalField(max_digits=16, decimal_places=2)
+    captured_total = serializers.DecimalField(max_digits=16, decimal_places=2)
+    refunded_total = serializers.DecimalField(max_digits=16, decimal_places=2)
+    revenue = serializers.DecimalField(max_digits=16, decimal_places=2)
+    commission_base = serializers.DecimalField(max_digits=16, decimal_places=2)
+    commission = serializers.DecimalField(max_digits=16, decimal_places=2)
+
+
+class StoreInventorySerializer(serializers.Serializer):
+    """The store's stock *now* — a snapshot, labeled as one on the page (§19.2)."""
+
+    variants_tracked = serializers.IntegerField()
+    low_stock_count = serializers.IntegerField()
+    out_of_stock_count = serializers.IntegerField()
+    units_on_hand = serializers.IntegerField()
+
+
 class StoreLeaderboardRowSerializer(serializers.Serializer):
     """One store's range totals (§19.2 preview)."""
 
@@ -94,7 +136,9 @@ class DailyStoreMetricSerializer(serializers.ModelSerializer):
             'day', 'store_id', 'store_name',
             'orders_count', 'units_sold', 'products_sold', 'is_active',
             'merchandise', 'shipping', 'promotion_discount',
-            'voucher_seller_share', 'seller_funded_discount', 'gross_sales',
+            'voucher_seller_share', 'voucher_discount', 'voucher_redemptions',
+            'reviews_count', 'reviews_rating_sum',
+            'seller_funded_discount', 'gross_sales',
             'captured_total', 'refunded_total', 'revenue',
             'commission_base', 'commission', 'commission_rate_percent',
         ]

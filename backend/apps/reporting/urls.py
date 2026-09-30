@@ -1,4 +1,4 @@
-"""Reporting URLs (§19.1) — mounted at /api/v1/."""
+"""Reporting URLs (§19.1–19.2) — mounted at /api/v1/."""
 from django.urls import path
 
 from . import views
@@ -25,5 +25,10 @@ urlpatterns = [
         'admin/analytics/products/',
         views.StaffAnalyticsProductsView.as_view(),
         name='staff-analytics-products',
+    ),
+    path(
+        'seller/analytics/',
+        views.SellerAnalyticsView.as_view(),
+        name='seller-analytics',
     ),
 ]

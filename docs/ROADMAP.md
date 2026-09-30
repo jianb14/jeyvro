@@ -41,7 +41,7 @@
 | 17 | Returns, Refunds & Disputes | ✅ Done — `apps/resolutions` (slices v1–v3). v1 return cases: server-verified eligibility and a return window snapshotted per case, per-line quantity caps, seller response, staff intervention/override, reverse-parcel tracking, and receipt-time line-scoped restock through the append-only stock ledger; refund arithmetic computed server-side from order snapshots (order-level discounts apportioned to the lines that enjoyed them, shipping back only on a fully returned slice), and the linked `OrderRequest` resolved by the case that answers it. v2 money movement: the case prices, `apps.payments` moves — `Refund.restock`/`Refund.return_case` keep manual refunds and case-paid payouts honest, `POST /api/v1/admin/returns/<ref>/refund` is finance/administrator-only and callable only after goods are received, partial settlements cap against the case then the payment, and the case follows its refund through the provider seam (`on_refund_settled`/`on_refund_failed`) with a refused gateway rolling the whole payout back. v3 disputes: `Dispute` (`JVDSP-…`) with append-only statements/evidence whose party is derived from the caller, staff claim + ruling with a mandatory reason that freezes the record, buyer withdrawal, and timeline + audit rows on every movement. Covered by `backend/tests/test_returns.py` (18 gate tests) |
 | 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
 | 18b | Search, Recommendations & Discovery (cont.) | ✅ §18.3 Discovery — `GET /api/v1/search/recommendations/` (public, `?kind=`) serves five shelves from one ranking entry point, each reading back through the same `searchable_products` chokepoint: `trending` (units in a 30-day window) and `popular` (all-time units) fall back to newest because a quiet marketplace still needs a homepage, while `related` (category, then brand, best-rated first), `similar` (nearest by the same `pg_trgm` machinery the typo rescue uses) and `personalized` (categories/brands of the shopper's own `seen=` history ranked by how well they sell) return fewer items rather than padded ones. Frontend: Home swaps the old discount-sorted "trending" placeholder for real Trending + Best sellers rails and adds "Recommended for you" from the browser's own recently-viewed list (no account, no server-side profile), and the product page gains a "Similar finds" rail beside "You might also like" with no card repeated across the two. Covered by `backend/tests/test_recommendations.py` (24 tests) + `frontend/src/data/search.test.js` (14 tests) |
-| 19 | Analytics & Reporting | ⬜ Not started |
+| 19 | Analytics & Reporting | 🔄 §19.1 Platform analytics done — `apps.reporting` rollups written only by `manage.py rebuild_reporting`, `/staff/analytics` over `data/staff.js`, `backend/tests/test_reporting.py`. §19.2 Seller analytics done — `GET /api/v1/seller/analytics/` (ownership-scoped totals + days + best sellers + voucher/review metrics + live inventory snapshot) with `/seller/analytics` over `data/seller.js`, `backend/tests/test_seller_analytics.py`; Phase 12 `/seller` dashboard untouched per marketplace-sellers rule 4 (documented deferral). §19.3 operational analytics and §19.4 reports still open |
 | 20 | Security, Compliance & Abuse Prevention | ⬜ Not started |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
 | 22 | Performance & Scalability | ⬜ Not started |
@@ -1965,14 +1965,40 @@ Provide useful operational and business intelligence.
 
 ### 19.2 Seller analytics
 
--   [ ] Sales
--   [ ] Orders
--   [ ] Revenue
--   [ ] Products sold
--   [ ] Best-selling products
--   [ ] Inventory performance
--   [ ] Review metrics
--   [ ] Voucher performance
+-   [x] Sales
+-   [x] Orders
+-   [x] Revenue
+-   [x] Products sold
+-   [x] Best-selling products
+-   [x] Inventory performance
+-   [x] Review metrics
+-   [x] Voucher performance
+
+> **Backend (done):** `GET /api/v1/seller/analytics/?from=&to=` serves one
+> seller's own period figures from the same rollups staff read: the range
+> totals (gross sales, orders, revenue, products sold, commission), the daily
+> store series, `top_products(store_id=…)` best sellers, voucher performance
+> (`voucher_redemptions` / `voucher_discount` — apportioned across every store
+> an order carried, so the parts re-add to the `VoucherUsage` ledger), review
+> metrics (published rows only; `review_rating_avg` is **null**, not zero, when
+> nothing was reviewed), and the store's stock as a **live snapshot** labeled
+> as one. Ownership is resolved from the session (`Store.user ==
+> request.user`) — there is no `store_id` parameter to forge, a seller with no
+> store gets 404, and everyone else 403 — and the range runs through the same
+> `_range` validator (default trailing 30 days, max 366, 400 on a bad range).
+> `rebuild` stays idempotent over the new voucher/review columns, and a
+> review-only day still earns a zero-money store row. Covered by
+> `backend/tests/test_seller_analytics.py` (9 tests); `test_reporting.py` and
+> `test_seller_operations.py` stay green alongside it.
+>
+> **Frontend (done):** `/seller/analytics` (new page + NAV entry in
+> `SellerLayout`) reads the aggregates through `src/data/seller.js`
+> (`fetchSellerAnalytics`) and adds no arithmetic of its own: headline stat
+> cards, the daily series with bars scaled against the busiest day, best
+> sellers, voucher/review cards, and the inventory snapshot. Per
+> **marketplace-sellers rule 4 the Phase 12 `/seller` dashboard is deliberately
+> untouched** — documented deferral: the dashboard keeps its operational view
+> and analytics lands beside it as its own page.
 
 ### 19.3 Operational analytics
 

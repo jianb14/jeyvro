@@ -7,19 +7,25 @@ it is why a busy marketplace's dashboard costs the same as a quiet one's.
 Grouping follows §4 as §6 v1.16 spells it out: the money figures (GMV, revenue,
 commission, refunds) and the store leaderboard belong to `finance` and
 `administrator`; product activity is open to the read-only oversight groups
-that already see those records. Nothing here writes — the aggregates are
+that already see those records. The seller endpoint is scoped by **ownership**
+instead: a seller reads their own store's aggregates, resolved from the
+session, and never another store's. Nothing here writes — the aggregates are
 rebuilt by `manage.py rebuild_reporting`, so a dashboard can never invent a
-number, only display one.
+number, only display one. The one live read on this module is the seller's
+*current* stock, which is a snapshot rather than a period metric and is labeled
+as one (§19.2).
 """
 from datetime import date, timedelta
 
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import InStaffGroup
+from apps.accounts.permissions import InStaffGroup, IsSeller
+from apps.stores.models import Store
 
 from . import serializers, services
 
@@ -153,3 +159,46 @@ def _limit(request, default=10, cap=100):
     except (TypeError, ValueError):
         return default
     return max(1, min(value, cap))
+
+
+# --- The seller's own window (§19.2) ----------------------------------------
+
+
+class SellerAnalyticsView(APIView):
+    """GET /api/v1/seller/analytics/?from=&to=&limit= — the seller's own numbers.
+
+    A seller reads *their own* store and nothing else: the store is resolved
+    from the session (`Store.user=request.user`), so there is no id parameter
+    to tamper with and no group gate to forget — ownership is the scope
+    (marketplace-sellers rules 4/5). The period figures come from the reporting
+    aggregates; `inventory` is the store's stock right now, a snapshot rather
+    than a period metric, and the page labels it as such.
+    """
+
+    permission_classes = [IsAuthenticated, IsSeller]
+
+    def get(self, request):
+        store = get_object_or_404(Store, user=request.user)
+        try:
+            start, end = _range(request)
+        except ValueError as exc:
+            return _bad_range(exc)
+        return Response({
+            'start': start,
+            'end': end,
+            'totals': serializers.StoreTotalsSerializer(
+                services.store_totals(store.id, start, end)
+            ).data,
+            'days': serializers.DailyStoreMetricSerializer(
+                services.store_series(store.id, start, end), many=True
+            ).data,
+            'top_products': serializers.TopProductRowSerializer(
+                services.top_products(
+                    start, end, limit=_limit(request), store_id=store.id
+                ),
+                many=True,
+            ).data,
+            'inventory': serializers.StoreInventorySerializer(
+                services.store_inventory_snapshot(store.id)
+            ).data,
+        })

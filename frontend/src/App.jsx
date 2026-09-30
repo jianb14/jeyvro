@@ -22,6 +22,7 @@ import { BecomeSeller } from "./routes/BecomeSeller";
 import { Storefront } from "./routes/Storefront";
 import { SellerLayout } from "./routes/seller/SellerLayout";
 import { SellerDashboard } from "./routes/seller/SellerDashboard";
+import { SellerAnalytics } from "./routes/seller/SellerAnalytics";
 import { SellerProducts } from "./routes/seller/SellerProducts";
 import { SellerProductEdit } from "./routes/seller/SellerProductEdit";
 import { SellerInventory } from "./routes/seller/SellerInventory";
@@ -136,6 +137,7 @@ function App() {
                 }
               >
                 <Route index element={<SellerDashboard />} />
+                <Route path="analytics" element={<SellerAnalytics />} />
                 <Route path="products" element={<SellerProducts />} />
                 <Route path="products/new" element={<SellerProductEdit />} />
                 <Route path="products/:id" element={<SellerProductEdit />} />
