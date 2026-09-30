@@ -21,6 +21,11 @@
  * it. Every figure is the server's count — the page divides nothing itself, so
  * a rate can never be "roughly right" (marketplace-admin rule 5).
  *
+ * §19.4's CSV exports follow the page's range and the same gate: a download is
+ * a plain navigation (the session cookie travels with it) to the report the
+ * caller's role may read, and the links shown are exactly the reports that
+ * route would serve.
+ *
  * Bars are the one thing drawn here, and they are pure presentation: the width
  * is the server's number scaled against the busiest day in the same series,
  * never a figure the client invented.
@@ -37,6 +42,7 @@ import {
 import { Select } from "../../components/ui/Select";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { Table, TBody, TD, TH, THead, TR } from "../../components/ui/Table";
+import { DownloadIcon } from "../../components/ui/Icons";
 import { useAuth } from "../../features/auth/AuthContext";
 import * as staffApi from "../../data/staff";
 
@@ -138,10 +144,12 @@ export function StaffAnalytics() {
     const storesJob = canSeeMoney
       ? staffApi.fetchStaffAnalyticsStores({ ...params, limit: 10 })
       : Promise.resolve([]);
-    const productsJob = staffApi.fetchStaffAnalyticsProducts({
-      ...params,
-      limit: 10,
-    });
+    const productsJob = canSeeOperations
+      ? staffApi.fetchStaffAnalyticsProducts({
+          ...params,
+          limit: 10,
+        })
+      : Promise.resolve([]);
     // §19.3 — same discipline for the operational reads: a moderator's page
     // never fires the request that would 403.
     const operationsJob = canSeeOperations
@@ -188,6 +196,8 @@ export function StaffAnalytics() {
     () => [...(operations?.days ?? [])].reverse(),
     [operations]
   );
+  // §19.4 — the export links carry the same range the page is showing.
+  const exportRange = useMemo(() => windowFor(range), [range]);
   const busiest = useMemo(
     () => Math.max(1, ...days.map((day) => Number(day.gmv))),
     [days]
@@ -233,6 +243,27 @@ export function StaffAnalytics() {
           </Select>
         </div>
       </div>
+
+      {canSeeMoney || canSeeOperations ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-sand-500 dark:text-sand-400">
+            Export CSV
+          </span>
+          {staffApi.STAFF_ANALYTICS_REPORTS.filter((report) =>
+            report.money ? canSeeMoney : canSeeOperations
+          ).map((report) => (
+            <a
+              key={report.slug}
+              href={staffApi.staffAnalyticsCsvUrl(report.slug, exportRange)}
+              download
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-sand-300 px-3 text-xs font-medium text-sand-800 transition-colors hover:border-moss-400 hover:bg-moss-50 dark:border-night-700 dark:text-sand-200 dark:hover:border-moss-600 dark:hover:bg-night-800"
+            >
+              <DownloadIcon size={14} className="shrink-0 opacity-90" />
+              {report.label}
+            </a>
+          ))}
+        </div>
+      ) : null}
 
       {error ? (
         <Alert tone="danger" title="Could not load analytics">

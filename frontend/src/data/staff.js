@@ -915,3 +915,24 @@ export async function fetchStaffAnalyticsPerformance({
   return (data.items ?? []).map(mapStorePerformanceRow);
 }
 
+// --- 19.4 Reports (CSV) -------------------------------------------------------
+//
+// A download is a plain browser navigation, not a fetch: the session cookie
+// travels with it, the server answers with the file, and the page never has to
+// assemble one. CSV is the only format, deliberately (C3 — a real .xlsx/.pdf
+// writer would need a new runtime dependency, and a mislabelled text file is
+// worse than no export).
+export const STAFF_ANALYTICS_REPORTS = [
+  { slug: "summary", label: "Summary", money: true },
+  { slug: "stores", label: "Stores", money: true },
+  { slug: "products", label: "Products", money: false },
+  { slug: "operations", label: "Operations", money: false },
+  { slug: "performance", label: "Sellers", money: false },
+];
+
+/** The download URL for one report, carrying the page's current range (§19.4). */
+export function staffAnalyticsCsvUrl(report, { from = "", to = "" } = {}) {
+  const query = buildQuery({ from, to });
+  return `/api/v1/admin/analytics/export/${report}/${query}`;
+}
+

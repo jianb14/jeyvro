@@ -41,7 +41,7 @@
 | 17 | Returns, Refunds & Disputes | ✅ Done — `apps/resolutions` (slices v1–v3). v1 return cases: server-verified eligibility and a return window snapshotted per case, per-line quantity caps, seller response, staff intervention/override, reverse-parcel tracking, and receipt-time line-scoped restock through the append-only stock ledger; refund arithmetic computed server-side from order snapshots (order-level discounts apportioned to the lines that enjoyed them, shipping back only on a fully returned slice), and the linked `OrderRequest` resolved by the case that answers it. v2 money movement: the case prices, `apps.payments` moves — `Refund.restock`/`Refund.return_case` keep manual refunds and case-paid payouts honest, `POST /api/v1/admin/returns/<ref>/refund` is finance/administrator-only and callable only after goods are received, partial settlements cap against the case then the payment, and the case follows its refund through the provider seam (`on_refund_settled`/`on_refund_failed`) with a refused gateway rolling the whole payout back. v3 disputes: `Dispute` (`JVDSP-…`) with append-only statements/evidence whose party is derived from the caller, staff claim + ruling with a mandatory reason that freezes the record, buyer withdrawal, and timeline + audit rows on every movement. Covered by `backend/tests/test_returns.py` (18 gate tests) |
 | 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
 | 18b | Search, Recommendations & Discovery (cont.) | ✅ §18.3 Discovery — `GET /api/v1/search/recommendations/` (public, `?kind=`) serves five shelves from one ranking entry point, each reading back through the same `searchable_products` chokepoint: `trending` (units in a 30-day window) and `popular` (all-time units) fall back to newest because a quiet marketplace still needs a homepage, while `related` (category, then brand, best-rated first), `similar` (nearest by the same `pg_trgm` machinery the typo rescue uses) and `personalized` (categories/brands of the shopper's own `seen=` history ranked by how well they sell) return fewer items rather than padded ones. Frontend: Home swaps the old discount-sorted "trending" placeholder for real Trending + Best sellers rails and adds "Recommended for you" from the browser's own recently-viewed list (no account, no server-side profile), and the product page gains a "Similar finds" rail beside "You might also like" with no card repeated across the two. Covered by `backend/tests/test_recommendations.py` (24 tests) + `frontend/src/data/search.test.js` (14 tests) |
-| 19 | Analytics & Reporting | 🔄 §19.1 Platform analytics done — `apps.reporting` rollups written only by `manage.py rebuild_reporting`, `/staff/analytics` over `data/staff.js`, `backend/tests/test_reporting.py`. §19.2 Seller analytics done — `GET /api/v1/seller/analytics/` (ownership-scoped totals + days + best sellers + voucher/review metrics + live inventory snapshot) with `/seller/analytics` over `data/seller.js`, `backend/tests/test_seller_analytics.py`; Phase 12 `/seller` dashboard untouched per marketplace-sellers rule 4 (documented deferral). §19.3 Operational analytics done — `DailyOperationsMetric`/`DailyStoreOpsMetric` + `admin/analytics/operations/` & `performance/` (order status buckets, fulfillment, returns, refunds, support, seller performance), `/staff/analytics` Operations + Seller performance sections, `backend/tests/test_operations_analytics.py` (7 tests). §19.4 reports still open |
+| 19 | Analytics & Reporting | ✅ Done — §19.1 platform money, §19.2 seller analytics (`/seller/analytics`, ownership-scoped; Phase 12 dashboard untouched per marketplace-sellers rule 4), §19.3 operational analytics (`DailyOperationsMetric`/`DailyStoreOpsMetric` + `admin/analytics/operations/` & `performance/`), §19.4 reports (five CSV exports at `admin/analytics/export/<report>/`, gate baked into the route) — all served from `apps.reporting` rollups written only by `manage.py rebuild_reporting`. Gate passed (reconciliation proven by partition + cross-table checks; §4 matrix on every read and export). **Deferred, documented:** Excel/PDF export (C3 — needs a new runtime dependency; a fake .xlsx is worse than none) and the Phase 12 dashboard extension (rule 4). Suite at the gate: 325 backend + 189 frontend tests, lint/build/migrations green |
 | 20 | Security, Compliance & Abuse Prevention | ⬜ Not started |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
 | 22 | Performance & Scalability | ⬜ Not started |
@@ -2051,17 +2051,63 @@ Provide useful operational and business intelligence.
 
 ### 19.4 Reports
 
--   [ ] Dashboard reports
--   [ ] Date filtering
--   [ ] Export CSV
+-   [x] Dashboard reports
+-   [x] Date filtering
+-   [x] Export CSV
 -   [ ] Export Excel
 -   [ ] Export PDF where appropriate
 
+> **Backend (done):** five reports — `summary`, `stores`, `products`,
+> `operations`, `performance` — at
+> `GET /api/v1/admin/analytics/export/<report>/?from=&to=`, each answering
+> `text/csv` with a `Content-Disposition` filename that names the range
+> (`jeyvro-<report>-<start>-<end>.csv`). The body is the CSV rendering of the
+> **same serializer output the JSON endpoint serves**, read from the same
+> rollups with no limit, so a report cannot show a number the API does not and
+> money leaves as the server's exact decimal string — never a float. The gate
+> is **part of the route** (`as_view(report=…, required_groups=…)`), not a query
+> parameter: the money reports (`summary`, `stores`) are finance/administrator,
+> the oversight reports (products, operations, performance) are the read-only
+> groups, and moderator/customer/anonymous are refused everywhere (§4). The
+> range is validated exactly as the reads are (§8): a reversed, malformed or
+> over-long range is a 400, never a silently clamped file. An empty range still
+> exports its header (a header-only file is a truthful answer; an empty body
+> looks like a broken download), a store name full of commas and quotes is
+> quoted per RFC 4180 so it stays one cell, and a range over 5,000 rows is
+> refused with `export_too_large` rather than truncated into a file that looks
+> complete. Covered by `backend/tests/test_reports_analytics.py` (6 gate tests).
+>
+> **Frontend (done):** `/staff/analytics` grows an **Export CSV** row of
+> download links that follow the page's range and the caller's own gate —
+> `staffAnalyticsCsvUrl()` builds the URL and a download is a plain navigation,
+> so the session cookie travels with it and the page never assembles a file.
+>
+> **Deferred (deliberate, not forgotten):** Excel and PDF stay unchecked. Both
+> need a new runtime dependency to write honestly (C3), and a mislabelled text
+> file pretending to be a spreadsheet is worse than no export — the same pin
+> §6 v1.16 recorded when §19.1 chose CSV only. Revisit with the tooling pass.
+
 ### Gate
 
--   [ ] Metrics reconcile with transactional data
--   [ ] Financial reports are consistent
--   [ ] Permissions prevent unauthorized analytics access
+-   [x] Metrics reconcile with transactional data
+-   [x] Financial reports are consistent
+-   [x] Permissions prevent unauthorized analytics access
+
+> **Gate (passed):** reconciliation is a *mechanism*, not a promise —
+> `rebuild_reporting` recomputes every rollup from the records, and the gate
+> tests prove it three ways: the §19.1 totals re-add to the order snapshots and
+> the ledger, the §19.2 seller day re-adds to the store's own rows (identical to
+> the staff drill-down payload), and the §19.3 status buckets **partition** the
+> orders created that day while `orders_cancelled` cross-checks the platform
+> row — two independent derivations of one day that must agree. Financial
+> consistency rides the same derivation (commission at the capture-time rate on
+> the store's net merchandise; the export writes the server's exact decimal),
+> and access is proven by the §4 matrix on **every** read and export: finance
+> and administrator 200 on the money, support and operations 200 on product
+> activity / operations / performance and 403 on the money, moderator 403 on the
+> money, operations and every export, and a signed-in customer and an anonymous
+> visitor 403 everywhere. Suite at the gate: **325 backend tests** and **189
+> frontend tests**, lint, build, migration check and `git diff --check` green.
 
 **Skills:** marketplace-admin, performance-skill
 

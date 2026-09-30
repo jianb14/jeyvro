@@ -41,4 +41,42 @@ urlpatterns = [
         views.SellerAnalyticsView.as_view(),
         name='seller-analytics',
     ),
+    # §19.4 reports — the report slug and its §4 gate are part of the route,
+    # not a branch inside one view, so no parameter can hand a money report to
+    # an oversight group. CSV is the only format (C3).
+    path(
+        'admin/analytics/export/summary/',
+        views.StaffAnalyticsExportView.as_view(
+            report='summary', required_groups=views.FINANCIAL_GROUPS
+        ),
+        name='staff-analytics-export-summary',
+    ),
+    path(
+        'admin/analytics/export/stores/',
+        views.StaffAnalyticsExportView.as_view(
+            report='stores', required_groups=views.FINANCIAL_GROUPS
+        ),
+        name='staff-analytics-export-stores',
+    ),
+    path(
+        'admin/analytics/export/products/',
+        views.StaffAnalyticsExportView.as_view(
+            report='products', required_groups=views.OPERATIONAL_GROUPS
+        ),
+        name='staff-analytics-export-products',
+    ),
+    path(
+        'admin/analytics/export/operations/',
+        views.StaffAnalyticsExportView.as_view(
+            report='operations', required_groups=views.OPERATIONAL_GROUPS
+        ),
+        name='staff-analytics-export-operations',
+    ),
+    path(
+        'admin/analytics/export/performance/',
+        views.StaffAnalyticsExportView.as_view(
+            report='performance', required_groups=views.OPERATIONAL_GROUPS
+        ),
+        name='staff-analytics-export-performance',
+    ),
 ]

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  STAFF_ANALYTICS_REPORTS,
   changeStaffRole,
   createBrand,
   createCategory,
@@ -30,6 +31,7 @@ import {
   reviewProduct,
   setStoreStatus,
   setUserStatus,
+  staffAnalyticsCsvUrl,
   unpublishProduct,
   updateCategory,
   updateStaffCommission,
@@ -1095,6 +1097,36 @@ describe("operational analytics accessors (19.3)", () => {
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/api/v1/admin/analytics/performance/"
     );
+  });
+});
+
+describe("report export links (19.4)", () => {
+  it("builds the download URL for a report with the page's range", () => {
+    expect(
+      staffAnalyticsCsvUrl("summary", { from: "2026-09-01", to: "2026-09-30" })
+    ).toBe(
+      "/api/v1/admin/analytics/export/summary/?from=2026-09-01&to=2026-09-30"
+    );
+    // No range means the server's default window — not an empty query string.
+    expect(staffAnalyticsCsvUrl("operations")).toBe(
+      "/api/v1/admin/analytics/export/operations/"
+    );
+  });
+
+  it("names every report and which gate it belongs to", () => {
+    expect(STAFF_ANALYTICS_REPORTS.map((report) => report.slug)).toEqual([
+      "summary",
+      "stores",
+      "products",
+      "operations",
+      "performance",
+    ]);
+    // The money reports are the two the API gates to finance/administrator.
+    expect(
+      STAFF_ANALYTICS_REPORTS.filter((report) => report.money).map(
+        (report) => report.slug
+      )
+    ).toEqual(["summary", "stores"]);
   });
 });
 

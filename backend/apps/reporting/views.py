@@ -21,6 +21,7 @@ as one (§19.2).
 """
 from datetime import date, timedelta
 
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -31,7 +32,7 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import InStaffGroup, IsSeller
 from apps.stores.models import Store
 
-from . import serializers, services
+from . import exports, serializers, services
 
 FINANCIAL_GROUPS = ['finance', 'administrator']
 OPERATIONAL_GROUPS = ['support', 'operations', 'finance', 'administrator']
@@ -222,6 +223,48 @@ class StaffAnalyticsPerformanceView(APIView):
                 many=True,
             ).data,
         })
+
+
+class StaffAnalyticsExportView(APIView):
+    """GET /api/v1/admin/analytics/export/<report>/?from=&to= — one report, CSV.
+
+    The report slug **and** its group gate arrive from the URL wiring
+    (`as_view(report=..., required_groups=...)`), so a money report can never be
+    served to an oversight group by one careless parameter — the gate is part of
+    the route, not a branch inside it. The body is the CSV rendering of the same
+    rollup read the JSON endpoint serves (§19.4, CSV-only per C3).
+    """
+
+    permission_classes = [IsAuthenticated, InStaffGroup]
+    # Both are declared here so the URL wiring may pass them as initkwargs
+    # (`as_view` only accepts keywords that already exist on the class) — the
+    # report and its §4 gate are route-level facts, never a query parameter.
+    report = None
+    required_groups = []
+
+    def get(self, request):
+        try:
+            start, end = _range(request)
+        except ValueError as exc:
+            return _bad_range(exc)
+        try:
+            body, filename = exports.render(self.report, start, end)
+        except exports.ExportTooLarge as exc:
+            return Response(
+                {'error': 'export_too_large', 'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except exports.UnknownReport:  # a URL wired to a slug that is not a report
+            return Response(
+                {
+                    'error': 'invalid_report',
+                    'detail': 'That report does not exist.',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        response = HttpResponse(body, content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
 
 # --- The seller's own window (§19.2) ----------------------------------------
