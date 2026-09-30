@@ -120,6 +120,7 @@ Writing these down is the point of the phase; a silent gap is a gap.
 | --- | --- |
 | Every catalog/store read | Reads are not state changes. The trail answers "what did they do?", not "what did they look at" — with one deliberate exception, the **export** (§19.4), which moves aggregate figures out of the building in bulk. |
 | Cart mutations | Session-scoped and self-owned; nothing leaves. |
+| A refused checkout — an empty cart, or the §20.2 v3 unit ceiling | Nothing happened. The refusal is an error envelope (§8) on a write that was never performed, so there is no state change to record: this matrix answers "what changed?". No stock moved and no order exists. |
 | Product/variant creation and deletion by the seller | Owner-scoped, and the review trail already records the moderation decision that makes a listing public. |
 | Login, logout, token refresh | Auth events belong to a security log, not this one; the throttle state (Phase 20.1) is the current home. |
 | Notification delivery | Has its own read/unread surface; delivery is a side effect of an already-audited action. |

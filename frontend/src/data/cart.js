@@ -61,6 +61,11 @@ function mapCart(data) {
       savings: data.totals?.savings ?? 0,
       promotionDiscount: data.totals?.promotion_discount ?? 0,
       itemsTotal: data.totals?.items_total ?? 0,
+      // §20.2 v3 — the server's whole-order unit ceiling, mapped not
+      // recomputed, so the cart can warn before checkout. The binding refusal
+      // is still the server's at checkout.
+      maxOrderUnits: data.totals?.max_order_units ?? null,
+      overUnitCeiling: data.totals?.over_unit_ceiling ?? false,
     },
   };
 }

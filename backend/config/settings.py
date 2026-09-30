@@ -163,6 +163,16 @@ PAYMENTS_PAYMENT_EXPIRY_HOURS = int(env('PAYMENTS_PAYMENT_EXPIRY_HOURS', '24'))
 PAYMENTS_GATEWAY_WEBHOOK_SECRET = env('PAYMENTS_GATEWAY_WEBHOOK_SECRET', '')
 PAYMENTS_GATEWAY_CHECKOUT_URL = env('PAYMENTS_GATEWAY_CHECKOUT_URL', '')
 
+# §20.2 v3 — the per-order total-units ceiling. `MAX_LINE_QUANTITY` (99) is per
+# *line*, so a 20-line cart could reach 1,980 units and reserve that much stock
+# across many stores in one checkout. This is a whole-order cap, deliberately
+# well above a real bulk buyer's basket (a restocking sari-sari store is the
+# legitimate case, not the abuse case) and configurable so operations can raise
+# it without a deploy. Enforced in `orders.services.create_order`, never in the
+# cart write path: the cart is advisory (no reservation), so the checkout is
+# the only place the number is actually load-bearing.
+ORDERS_MAX_ORDER_UNITS = int(env('ORDERS_MAX_ORDER_UNITS', '200'))
+
 # §20.2 v2 — how long an unpaid COD order is left holding its stock
 # reservation before it is *surfaced to staff*. This is a review threshold,
 # NOT a cancellation timer: a COD order is never auto-cancelled (§9.1 — cash

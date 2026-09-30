@@ -802,6 +802,203 @@ def test_the_review_window_is_configurable(settings):
 
 
 # --------------------------------------------------------------------------------------
+# The per-order total-units ceiling (§20.2 v3)
+#
+# `MAX_LINE_QUANTITY` (99) bounds one *line*, so a multi-line cart was unbounded:
+# 20 lines could reach 1,980 units and reserve that much stock across many stores
+# in a single checkout. This is the whole-order total those per-line caps never
+# constrained.
+#
+# The rule enforced here: the ceiling is a **backstop against one checkout
+# reserving a catalog's worth of stock**, not a limit on ordinary trade. So the
+# guards below are as much of the slice as the catch — a bulk buyer restocking a
+# sari-sari store is a legitimate customer, and a ceiling that punished them would
+# be worse than no ceiling at all.
+# --------------------------------------------------------------------------------------
+
+
+def _stocked_variants(slug, count, stock=500):
+    """`count` distinct variants on one seller, each holding `stock` units.
+
+    `_catalog` cannot be reused for the bulk cases: it hardcodes one seller
+    email (so a second call collides) and stocks only 10 units, and a 90-unit
+    line would fail the cart's live-stock check before the order ceiling was
+    ever reached.
+    """
+    seller = _user('bulkseller@example.com')
+    seller.is_seller = True
+    seller.save(update_fields=['is_seller'])
+    store = Store.objects.create(
+        user=seller,
+        name='Bulk Store',
+        slug=slug,
+        status=Store.Status.ACTIVE,
+        shipping_flat_fee=Decimal('0.00'),
+    )
+    variants = []
+    for index in range(count):
+        product = Product.objects.create(
+            store=store,
+            title=f'Bulk Product {index}',
+            base_price=Decimal('199.00'),
+            status=Product.Status.PUBLISHED,
+        )
+        variant = Variant.objects.create(
+            product=product, name='Default', price=Decimal('199.00'), is_default=True,
+        )
+        catalog_services.ensure_inventory(variant, initial_on_hand=stock)
+        variants.append(variant)
+    return variants
+
+
+def _bulk_cart(email, slug, *, lines=3, per_line=90):
+    """A cart of `lines` lines of `per_line` units, across distinct variants.
+
+    Each line stays under the 99 per-line cap while the basket total climbs past
+    the ceiling — which is the only shape this bug had.
+    """
+    buyer = _user(email)
+    variants = _stocked_variants(slug, lines)
+    cart = Cart.objects.get_or_create(user=buyer)[0]
+    for variant in variants:
+        cart_services.add_item(cart, variant, quantity=per_line)
+    return cart, buyer, variants
+
+
+def cart_unit_total(cart):
+    return order_services.cart_unit_count(cart)
+
+
+def order_unit_total(order):
+    return sum(
+        item.quantity
+        for seller_order in order.seller_orders.all()
+        for item in seller_order.items.all()
+    )
+
+
+def test_a_multi_line_cart_over_the_ceiling_cannot_check_out():
+    """The bug: 3 x 90 units is legal per line and illegal per order."""
+    cart, buyer, variants = _bulk_cart('bulk@example.com', 'bulk-guard')
+    assert cart_unit_total(cart) == 270 > cart_services.max_order_units()
+
+    with pytest.raises(order_services.CheckoutError) as excinfo:
+        order_services.create_order(buyer, _address(buyer).pk)
+
+    assert excinfo.value.code == 'order_units_exceeded'
+    # Nothing was written: the refusal happens before any reservation.
+    assert Order.objects.filter(user=buyer).count() == 0
+    for variant in variants:
+        assert Inventory.objects.get(variant=variant).reserved == 0
+def test_an_order_exactly_at_the_ceiling_is_allowed(settings):
+    """The boundary is inclusive — "at most N" means N is fine, N+1 is not.
+
+    99 is the per-line maximum, so one line sits exactly on a lowered ceiling.
+    A `>` that should have been `>=` would refuse a legal order, and a customer
+    could then never buy a single line at all.
+    """
+    settings.ORDERS_MAX_ORDER_UNITS = 99
+    buyer = _user('atlimit@example.com')
+    cart = Cart.objects.get_or_create(user=buyer)[0]
+    variant = _stocked_variants('at-limit', 1)[0]
+    cart_services.add_item(cart, variant, quantity=99)
+
+    assert cart_unit_total(cart) == cart_services.max_order_units() == 99
+    order = order_services.create_order(buyer, _address(buyer).pk)
+
+    assert order_unit_total(order) == 99
+    assert Inventory.objects.get(variant=variant).reserved == 99
+
+
+def test_an_ordinary_bulk_buyer_is_not_blocked():
+    """The false-positive guard: a real restock basket goes through untouched.
+
+    A sari-sari store buying 180 units across two lines is ordinary trade. If the
+    ceiling refuses this, the ceiling is wrong, not the buyer.
+    """
+    buyer = _user('restock@example.com')
+    cart = Cart.objects.get_or_create(user=buyer)[0]
+    for variant in _stocked_variants('restock', 2):
+        cart_services.add_item(cart, variant, quantity=90)
+
+    order = order_services.create_order(buyer, _address(buyer).pk)
+
+    assert order_unit_total(order) == 180
+    assert sum(
+        seller_order.items.count() for seller_order in order.seller_orders.all()
+    ) == 2
+
+
+def test_the_per_line_cap_still_stands():
+    """The two caps are independent: the ceiling did not replace the line cap."""
+    buyer = _user('bigline@example.com')
+    cart = Cart.objects.get_or_create(user=buyer)[0]
+    variant = _catalog('big-line')[3]
+
+    with pytest.raises(ValueError):
+        cart_services.add_item(
+            cart, variant, quantity=cart_services.MAX_LINE_QUANTITY + 1
+        )
+
+
+def test_the_ceiling_is_configurable_without_a_deploy(settings):
+    """Operations must be able to raise it for a wholesale account."""
+    assert cart_services.max_order_units() == 200
+
+    settings.ORDERS_MAX_ORDER_UNITS = 5000
+    assert cart_services.max_order_units() == 5000
+
+    buyer = _user('wholesale@example.com')
+    cart = Cart.objects.get_or_create(user=buyer)[0]
+    for variant in _stocked_variants('wholesale', 3):
+        cart_services.add_item(cart, variant, quantity=90)
+
+    order = order_services.create_order(buyer, _address(buyer).pk)
+    assert order_unit_total(order) == 270
+
+
+def test_the_cart_publishes_the_ceiling_so_the_ui_can_warn_early():
+    """Advisory on the read, binding at checkout: the cart is told it is over the
+    line before the customer presses Place Order."""
+    from apps.cart.serializers import build_cart_payload
+
+    buyer = _user('cartnotice@example.com')
+    cart = Cart.objects.get_or_create(user=buyer)[0]
+    for variant in _stocked_variants('cartnotice', 3):
+        cart_services.add_item(cart, variant, quantity=90)
+
+    totals = build_cart_payload(cart)['totals']
+
+    assert totals['item_count'] == 270
+    assert totals['max_order_units'] == cart_services.max_order_units()
+    assert totals['over_unit_ceiling'] is True
+
+
+def test_an_ordinary_cart_is_not_flagged_over_the_ceiling():
+    from apps.cart.serializers import build_cart_payload
+
+    buyer = _user('cartok@example.com')
+    cart = Cart.objects.get_or_create(user=buyer)[0]
+    cart_services.add_item(cart, _catalog('cart-ok')[3], quantity=3)
+
+    totals = build_cart_payload(cart)['totals']
+    assert totals['over_unit_ceiling'] is False
+
+
+def test_the_checkout_error_message_is_customer_safe():
+    """No stack, no internal ids, and it says what to do next."""
+    _cart, buyer, _variants = _bulk_cart('safemsg@example.com', 'safe-msg')
+
+    with pytest.raises(order_services.CheckoutError) as excinfo:
+        order_services.create_order(buyer, _address(buyer).pk)
+
+    message = str(excinfo.value)
+    assert '270' in message and '200' in message
+    assert 'split' in message.lower()
+    assert 'Traceback' not in message
+
+
+# --------------------------------------------------------------------------------------
 # Throttling: starts are capped, reading is not (§10.2)
 # --------------------------------------------------------------------------------------
 

@@ -45,6 +45,8 @@ const CART_PAYLOAD = {
     savings: 300,
     promotion_discount: 30,
     items_total: 668,
+    max_order_units: 200,
+    over_unit_ceiling: false,
   },
 };
 
@@ -88,7 +90,44 @@ describe("cart accessors", () => {
     expect(cart.groups[0].promotionDiscount).toBe(30);
     expect(cart.items[0].promotionSavings).toBe(30);
     expect(cart.items[0].promotionLabel).toBe("Flash sale");
+    // §20.2 v3 — the ceiling is the server's number, mapped not recomputed, so
+    // a 2-item cart reads as comfortably under the limit.
+    expect(cart.totals.maxOrderUnits).toBe(200);
+    expect(cart.totals.overUnitCeiling).toBe(false);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/cart/");
+  });
+
+  it("flags a cart the server says is over the unit ceiling", async () => {
+    mockFetch({
+      ...CART_PAYLOAD,
+      totals: {
+        ...CART_PAYLOAD.totals,
+        item_count: 270,
+        max_order_units: 200,
+        over_unit_ceiling: true,
+      },
+    });
+
+    const cart = await fetchCart();
+
+    // The verdict is the server's; the client never decides it for itself.
+    expect(cart.totals.itemCount).toBe(270);
+    expect(cart.totals.maxOrderUnits).toBe(200);
+    expect(cart.totals.overUnitCeiling).toBe(true);
+  });
+
+  it("defaults the ceiling hint safely when the server omits it", async () => {
+    const legacyTotals = { ...CART_PAYLOAD.totals };
+    delete legacyTotals.max_order_units;
+    delete legacyTotals.over_unit_ceiling;
+    mockFetch({ ...CART_PAYLOAD, totals: legacyTotals });
+
+    const cart = await fetchCart();
+
+    // An older backend must not make the cart claim it is over a limit it
+    // never heard of.
+    expect(cart.totals.maxOrderUnits).toBeNull();
+    expect(cart.totals.overUnitCeiling).toBe(false);
   });
 
   it("sends add/update/remove to the right URLs with the right verbs", async () => {

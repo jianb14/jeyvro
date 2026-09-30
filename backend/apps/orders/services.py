@@ -109,6 +109,17 @@ def _generate_order_number():
     raise RuntimeError('Could not allocate a unique order number.')
 
 
+def cart_unit_count(cart):
+    """Total units in a cart — one aggregate, not N queries.
+
+    Server truth for the §20.2 v3 ceiling, read from the cart rows rather than
+    from any client-sent number.
+    """
+    if cart is None:
+        return 0
+    return cart.items.aggregate(total=Sum('quantity'))['total'] or 0
+
+
 def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_code=''):
     """Creates the parent order + one SellerOrder per store — one transaction.
 
@@ -141,6 +152,20 @@ def create_order(user, address_id, payment_method=PaymentMethod.COD, voucher_cod
         )
         if not items:
             raise CheckoutError('Your cart is empty.', code='empty_cart')
+
+        # The whole-order unit ceiling (§20.2 v3). Checked here, inside the cart
+        # lock and before any pricing or reservation, so an over-limit cart
+        # reserves nothing and writes no partial order. Per-line quantity is
+        # already capped at the cart layer; this is the basket total those
+        # per-line caps never bounded.
+        units = cart_unit_count(cart)
+        ceiling = cart_services.max_order_units()
+        if units > ceiling:
+            raise CheckoutError(
+                f'This order has {units} units. An order may contain at most '
+                f'{ceiling}; please split it into several orders.',
+                code='order_units_exceeded',
+            )
 
         groups = {}
         for item in items:

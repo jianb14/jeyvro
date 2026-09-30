@@ -8,6 +8,7 @@ Rules honoured (PROJECT_CONTEXT §6, marketplace-orders):
 - guest carts merge into the account cart at login (single entry point:
   the accounts LoginView, which passes the pre-login session key)
 """
+from django.conf import settings
 from django.db import transaction
 
 from apps.catalog.models import Product
@@ -16,6 +17,23 @@ from apps.stores.models import Store
 from .models import Cart, CartItem, WishlistItem
 
 MAX_LINE_QUANTITY = 99
+
+# §20.2 v3 — the whole-order unit ceiling. `MAX_LINE_QUANTITY` bounds one *line*,
+# so a 20-line cart could reach 1,980 units; this bounds the basket total those
+# per-line caps never constrained. It lives beside the line cap because both are
+# the same policy: how much one customer may take at once. Read from settings so
+# operations can raise it for a legitimate wholesale account without a deploy.
+#
+# The default sits well above an ordinary basket and above a real bulk buyer's
+# restock (the legitimate case, not the abuse case) — it is a backstop against a
+# single checkout reserving a catalog's worth of stock across many stores, not a
+# limit on ordinary trade.
+_MAX_ORDER_UNITS_DEFAULT = 200
+
+
+def max_order_units():
+    """Total units one order may contain (§20.2 v3)."""
+    return int(getattr(settings, 'ORDERS_MAX_ORDER_UNITS', _MAX_ORDER_UNITS_DEFAULT))
 
 
 # --- Cart resolution (guest strategy: session-keyed carts) ---

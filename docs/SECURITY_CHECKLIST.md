@@ -73,9 +73,23 @@ leaking the buyer through it was the bug.
   payment expiry, and the reservation was wrongly bound to that same window —
   an unpaid COD order held its units forever), and **the system reports, a human
   releases** — the fix is a worklist, not an auto-canceller, because an unpaid
-  COD order may be a real parcel in transit. Still open in §20.2: **the
-  per-order total-units ceiling and suspicious-order detection** (slice v3) and
-  **account abuse** (slice v4).
+  COD order may be a real parcel in transit.
+- **20.2 abuse controls, slice v3 (the per-order total-units ceiling) is half
+  done** — `ORDERS_MAX_ORDER_UNITS` (default **200**) bounds the **order total**,
+  which the per-line `MAX_LINE_QUANTITY` (99) never did: 20 lines of 99 is 1,980
+  units, and one checkout could reserve that much stock across many stores.
+  Enforced in `orders.services.create_order`, **inside the cart lock and before
+  any pricing or reservation**, so an over-limit cart reserves nothing and writes
+  no partial order; the cart read publishes `max_order_units` /
+  `over_unit_ceiling` as an **advisory** hint only, and the binding check stays
+  server-side. Two rules belong in this checklist:
+  **the false positive is the thing to fear** (the ceiling sits deliberately well
+  above an ordinary basket and above a real bulk buyer's restock, so a
+  restocking sari-sari store is not punished for ordinary trade), and **the
+  boundary is inclusive** — exactly `N` units passes, because a `>` where `>=`
+  belonged would refuse a legal order. A refusal writes **no audit row**:
+  nothing happened. Still open in §20.2: **suspicious-order detection** (the
+  other half of slice v3) and **account abuse** (slice v4).
   The throttling above is the floor, not the answer.
 - **20.3 auditing is done** — `docs/AUDIT_COVERAGE.md` is the matrix of every
   sensitive operation and the action it writes. It closed three real gaps: the

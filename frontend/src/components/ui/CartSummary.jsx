@@ -20,6 +20,8 @@ export function CartSummary({ totals = {}, onCheckout, checkoutDisabled = false,
     savings = 0,
     promotionDiscount = 0,
     itemsTotal = subtotal,
+    maxOrderUnits = null,
+    overUnitCeiling = false,
   } = totals;
 
   return (
@@ -73,7 +75,17 @@ export function CartSummary({ totals = {}, onCheckout, checkoutDisabled = false,
         <p className="text-xs leading-relaxed text-sand-500 dark:text-sand-400">{checkoutNote}</p>
       )}
 
-      <Button size="lg" onClick={onCheckout} disabled={checkoutDisabled}>
+      {overUnitCeiling && (
+        <p
+          role="status"
+          className="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          This cart has {itemCount} items. One order can hold at most {maxOrderUnits} —
+          remove some items, or check out in two orders.
+        </p>
+      )}
+
+      <Button size="lg" onClick={onCheckout} disabled={checkoutDisabled || overUnitCeiling}>
         Proceed to checkout
       </Button>
 

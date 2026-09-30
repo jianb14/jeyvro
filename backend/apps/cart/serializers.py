@@ -163,6 +163,11 @@ def build_cart_payload(cart, request=None):
         ),
         'promotion_discount': float(promotion_discount),
     }
+    # §20.2 v3 — publish the whole-order unit ceiling on the read so the cart can
+    # warn *before* checkout. Advisory only: the binding check is on the server,
+    # in `orders.services.create_order`, where the cart is re-read under lock.
+    totals['max_order_units'] = services.max_order_units()
+    totals['over_unit_ceiling'] = totals['item_count'] > totals['max_order_units']
     # §16.2 — the net figure lives server-side too: the cart renders this as
     # its "Items total" instead of subtracting anything in the browser.
     totals['items_total'] = float(max(

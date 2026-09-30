@@ -92,6 +92,7 @@ one is a test:
 | Messaging | user block | `messaging/services.py::_assert_not_blocked` | `PermissionDenied` (403) |
 | Thread start | user block | `start_or_get_conversation`, before the row exists | `PermissionDenied` (403) |
 | Staff triage | dismiss / confirm | `moderation/services.py::resolve_flag` | `content_flag_dismissed` / `content_flag_confirmed` |
+| Checkout | whole-order unit ceiling | `orders/services.py::create_order`, inside the cart lock, **before** any pricing or reservation | `CheckoutError(order_units_exceeded)`; nothing written |
 
 **The throttle is write-only.** The inbox list and the thread starter are the
 same endpoint, so a plain `ScopedRateThrottle` cannot tell a read from a
@@ -137,13 +138,49 @@ it by hand.
   order still claims it would double-sell. A reason is mandatory, and the action
   writes `order.cod_reservation_released`.
 
-## Not yet covered — slice v3 (open)
+## The per-order total-units ceiling (§20.2 v3)
+
+`MAX_LINE_QUANTITY` (99) is a cap on **one line**, so it never bounded a basket:
+20 lines of 99 is 1,980 units, and one checkout could reserve that much stock
+across many stores at once.
+
+| | |
+| --- | --- |
+| `ORDERS_MAX_ORDER_UNITS` | default **200**, read from settings at call time |
+| Enforced in | `orders.services.create_order`, inside the cart lock, **before** any pricing or reservation |
+| Error | `CheckoutError(code='order_units_exceeded')` — names both numbers and tells the customer to split the order |
+| Published on | `GET /api/v1/cart/` → `totals.max_order_units` and `totals.over_unit_ceiling` (advisory) |
+
+- The cart read publishes the ceiling so the UI can warn **before** checkout. It
+  is advisory only; the binding check is on the server, in `create_order`, where
+  the cart is re-read under lock — so a client that ignores the hint still
+  cannot get past it.
+- The refusal happens before anything is written, so an over-limit cart reserves
+  no stock and writes no partial order.
+- The boundary is **inclusive**: exactly `N` units passes. A `>` that should have
+  been `>=` would refuse a legal order and stop a customer buying a single line.
+- The per-line cap still stands independently. The two are separate policies.
+- **No audit row.** A refused checkout is not a state change — nothing was
+  created, no stock moved, so there is nothing to record and the refusal adds no
+  row to §6's matrix. `docs/AUDIT_COVERAGE.md` says so in writing rather than
+  leaving the absence to be discovered as a hole.
+
+**The false-positive guard is the point of this control.** The default sits well
+above an ordinary basket and above a real bulk buyer's restock — a sari-sari store
+buying 180 units across two lines is ordinary trade and must go through
+untouched. The ceiling is a backstop against *one checkout reserving a catalog's
+worth of stock*, not a limit on ordinary trade; a ceiling that punished the
+legitimate wholesale customer would be worse than having none. It is configurable
+so operations can raise it for a real wholesale account without a deploy, and the
+tests assert the 180-unit restock, the inclusive boundary, and the configurability
+as contracts rather than leaving them to hope.
+
+## Not yet covered — the rest of slice v3, and slice v4 (open)
 
 These are the §20.2 gaps that remain, listed so the page never implies the
-phase is finished.
+phase is finished. **Slice v3 is half done**: the per-order total-units ceiling
+above shipped, and the suspicious-order foundation below is the other half.
 
-- **Per-order quantity ceiling** — `MAX_LINE_QUANTITY = 99` is per *line*, so
-  a 20-line cart is 1,980 units. A total-units cap per order is missing.
 - **Suspicious-order signals** — high-value COD on a new account, many
   distinct shipping addresses, repeat abandon/cancel. Same contract as this
   slice: flag for a human, never auto-block the buyer.

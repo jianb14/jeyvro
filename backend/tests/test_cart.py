@@ -130,6 +130,9 @@ def test_guest_cart_is_server_authoritative_across_requests(client):
     assert payload['totals'] == {
         'line_count': 1, 'item_count': 2, 'subtotal': 598.0, 'savings': 200.0,
         'promotion_discount': 0.0, 'items_total': 598.0,
+        # §20.2 v3 — the whole-order ceiling travels on every cart read so the
+        # UI can warn before checkout. A 2-unit cart is nowhere near it.
+        'max_order_units': 200, 'over_unit_ceiling': False,
     }
     item = payload['items'][0]
     assert item['price'] == 299.0           # server-resolved, never client-sent
@@ -156,6 +159,7 @@ def test_add_to_cart_increments_existing_line(client):
         'line_count': 1, 'item_count': 4,
         'subtotal': 1196.0, 'savings': 400.0,
         'promotion_discount': 0.0, 'items_total': 1196.0,
+        'max_order_units': 200, 'over_unit_ceiling': False,
     }
 
 

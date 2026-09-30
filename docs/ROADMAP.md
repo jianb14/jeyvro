@@ -2197,8 +2197,8 @@ Perform continuous and dedicated security hardening.
         `create_order` make it race-safe and audited
         (`voucher.redeemed`). Nothing was added here.
 -   [x] Inventory abuse prevention — *slice v2* (the stale-COD reservation, below)
--   [ ] Suspicious order detection foundation — slice v3
--   [ ] Per-order total-units ceiling — slice v3
+-   [ ] Suspicious order detection foundation — *slice v3, second half* (below)
+-   [x] Per-order total-units ceiling — *slice v3* (see below)
 -   [ ] Account abuse controls — slice v4
 
 > **Slice v1 (done) — spam & messaging.** The slice is built on one decision:
@@ -2261,10 +2261,24 @@ Perform continuous and dedicated security hardening.
 > `ORDERS_COD_RESERVATION_REVIEW_DAYS` (default 7) is a review threshold, never a
 > cancellation timer. No migration. Suite at this gate: **403 backend tests**.
 
-> **Deferred, not overlooked:** the per-order total-units ceiling
-> (`MAX_LINE_QUANTITY = 99` is per *line*, so a 20-line cart is 1,980 units) and
-> suspicious-order detection (both slice v3 — they need persistence and a risk
-> model, not a content rule), account abuse (slice v4), and audit retention /
+> **Slice v3 (done) — the per-order total-units ceiling.** `MAX_LINE_QUANTITY = 99` bounds one *line*, so it never bounded a basket: 20 lines could reach 1,980 units and one checkout could reserve that much stock across many stores.
+> `ORDERS_MAX_ORDER_UNITS` (default **200**) bounds the order **total**, enforced in
+> `create_order` inside the cart lock and **before** any pricing or reservation, so an
+> over-limit cart reserves nothing and writes no partial order. The refusal is
+> `CheckoutError(code='order_units_exceeded')`, naming both numbers and telling the
+> customer to split the order. The cart read also publishes `max_order_units` /
+> `over_unit_ceiling` so the UI can warn *before* checkout — advisory only; the
+> binding check is server-side. Three guards are asserted as contracts, not hopes:
+> the boundary is **inclusive** (exactly `N` passes; a `>` where `>=` belonged would
+> stop a customer buying a single line), the per-line cap still stands
+> independently, and a **real bulk buyer is not blocked** — 180 units across two lines
+> is ordinary trade. It is configurable so operations can raise it for a wholesale
+> account without a deploy. No migration.
+
+> **Deferred, not overlooked:** suspicious-order detection (high-value COD on a new
+> account, many distinct shipping addresses, repeat abandon/cancel) — it needs
+> persistence and a risk model rather than a counter, and it must *flag* rather than
+> block; account abuse (slice v4), and audit retention /
 > signed export / alerting (Phase 23).
 
 ### 20.3 Sensitive operations
@@ -2308,15 +2322,18 @@ Perform continuous and dedicated security hardening.
 
 -   [ ] Security checklist complete
 -   [ ] Permission tests pass
--   [ ] Abuse controls verified — *slices v1/v2 done*; v3/v4 remain
+-   [ ] Abuse controls verified — *slices v1/v2 done, slice v3 half done*;
+    suspicious-order detection and account abuse remain
 -   [x] Sensitive operations produce audit records
 
 > **Note:** the gate stays open — "security checklist complete" and "permission
 > tests pass" are still §20.1 items, and §20.2 is **partly** done: slice v1
 > (spam, review and messaging abuse) shipped and is proven by
-> `docs/ABUSE_CONTROLS.md` + `tests/test_abuse_controls.py`, and **slice v2**
-> (the stale-COD reservation) shipped in `79aa255`, while **slices v3/v4**
-> (suspicious orders, the per-order quantity ceiling, account abuse) remain
+> `docs/ABUSE_CONTROLS.md` + `tests/test_abuse_controls.py`, **slice v2**
+> (the stale-COD reservation) shipped in `79aa255`, and **slice v3** is half
+> done — the per-order total-units ceiling shipped (below), leaving
+> **suspicious-order detection** (the other half of v3) and **account abuse**
+> (slice v4) open
 > — "abuse controls verified" cannot be ticked until they do. Audit
 > **retention, export and alerting** are honestly deferred to the deployment
 > phase (Phase 23), as are production env values and a shared cache for
