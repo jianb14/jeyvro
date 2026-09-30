@@ -57,7 +57,7 @@ leaking the buyer through it was the bug.
   anything.
 - **20.2 abuse controls, slice v1 (spam & messaging) is done** —
   `docs/ABUSE_CONTROLS.md` is the matrix, `backend/tests/test_abuse_controls.py`
-  (60 tests) drives it. Two rules about how it behaves belong in this checklist:
+  (68 tests) drives it. Two rules about how it behaves belong in this checklist:
   **automatic content rules queue, they never censor** (a hit files a flag for a
   human; nothing is deleted, rewritten, or refused, and the author's own copy
   stays readable), and **a rule that cannot justify itself in a false-positive

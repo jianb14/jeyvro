@@ -251,10 +251,13 @@ Carried forward, not overlooked:
 
 - **Voucher and promotion abuse** — already solid. `usage_limit`,
   `per_user_limit`, `first_order_only`, an append-only `VoucherUsage` ledger
-  and row-locked redemption make it race-safe. Nothing to add in this slice.
-- **Inventory / quantity abuse** and **suspicious-order detection** — real
-  gaps, deferred to §20.2 slice v2. They need persistence and a risk model,
-  not a content rule.
+  and row-locked redemption make it race-safe. Nothing was ever needed here.
+- **Inventory / quantity abuse** — *closed.* The two halves arrived as slice
+  v2 (a stale-COD reservation can no longer pin stock forever) and slice v3
+  (above — one checkout can no longer reserve a catalog's worth): what remains
+  from the original list is detection, not prevention.
+- **Suspicious-order detection** — real gap, the other half of slice v3. It
+  needs persistence and a risk model, not a content rule.
 - **Account abuse** (per-email registration caps, disposable-domain checks) —
-  real gap, deferred to slice v3.
+  real gap, deferred to slice v4.
 - **Alerting, retention, and signed audit export** — deferred to Phase 23.
