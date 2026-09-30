@@ -105,6 +105,9 @@ triggered by `delivered` and the record of the transition commit together.
 | Review hidden / restored | `review_hidden`, `review_restored` | moderator | `test_reviews.py` |
 | Review reports resolved | `review_reports_resolved` | moderator | `test_reviews.py` |
 | Conversation reported | `conversation_reported` | customer | `test_messaging.py` |
+| Content flagged by an automatic rule (Phase 20.2) | `content_flagged`, `content_flag_reopened` | the author (system action on their content) | `test_abuse_controls.py` |
+| Flag dismissed / confirmed by staff (§20.2) | `content_flag_dismissed`, `content_flag_confirmed` | moderator | `test_abuse_controls.py` |
+| User blocked / unblocked (§20.2) | `conversation_blocked`, `conversation_unblocked` | the blocker | `test_abuse_controls.py` |
 | Return lifecycle | `return.requested`, `return.shipped`, `return.received`, `return.restocked`, `return.cancelled`, `return.closed`, `return.approved`, `return.rejected`, `return.admin_decision` | customer / seller / staff | `test_returns.py` |
 | Dispute lifecycle | `dispute.created`, `dispute.statement_added`, `dispute.evidence_added`, `dispute.review`, `dispute.resolved`, `dispute.cancelled` | customer / seller / support | `test_returns.py` |
 

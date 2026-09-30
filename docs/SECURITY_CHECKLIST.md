@@ -55,9 +55,18 @@ leaking the buyer through it was the bug.
   land with the deployment phase (Phase 23). LocMemCache is per-process, so a
   multi-worker deploy needs a shared cache before the rate limits mean
   anything.
-- **20.2 abuse controls** (spam, messaging abuse, suspicious-order detection,
-  inventory abuse) are the next slice; the throttling above is the floor, not
-  the answer.
+- **20.2 abuse controls, slice v1 (spam & messaging) is done** —
+  `docs/ABUSE_CONTROLS.md` is the matrix, `backend/tests/test_abuse_controls.py`
+  (48 tests) drives it. Two rules about how it behaves belong in this checklist:
+  **automatic content rules queue, they never censor** (a hit files a flag for a
+  human; nothing is deleted, rewritten, or refused, and the author's own copy
+  stays readable), and **a rule that cannot justify itself in a false-positive
+  test does not ship** — the order-number, acronym, Tagalog, own-storefront and
+  "giving a seller my email" cases are asserted as contracts, not left to hope.
+  Messaging also gained user blocks and a write-only `conversation` throttle on
+  thread starts. Still open in §20.2: **inventory/quantity abuse and
+  suspicious-order detection** (slice v2) and **account abuse** (slice v3).
+  The throttling above is the floor, not the answer.
 - **20.3 auditing is done** — `docs/AUDIT_COVERAGE.md` is the matrix of every
   sensitive operation and the action it writes. It closed three real gaps: the
   §19.4 CSV exports (`analytics.exported` — actor, report, range, row count), a

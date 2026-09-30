@@ -4,6 +4,7 @@ from rest_framework import serializers
 from apps.accounts.models import User
 from .models import (
     Conversation,
+    ConversationBlock,
     ConversationReport,
     ConversationStatus,
     ConversationType,
@@ -121,3 +122,47 @@ class SendMessageSerializer(serializers.Serializer):
 class ReportConversationSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=64)
     details = serializers.CharField(required=False, allow_blank=True)
+
+
+class ConversationBlockSerializer(serializers.ModelSerializer):
+    """The blocker's own list of people they have refused contact from.
+
+    Only the blocker ever reads this, and only their own rows are listed. The
+    blocked party is shown by name/email because the blocker chose them from a
+    conversation they can already see — this endpoint is not a directory.
+    """
+
+    blocked = PublicUserSerializer(read_only=True)
+    store_name = serializers.CharField(source='store.name', read_only=True, default='')
+
+    class Meta:
+        model = ConversationBlock
+        fields = [
+            'id',
+            'blocked',
+            'store',
+            'store_name',
+            'reason',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+
+class CreateConversationBlockSerializer(serializers.Serializer):
+    """Block a user directly, or the store owner behind a conversation."""
+
+    user_id = serializers.IntegerField(required=False, allow_null=True)
+    conversation_id = serializers.IntegerField(required=False, allow_null=True)
+    reason = serializers.CharField(
+        required=False, allow_blank=True, max_length=255, default=''
+    )
+
+    def validate(self, attrs):
+        has_user = bool(attrs.get('user_id'))
+        has_conversation = bool(attrs.get('conversation_id'))
+        if has_user == has_conversation:
+            raise serializers.ValidationError(
+                'Provide exactly one of user_id or conversation_id.'
+            )
+        return attrs
+

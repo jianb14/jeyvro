@@ -3,16 +3,28 @@ from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, Validat
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
+from apps.accounts.models import User
 from apps.catalog.models import Product
 from apps.orders.models import Order
 from apps.stores.models import Store
 from . import services
-from .models import Conversation, ConversationStatus, ConversationType, Message
+from .throttling import WriteOnlyScopedRateThrottle
+from .models import (
+    Conversation,
+    ConversationBlock,
+    ConversationReport,
+    ConversationStatus,
+    ConversationType,
+    Message,
+)
 from .serializers import (
+    ConversationBlockSerializer,
     ConversationDetailSerializer,
     ConversationListSerializer,
+    CreateConversationBlockSerializer,
     MessageSerializer,
     ReportConversationSerializer,
     SendMessageSerializer,
@@ -23,6 +35,11 @@ from .serializers import (
 class CustomerConversationListView(APIView):
     """Customer-facing conversations list and conversation starter."""
     permission_classes = [IsAuthenticated]
+    # §20.2 — starting threads is throttled separately from sending in them;
+    # without it, one request per store was an unthrottled flood. The scope is
+    # write-only so reading the inbox stays unthrottled (§10.2).
+    throttle_scope = 'conversation'
+    throttle_classes = [WriteOnlyScopedRateThrottle, AnonRateThrottle]
 
     def get(self, request):
         conversations = Conversation.objects.filter(customer=request.user).select_related(
@@ -75,7 +92,12 @@ class CustomerConversationListView(APIView):
                 subject=data.get('subject', ''),
                 initial_message=data.get('message', ''),
             )
-        except (ValidationError, PermissionDenied) as e:
+        except PermissionDenied as e:
+            # A refused start is a 403, not a 400: the request was
+            # well-formed and the caller is simply no longer allowed to reach
+            # this seller (§20.2 block). A ValidationError stays a 400.
+            return Response({'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         detail_serializer = ConversationDetailSerializer(conversation, context={'request': request})
@@ -215,4 +237,86 @@ class TotalUnreadCountView(APIView):
     def get(self, request):
         count = services.get_total_unread_messages(request.user)
         return Response({'unread_count': count})
+
+
+class ConversationBlockListView(APIView):
+    """The caller's own blocks — list them, or add one (§20.2)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        blocks = ConversationBlock.objects.filter(blocker=request.user).select_related(
+            'blocked', 'store'
+        )
+        return Response({
+            'count': blocks.count(),
+            'items': ConversationBlockSerializer(blocks, many=True).data,
+        })
+
+    def post(self, request):
+        serializer = CreateConversationBlockSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        store = None
+        if data.get('user_id'):
+            target = User.objects.filter(pk=data['user_id']).first()
+            if target is None:
+                return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            conv = Conversation.objects.select_related('store', 'customer').filter(
+                pk=data['conversation_id']
+            ).first()
+            if conv is None:
+                return Response(
+                    {'error': 'Conversation not found.'}, status=status.HTTP_404_NOT_FOUND
+                )
+            if not services.can_access_conversation(conv, request.user):
+                # Same refusal for "not yours" and "does not exist": a stranger
+                # must not be able to probe which conversation ids are real.
+                return Response(
+                    {'error': 'Conversation not found.'}, status=status.HTTP_404_NOT_FOUND
+                )
+            if conv.customer_id == request.user.id:
+                target = conv.store.user if conv.store else None
+            else:
+                target = conv.customer
+            if target is None:
+                return Response(
+                    {'error': 'There is no user to block on this conversation.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            store = conv.store
+
+        if target.pk == request.user.pk:
+            return Response(
+                {'error': 'You cannot block yourself.'}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            block = services.block_user(
+                request.user, target, store=store, reason=data.get('reason', '')
+            )
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            ConversationBlockSerializer(block).data, status=status.HTTP_201_CREATED
+        )
+
+
+class ConversationBlockDetailView(APIView):
+    """Lift a block. Scoped to the blocker — nobody else may remove one."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            services.unblock_user(request.user, pk)
+        except ConversationBlock.DoesNotExist:
+            return Response(
+                {'error': 'Block not found.'}, status=status.HTTP_404_NOT_FOUND
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 

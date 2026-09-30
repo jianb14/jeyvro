@@ -42,7 +42,7 @@
 | 18 | Search, Recommendations & Discovery | 🔄 §18.1 v1 shipped — `apps.search` live on `GET /api/v1/search/` (ranked PostgreSQL full-text over a weighted `tsvector`, composed filters, OR-counted facets, pagination, `pg_trgm` typo rescue) + `GET /api/v1/search/suggest/` (autocomplete), both public and permission-safe through one `searchable_products` chokepoint; frontend `/search` (URL-driven filters/sort/pagination, store/category companion strips, fuzzy disclosure) + navbar autocomplete on `src/data/search.js`. `backend/tests/test_search.py` (36 tests) + `frontend/src/data/search.test.js` (7 tests). §18.2 indexing strategy and §18.3 discovery still open |
 | 18b | Search, Recommendations & Discovery (cont.) | ✅ §18.3 Discovery — `GET /api/v1/search/recommendations/` (public, `?kind=`) serves five shelves from one ranking entry point, each reading back through the same `searchable_products` chokepoint: `trending` (units in a 30-day window) and `popular` (all-time units) fall back to newest because a quiet marketplace still needs a homepage, while `related` (category, then brand, best-rated first), `similar` (nearest by the same `pg_trgm` machinery the typo rescue uses) and `personalized` (categories/brands of the shopper's own `seen=` history ranked by how well they sell) return fewer items rather than padded ones. Frontend: Home swaps the old discount-sorted "trending" placeholder for real Trending + Best sellers rails and adds "Recommended for you" from the browser's own recently-viewed list (no account, no server-side profile), and the product page gains a "Similar finds" rail beside "You might also like" with no card repeated across the two. Covered by `backend/tests/test_recommendations.py` (24 tests) + `frontend/src/data/search.test.js` (14 tests) |
 | 19 | Analytics & Reporting | ✅ Done — §19.1 platform money, §19.2 seller analytics (`/seller/analytics`, ownership-scoped; Phase 12 dashboard untouched per marketplace-sellers rule 4), §19.3 operational analytics (`DailyOperationsMetric`/`DailyStoreOpsMetric` + `admin/analytics/operations/` & `performance/`), §19.4 reports (five CSV exports at `admin/analytics/export/<report>/`, gate baked into the route) — all served from `apps.reporting` rollups written only by `manage.py rebuild_reporting`. Gate passed (reconciliation proven by partition + cross-table checks; §4 matrix on every read and export). **Deferred, documented:** Excel/PDF export (C3 — needs a new runtime dependency; a fake .xlsx is worse than none) and the Phase 12 dashboard extension (rule 4). Suite at the gate: 325 backend + 189 frontend tests, lint/build/migrations green |
-| 20 | Security, Compliance & Abuse Prevention | 🔄 §20.1 application security done — deny-by-default permissions + session-only auth, rate limiting (blanket + `auth`/`register`/`checkout`/`message` scopes) in front of the login lockout, CORS credentials fix, and the **public-tracking PII leak fixed** (a tracking number is a bearer token, not an identity); `docs/SECURITY_CHECKLIST.md` records all 11 items with evidence, `backend/tests/test_security_hardening.py` (11 tests), suite at review time: 336 backend tests + 189 frontend, lint/build/migrations green. §20.3 auditing done — `docs/AUDIT_COVERAGE.md` is the matrix of every sensitive operation and its action, three gaps closed (`analytics.exported` for the §19.4 CSVs, `product_price_changed`/`variant_price_changed`, and `store_profile_updated`, which turned a bare serializer save on the seller's shipping fee into an audited service), `backend/tests/test_audit_coverage.py` (7 tests). §20.2 abuse controls still open |
+| 20 | Security, Compliance & Abuse Prevention | 🔄 §20.1 application security done — deny-by-default permissions + session-only auth, rate limiting (blanket + `auth`/`register`/`checkout`/`message` scopes) in front of the login lockout, CORS credentials fix, and the **public-tracking PII leak fixed** (a tracking number is a bearer token, not an identity); `docs/SECURITY_CHECKLIST.md` records all 11 items with evidence, `backend/tests/test_security_hardening.py` (11 tests), suite at review time: 336 backend tests + 189 frontend, lint/build/migrations green. §20.3 auditing done — `docs/AUDIT_COVERAGE.md` is the matrix of every sensitive operation and its action, three gaps closed (`analytics.exported` for the §19.4 CSVs, `product_price_changed`/`variant_price_changed`, and `store_profile_updated`, which turned a bare serializer save on the seller's shipping fee into an audited service), `backend/tests/test_audit_coverage.py` (7 tests). **§20.2 slice v1 (spam & messaging) done** — `apps.moderation` (pure content rules, one `ContentFlag` per subject, staff queue where support reads and only a moderator decides) on a **queue-never-censor** contract: a rule files a flag for a human and never rejects, edits, deletes or informs the author, so a false positive costs a queue row rather than a review. Messaging gained user-scoped `ConversationBlock`s and a write-only `conversation` throttle on thread starts. `docs/ABUSE_CONTROLS.md` + `backend/tests/test_abuse_controls.py` (48 tests) prove the catches *and* the false-positive guards; voucher abuse was already solid and needed nothing. Suite at this gate: **391 backend tests**, migrations + system check clean. Still open in §20.2: inventory/quantity abuse + suspicious-order detection (slice v2), account abuse (slice v3) |
 | 21 | Testing & Quality Assurance | ⬜ Not started |
 | 22 | Performance & Scalability | ⬜ Not started |
 | 23 | Deployment & Production Infrastructure | ⬜ Not started |
@@ -2182,18 +2182,69 @@ Perform continuous and dedicated security hardening.
 > **The gate artifact:** `docs/SECURITY_CHECKLIST.md` records all eleven items
 > with a verdict and the file + test that proves each, plus the gaps carried
 > forward honestly (production env values and a shared cache for throttling land
-> with Phase 23; 20.2 abuse controls and 20.3 auditing are the next slices).
+> with Phase 23; 20.3 auditing and 20.2 abuse slice v1 have since landed — see
+> `docs/AUDIT_COVERAGE.md` and `docs/ABUSE_CONTROLS.md`).
 > Covered by `backend/tests/test_security_hardening.py` (11 tests).
 
 ### 20.2 Marketplace abuse
 
--   [ ] Spam prevention
--   [ ] Review abuse prevention
--   [ ] Messaging abuse prevention
--   [ ] Voucher abuse prevention
--   [ ] Inventory abuse prevention
--   [ ] Suspicious order detection foundation
--   [ ] Account abuse controls
+-   [x] Spam prevention — *slice v1* (see below)
+-   [x] Review abuse prevention — *slice v1*
+-   [x] Messaging abuse prevention — *slice v1*
+-   [x] Voucher abuse prevention — **already satisfied** before this phase:
+        `usage_limit`, `per_user_limit` and `first_order_only` on the voucher,
+        an append-only `VoucherUsage` ledger, and a row-locked redemption inside
+        `create_order` make it race-safe and audited
+        (`voucher.redeemed`). Nothing was added here.
+-   [ ] Inventory abuse prevention — slice v2
+-   [ ] Suspicious order detection foundation — slice v2
+-   [ ] Account abuse controls — slice v3
+
+> **Slice v1 (done) — spam & messaging.** The slice is built on one decision:
+> **the system queues, it does not censor.** An automatic rule never refuses a
+> write, never edits text, never deletes anything, and never tells the author
+> they were caught; it files one `ContentFlag` row and hands the decision to a
+> human. The reason is the false positive — a ruleset that punishes ordinary
+> customers is worse than none, so the cost of being wrong is deliberately a
+> queue row rather than a deleted review. `apps/moderation` holds the rules
+> (pure functions, no DB/network/settings at import), the flag model (one row
+> per subject, `CheckConstraint` for exactly one subject, partial unique
+> constraints so repeated edits cannot manufacture duplicates) and a staff
+> queue where **support may look but only a moderator may act** (§4). Three
+> rules fire: a **link** (off-platform advertising; a seller's own storefront
+> quoted in a private message is exempt), **contact details** (an email, or a
+> phone number *with intent words* — the `JV-20260926-ABCD2345` order number a
+> reviewer quotes is deliberately not one), and **shouting** (both a length
+> and a ratio floor, so `OK` and `USB-C`/`HDMI` pass). A flagged review is
+> parked as `FLAGGED` — not `PUBLISHED`, so it stays out of the rating
+> aggregates until a human clears it — while a flagged message is *stored* and
+> its thread moved to `reported`, because deleting evidence of abuse would be
+> the one unforgivable outcome. Rejection never happens and the author's own
+> copy stays readable to them. **Deliberate omissions, each a decision:** no
+> profanity or slur list (word blocklists are language-specific and would mute
+> ordinary Filipino/Tagalog prose — the rules are *structural*, not lexical),
+> no third-party or model-based filtering (an availability dependency that
+> ships customer text off-platform), and no automatic permanent penalties (a
+> rule that trips puts content in a queue; only a human weighs "this looks
+> like spam" against "this person is abusing the platform"). Messaging also
+> gained **user blocks** (`ConversationBlock`, user-scoped rather than
+> thread-scoped so a new thread on another product is not an escape hatch,
+> silent to the blocked party, revocable, audited, and never applicable to
+> staff — nobody may block their way out of a dispute) and a `conversation`
+> throttle on thread *starts*, which the `message` scope never covered. The
+> throttle is **write-only** (`WriteOnlyScopedRateThrottle`): the inbox list
+> and the starter are one endpoint, and a 20/hour cap on *reading* would be a
+> speed bump on ordinary use (§10.2). `docs/ABUSE_CONTROLS.md` is the coverage
+> matrix; `backend/tests/test_abuse_controls.py` (48 tests) drives it, and the
+> false-positive guards are asserted as first-class contracts alongside the
+> catches. Audit: `content_flagged`, `content_flag_reopened`,
+> `content_flag_dismissed`, `content_flag_confirmed`, `conversation_blocked`,
+> `conversation_unblocked`.
+>
+> **Deferred, not overlooked:** inventory/quantity abuse and
+> suspicious-order detection (slice v2 — they need persistence and a risk
+> model, not a content rule), account abuse (slice v3), and audit retention /
+> signed export / alerting (Phase 23).
 
 ### 20.3 Sensitive operations
 
@@ -2236,15 +2287,18 @@ Perform continuous and dedicated security hardening.
 
 -   [ ] Security checklist complete
 -   [ ] Permission tests pass
--   [ ] Abuse controls verified
+-   [ ] Abuse controls verified — *slice v1 done*; slices v2/v3 remain
 -   [x] Sensitive operations produce audit records
 
-> **Note:** the gate stays open — "security checklist complete", "permission
-> tests pass" and "abuse controls verified" are §20.1/§20.2 items, and §20.2
-> (spam, messaging abuse, suspicious orders, inventory abuse) is the next
-> slice. Audit **retention, export and alerting** are honestly deferred to the
-> deployment phase (Phase 23), as are production env values and a shared cache
-> for throttling.
+> **Note:** the gate stays open — "security checklist complete" and "permission
+> tests pass" are still §20.1 items, and §20.2 is **partly** done: slice v1
+> (spam, review and messaging abuse) shipped and is proven by
+> `docs/ABUSE_CONTROLS.md` + `tests/test_abuse_controls.py`, while **slices
+> v2/v3** (suspicious orders, inventory/quantity abuse, account abuse) remain
+> — "abuse controls verified" cannot be ticked until they do. Audit
+> **retention, export and alerting** are honestly deferred to the deployment
+> phase (Phase 23), as are production env values and a shared cache for
+> throttling.
 
 **Skills:** security, backend-feature
 

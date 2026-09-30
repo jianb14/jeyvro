@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'apps.platform',
     'apps.reviews',
     'apps.messaging',
+    'apps.moderation',
     'apps.notifications',
     'apps.promotions',
     'apps.resolutions',
@@ -221,12 +222,17 @@ REST_FRAMEWORK = {
         'register': env('THROTTLE_REGISTER_PER_HOUR', '10/hour'),
         'checkout': env('THROTTLE_CHECKOUT_PER_MINUTE', '20/min'),
         'message': env('THROTTLE_MESSAGE_PER_MINUTE', '30/min'),
+        # §20.2 — starting threads is the flood surface the `message` scope
+        # misses: 30 sends/min is a burst *inside* one thread, while opening a
+        # thread per store is 1 request each and was never counted anywhere.
+        'conversation': env('THROTTLE_CONVERSATION_PER_HOUR', '20/hour'),
     },
     'SCOPED_THROTTLES': {
         'auth': 'rest_framework.throttling.ScopedRateThrottle',
         'register': 'rest_framework.throttling.ScopedRateThrottle',
         'checkout': 'rest_framework.throttling.ScopedRateThrottle',
         'message': 'rest_framework.throttling.ScopedRateThrottle',
+        'conversation': 'rest_framework.throttling.ScopedRateThrottle',
     },
 }
 

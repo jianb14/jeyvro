@@ -144,3 +144,58 @@ class ConversationReport(TimeStampedModel):
 
     def __str__(self):
         return f'ConversationReport({self.conversation_id}, reporter={self.reporter_id}, reason={self.reason})'
+
+
+class ConversationBlock(TimeStampedModel):
+    """One user refusing further contact from another (§20.2 messaging abuse).
+
+    A block is user-scoped, not conversation-scoped on purpose: a buyer who
+    blocks a seller is refusing that *person*, and must not be able to open a
+    fresh thread on a different product to escape the block. `store` is kept
+    as context for the seller console; the block itself resolves through
+    `blocked`, so it still holds if the seller later renames or the store is
+    deleted.
+    """
+
+    blocker = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='conversation_blocks_made',
+    )
+    blocked = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='conversation_blocks_received',
+        help_text='The party being blocked — the store owner, not the store.',
+    )
+    store = models.ForeignKey(
+        'stores.Store',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='blocked_conversations',
+        help_text='Store context when the blocked party is a seller.',
+    )
+    reason = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = 'conversation blocks'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['blocker', 'blocked'],
+                name='messaging_one_block_per_pair',
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(blocker=models.F('blocked')),
+                name='messaging_no_self_block',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['blocker', '-created_at'], name='messaging_blocker_idx'),
+            models.Index(fields=['blocked'], name='messaging_blocked_idx'),
+        ]
+
+    def __str__(self):
+        return f'ConversationBlock({self.blocker_id} -> {self.blocked_id})'
+

@@ -14,6 +14,7 @@ from django.db.models import Avg, Count
 from django.utils import timezone
 
 from apps.audit.services import log_event
+from apps.moderation import services as moderation_services
 from apps.orders.models import OrderItem, OrderStatus
 
 from .models import Review, ReviewImage, ReviewReport, ReviewStatus
@@ -155,6 +156,20 @@ def create_review(user, *, product, rating, title='', body='', image_urls=None):
     ReviewImage.objects.bulk_create(
         [ReviewImage(review=review, image_url=url) for url in urls]
     )
+
+    # §20.2 — the automatic spam rules. The row is born first and screened
+    # second, and a hit does not reject the write: it parks the review as
+    # FLAGGED, exactly like the 3-reporter path above, so the buyer keeps
+    # their review and a human decides. `FLAGGED` is not `PUBLISHED`, so it is
+    # absent from the public list and from the rating aggregates until staff
+    # clear it — the spam cannot vote on a rating while it waits.
+    flag = moderation_services.screen_review(
+        review=review, text=f'{review.title}\n{review.body}',
+    )
+    if flag is not None:
+        review.status = ReviewStatus.FLAGGED
+        review.save(update_fields=['status', 'updated_at'])
+
     _refresh_ratings(product, product.store)
     return review
 
@@ -185,6 +200,18 @@ def update_review(user, review_id, *, rating=None, title=None, body=None):
         review.body = body
 
     review.save(update_fields=['rating', 'title', 'body', 'updated_at'])
+
+    # §20.2 — an edit is a second chance to smuggle a link or a phone number
+    # into an already-published review, so the same rules run again. A hit
+    # pulls it to FLAGGED and re-opens the existing flag row (one row per
+    # subject), rather than filing a second one staff would triage twice.
+    if review.status == ReviewStatus.PUBLISHED:
+        if moderation_services.screen_review(
+            review=review, text=f'{review.title}\n{review.body}',
+        ) is not None:
+            review.status = ReviewStatus.FLAGGED
+            review.save(update_fields=['status', 'updated_at'])
+
     _refresh_ratings(review.product, review.store)
     return review
 

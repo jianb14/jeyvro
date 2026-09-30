@@ -11,4 +11,6 @@ urlpatterns = [
     path('conversations/<int:pk>/read/', views.MarkConversationReadView.as_view(), name='conversation-mark-read'),
     path('conversations/<int:pk>/report/', views.ReportConversationView.as_view(), name='conversation-report'),
     path('seller/conversations/', views.SellerConversationListView.as_view(), name='seller-conversations'),
+    path('conversation-blocks/', views.ConversationBlockListView.as_view(), name='conversation-blocks'),
+    path('conversation-blocks/<int:pk>/', views.ConversationBlockDetailView.as_view(), name='conversation-block-detail'),
 ]
