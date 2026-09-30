@@ -174,6 +174,10 @@ export function StaffTeam() {
             placeholder="Email or name…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <Button type="submit" variant="outline">

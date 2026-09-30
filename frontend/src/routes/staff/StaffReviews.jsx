@@ -160,6 +160,10 @@ export function StaffReviews() {
             label="Search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
             placeholder="Product, store or buyer"
           />
         </div>

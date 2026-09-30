@@ -176,6 +176,10 @@ export function SellerProducts() {
             placeholder="Title or description…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-48">

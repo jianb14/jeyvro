@@ -144,6 +144,10 @@ export function StaffUsers() {
             placeholder="Email, name, or phone…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-40">

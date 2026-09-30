@@ -266,6 +266,10 @@ function OrdersPanel({ searchParams, setSearchParams }) {
             placeholder="Order number, customer email, or ship-to name…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-44">
@@ -470,6 +474,10 @@ function ShipmentsPanel({ searchParams, setSearchParams }) {
             placeholder="Tracking number, order number, or store…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-44">
@@ -637,6 +645,10 @@ function RequestsPanel({ searchParams, setSearchParams }) {
             placeholder="Order number, customer email, or reason…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-40">

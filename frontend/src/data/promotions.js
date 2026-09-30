@@ -181,6 +181,23 @@ export async function fetchPublicVouchers({ store = "", scope = "" } = {}) {
   return (Array.isArray(data) ? data : (data.items ?? [])).map(mapVoucher);
 }
 
+/**
+ * GET /api/v1/campaigns/ — the active campaigns the storefront promo strip
+ * renders. Public and anonymous-safe (backend apps/promotions/views.py).
+ *
+ * The server has already filtered to `is_active=True` and applied no window
+ * check of its own, so a client must not assume every row is currently live —
+ * the strip reads `endsAt` and drops anything already finished rather than
+ * advertising a "Summer Sale" that expired last month.
+ *
+ * Every number here is the server's: `promotionCount` is the real count of
+ * rules inside the campaign, never a discount percentage invented client-side.
+ */
+export async function fetchPublicCampaigns() {
+  const data = await request(BASE, "/campaigns/");
+  return (Array.isArray(data) ? data : (data.items ?? [])).map(mapCampaign);
+}
+
 // --- Staff campaign & promotion console (§16.4) -----------------------------
 
 /** GET /api/v1/staff/campaigns/ — every campaign, newest first (plain list). */

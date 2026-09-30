@@ -156,6 +156,10 @@ export function StaffSellerApplications() {
             placeholder="Store name or applicant email…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-44">

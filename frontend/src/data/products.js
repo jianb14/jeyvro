@@ -107,14 +107,27 @@ export async function getProductById(slug) {
 /**
  * Public categories (server truth — never hardcoded in components).
  * Parent id is kept so callers can build the tree.
+ *
+ * The list endpoint is paginated (page_size 20 by default), so a marketplace
+ * with more categories than one page would silently hide the rest from the
+ * storefront navigation. Taxonomy is small and bounded, so ask for the
+ * largest page DRF allows in one call rather than paginating a rail.
  */
 export async function getCategories() {
-  const data = await request("/api/v1/catalog/categories/");
+  const data = await request(
+    "/api/v1/catalog/categories/",
+    "?page_size=100",
+  );
   const items = data.items ?? data;
   return items.map((category) => ({
     id: category.id,
     parent: category.parent,
     name: category.name,
     slug: category.slug,
+    // Both resolved server-side: the count of buyable products and the cover
+    // photo taken from the category's newest published product. The storefront
+    // cards render these, so the client never counts or picks an image itself.
+    productCount: category.product_count ?? 0,
+    coverImage: category.cover_image ?? null,
   }));
 }

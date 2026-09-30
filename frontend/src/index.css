@@ -5,6 +5,10 @@
 @theme {
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  /* Brand - the wordmark only. Michroma's wide, squarish caps are what make
+     "JEYVRO" read as a logo rather than as body copy set in Outfit. Scoped to
+     LogoLockup so it never leaks into UI text. */
+  --font-brand: "Michroma", "Outfit", ui-sans-serif, system-ui, sans-serif;
 
   /* Brand - Moss: calm, desaturated green */
   --color-moss-50: #f3f7f0;
@@ -118,4 +122,82 @@
   }
   ::selection { background: var(--color-moss-200); color: var(--color-moss-950); }
   .dark ::selection { background: var(--color-moss-700); color: #ffffff; }
+}
+
+/* Theme cross-fade.
+ *
+ * `useTheme` puts .theme-transition on <html> for the length of one switch,
+ * then removes it. Everything animates only while that class is present.
+ *
+ * The obvious alternative — a permanent `* { transition: background-color … }`
+ * — is a well-known footgun: it makes every hover repaint the whole subtree,
+ * and it fights component-level `transition-*` utilities that already set
+ * timing. Scoping it to a temporary class means the cost is paid for 260ms and
+ * then the page returns to normal compositing.
+ *
+ * The selector is deliberately broad (`*`) because a marketplace page is full
+ * of one-off surfaces — cards, badges, ribbons, inputs, table rows — and any
+ * of them can carry a bg/border/text pair. Listing them would rot.
+ *
+ * `box-shadow` and `outline-color` ride along so elevation rings and focus
+ * rings fade too; `fill`/`stroke` cover inline SVG that isn't `currentColor`.
+ * `filter` is there for LogoMark's `dark:brightness-[1.7]` — without it the
+ * navbar logo snaps from full brightness while everything else fades, which is
+ * the single most visible discontinuity in the whole switch.
+ *
+ * `::placeholder` is a pseudo-element and needs its own selector. A descendant
+ * `*` rule does NOT reach it, so Input/Textarea placeholder text was snapping
+ * between text-sand-400 and text-sand-500 while the field itself faded.
+ *
+ * The property list is asserted against the actual `dark:` utilities in the
+ * source by src/lib/themeTransition.test.js. That test is the point: this list
+ * has to stay in sync with what the components really use, and eyeballing a
+ * palette change is not a way to notice a gap.
+ *
+ * prefers-reduced-motion drops the whole block, so the switch is instant for
+ * anyone who asked for that — and the media query also keeps the class from
+ * doing anything at all rather than merely being overridden later.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after,
+  html.theme-transition *::placeholder {
+    transition-property: background-color, border-color, color, fill, stroke,
+      box-shadow, outline-color, filter, opacity;
+    transition-duration: 260ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* View Transition cross-fade — the primary path (see useTheme.js).
+ *
+ * The browser snapshots the viewport before and after the `.dark` flip and
+ * animates between the two on the compositor. This is what makes the switch
+ * actually read as smooth, and it is deliberately the default path because a
+ * viewport snapshot cannot miss anything: a property-list transition only
+ * animates properties somebody remembered to list, on elements the selector
+ * can reach, so placeholders, scrollbars, replaced elements and newly added
+ * utilities all quietly opt out.
+ *
+ * The default UA cross-fade animates old OUT and new IN simultaneously, which
+ * dips both to ~50% and lets the page background show through at the midpoint
+ * — a visible grey flash on a light -> dark switch. Pinning the old snapshot
+ * at full opacity and dissolving the new one in over it removes that dip.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: none;
+    opacity: 1;
+  }
+
+  ::view-transition-new(root) {
+    animation: theme-dissolve 260ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  @keyframes theme-dissolve {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 }

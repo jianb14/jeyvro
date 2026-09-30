@@ -123,6 +123,10 @@ export function SellerOrders() {
             placeholder="Order number or customer name…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-48">

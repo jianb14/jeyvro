@@ -172,6 +172,10 @@ function PaymentsPanel({ searchParams, setSearchParams }) {
             placeholder="Payment reference, order number, or customer email…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-44">
@@ -342,6 +346,10 @@ function RefundsPanel({ searchParams, setSearchParams }) {
             placeholder="Refund reference, payment reference, or order number…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-44">

@@ -225,6 +225,10 @@ export function SellerInventory() {
             placeholder="Product, variant, or SKU…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="pb-1">

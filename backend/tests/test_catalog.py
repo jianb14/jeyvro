@@ -9,6 +9,7 @@ from decimal import Decimal
 
 import pytest
 
+from apps.accounts.models import User
 from apps.catalog import services
 from apps.catalog.models import (
     Brand,
@@ -344,3 +345,170 @@ def test_discount_sort_ranks_biggest_real_discount_first(client):
     paged = client.get(f'{CATALOG}?sort=discount&page_size=1&page=2')
     assert paged.json()['count'] == 3
     assert [i['title'] for i in paged.json()['items']] == ['Small Deal']
+
+
+# --- Storefront category cards: count + cover image ----------------------------
+#
+# The category grid on the homepage needs two things the plain tree cannot give
+# it, and both are easy to get subtly wrong, so they are pinned here:
+#
+#   - `product_count` must mean "things a shopper can actually buy". A draft,
+#     a rejected product, or anything in a suspended store must NOT be counted,
+#     or the card advertises stock that 404s when clicked.
+#   - `cover_image` is derived from the newest published product, because
+#     Category has no image field of its own. It must be an absolute URL (the
+#     browser cannot resolve a relative one across the API origin) and must be
+#     null, not a broken link, when a category has nothing sellable yet.
+
+CATEGORIES = '/api/v1/catalog/categories/'
+
+_store_seq = 0
+
+
+def _cat_store(*, status=Store.Status.ACTIVE):
+    """A store with its own seller, at a chosen status."""
+    global _store_seq
+    _store_seq += 1
+    seller = User.objects.create_user(
+        email=f'catstore{_store_seq}@example.com',
+        password='Str0ng!Passw0rd',
+        is_seller=True,
+    )
+    return Store.objects.create(user=seller, name=f'Cat Store {_store_seq}', status=status)
+
+
+def _cat_product(store, title, *, category, status=Product.Status.PUBLISHED,
+                 image=None):
+    """A product with a default variant; `image` attaches a ProductImage row."""
+    product = Product.objects.create(
+        store=store,
+        title=title,
+        description='',
+        base_price=Decimal('100.00'),
+        status=status,
+        category=category,
+    )
+    Variant.objects.create(
+        product=product, name='Default', price=Decimal('100.00'), is_default=True,
+    )
+    if image is not None:
+        ProductImage.objects.create(
+            product=product, image=image, alt_text=title, position=0,
+        )
+    return product
+
+
+def _categories_by_slug(client):
+    response = client.get(CATEGORIES)
+    assert response.status_code == 200, response.content
+    return {item['slug']: item for item in response.json()['items']}
+
+
+def test_category_count_only_includes_buyable_products(client):
+    """A card's "12 items" must mean 12 things the shopper can reach."""
+    store = _cat_store()
+    suspended = _cat_store(status=Store.Status.SUSPENDED)
+    category = Category.objects.create(name='Fashion', position=10)
+
+    _cat_product(store, 'Live Tee', category=category)
+    _cat_product(store, 'Live Dress', category=category)
+    _cat_product(store, 'Draft Pants', category=category, status=Product.Status.DRAFT)
+    _cat_product(store, 'Pending Skirt', category=category, status=Product.Status.PENDING_REVIEW)
+    _cat_product(suspended, 'Suspended Jacket', category=category)
+
+    assert _categories_by_slug(client)['fashion']['product_count'] == 2
+
+
+def test_category_cover_image_is_the_newest_published_product(client):
+    """The card photo is server-derived, so no slug→photo map exists in React."""
+    store = _cat_store()
+    category = Category.objects.create(name='Food', position=20)
+
+    older = _cat_product(store, 'Older Jar', category=category, image='products/old.jpg')
+    newer = _cat_product(store, 'Newer Jar', category=category, image='products/new.jpg')
+    # Backdate the first row so "newest" is decided by created_at, not by id.
+    Product.objects.filter(pk=older.pk).update(created_at='2020-01-01T00:00:00Z')
+    Product.objects.filter(pk=newer.pk).update(created_at='2024-01-01T00:00:00Z')
+
+    cover = _categories_by_slug(client)['food']['cover_image']
+    # Absolute, because the storefront and the API are different origins.
+    assert cover.startswith('http://testserver/')
+    assert cover.endswith('new.jpg')
+
+
+def test_category_cover_image_ignores_unpublished_and_suspended(client):
+    """The newest sellable product wins — not merely the newest row."""
+    store = _cat_store()
+    suspended = _cat_store(status=Store.Status.SUSPENDED)
+    category = Category.objects.create(name='Beauty', position=30)
+
+    sellable = _cat_product(store, 'Sellable Balm', category=category, image='products/balm.jpg')
+    draft = _cat_product(store, 'Draft Cream', category=category,
+                         status=Product.Status.DRAFT, image='products/cream.jpg')
+    _cat_product(suspended, 'Hidden Serum', category=category, image='products/serum.jpg')
+    Product.objects.filter(pk=sellable.pk).update(created_at='2024-01-01T00:00:00Z')
+    Product.objects.filter(pk=draft.pk).update(created_at='2025-01-01T00:00:00Z')
+
+    cover = _categories_by_slug(client)['beauty']['cover_image']
+    assert cover.endswith('balm.jpg')
+
+
+def test_empty_category_reports_zero_and_no_cover(client):
+    """An empty department is honest, not hidden and not a broken image.
+
+    The frontend renders its branded fallback panel off exactly this shape, so
+    `None` here is the signal the card needs — a '' or a phantom URL would
+    ship a broken-image icon instead.
+    """
+    Category.objects.create(name='Accessories', position=60)
+
+    item = _categories_by_slug(client)['accessories']
+    assert item['product_count'] == 0
+    assert item['cover_image'] is None
+
+
+def test_inactive_category_is_never_public(client):
+    """The rail and the cards show active categories only."""
+    Category.objects.create(name='Beauty', position=10)
+    Category.objects.create(name='Retired', position=20, is_active=False)
+
+    slugs = set(_categories_by_slug(client))
+    assert 'beauty' in slugs
+    assert 'retired' not in slugs
+
+
+def test_a_staff_created_category_appears_with_no_seed_data(client):
+    """The storefront taxonomy is a database fact, not a hardcoded list.
+
+    A category created at /staff/taxonomy must come back through the same
+    public endpoint with a real count and a real cover — that is the whole
+    reason the client never keeps its own list of categories.
+    """
+    store = _cat_store()
+    created = Category.objects.create(name='Electronics', position=20)
+    _cat_product(store, 'Earbuds', category=created, image='products/earbuds.jpg')
+
+    item = _categories_by_slug(client)['electronics']
+    assert item['product_count'] == 1
+    assert item['cover_image'].endswith('earbuds.jpg')
+
+
+def test_seed_taxonomy_is_idempotent_and_positions_are_ordered():
+    """Re-running the seed must not duplicate or reorder staff's tree."""
+    from django.core.management import call_command
+
+    call_command('seed_catalog', verbosity=0)
+    first = list(Category.objects.order_by('position', 'name').values_list('name', flat=True))
+
+    call_command('seed_catalog', verbosity=0)
+    second = list(Category.objects.order_by('position', 'name').values_list('name', flat=True))
+
+    assert first == second
+    # The seeded taxonomy covers the storefront's departments, and position
+    # drives the rail order (lower first).
+    assert 'Electronics' in first
+    assert 'Beauty' in first
+    positions = dict(Category.objects.filter(
+        name__in=['Fashion', 'Electronics', 'Beauty']
+    ).values_list('name', 'position'))
+    assert positions['Fashion'] < positions['Electronics'] < positions['Beauty']

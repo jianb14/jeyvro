@@ -7,7 +7,7 @@ envelope (marketplace-catalog rule 3); seller endpoints are store-scoped
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.db.models import Count, ExpressionWrapper, F, FloatField, Min, Q
+from django.db.models import Count, ExpressionWrapper, F, FloatField, Min, Prefetch, Q
 from django.db.models.functions import Coalesce, NullIf
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -123,12 +123,65 @@ class PublicProductViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
-    """Category tree source — the frontend never hardcodes categories."""
+    """Category tree source — the frontend never hardcodes categories.
 
-    queryset = Category.objects.filter(is_active=True)
+    The storefront category cards need two things the plain tree cannot give
+    them, so both are annotated here rather than counted per row in the
+    serializer (one query for the whole list, not one per category):
+      - `product_count`: how many things a shopper can actually buy in this
+        category. Drafts, pending and rejected products are excluded, and so
+        are products in a non-ACTIVE store — the same visibility rule the
+        public product list and the search facets use, so a card can never
+        advertise stock the shopper cannot reach.
+      - `cover_image`: the primary image of the newest published product in the
+        category. The category itself has no image field, and this avoids
+        hardcoding a slug→photo map in the frontend (catalog rule 7), which
+        would break the moment staff create a new category at /staff/taxonomy.
+        `None` simply means the card renders its branded fallback panel.
+    """
+
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
     lookup_field = 'slug'
+
+    def get_queryset(self):
+        return (
+            Category.objects.filter(is_active=True)
+            .annotate(
+                product_count=Count(
+                    'products',
+                    filter=Q(
+                        products__status=Product.Status.PUBLISHED,
+                        products__store__status=Store.Status.ACTIVE,
+                    ),
+                    distinct=True,
+                )
+            )
+            .prefetch_related(
+                # Only the primary image of each product is needed, and the
+                # list caps the rows anyway, so the cheap ordered prefetch is
+                # enough — no Subquery per category.
+                Prefetch(
+                    'products',
+                    queryset=(
+                        Product.objects.filter(
+                            status=Product.Status.PUBLISHED,
+                            store__status=Store.Status.ACTIVE,
+                        )
+                        .select_related('store')
+                        .prefetch_related('images')
+                        .order_by('-created_at')
+                    ),
+                    to_attr='published_products',
+                )
+            )
+            # `Category.Meta` already orders by (position, name), but annotate +
+            # prefetch_related is enough for DRF's paginator to stop trusting
+            # it, and an unordered page boundary can repeat or skip a category
+            # between page 1 and page 2. Restate it so the order is guaranteed
+            # for the paginator and not merely incidental.
+            .order_by('position', 'name')
+        )
 
 
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):

@@ -18,7 +18,8 @@ import { Pagination } from "../components/ui/Pagination";
 import { ProductGrid, ProductGridSkeleton } from "../components/ui/ProductCard";
 import { Select } from "../components/ui/Select";
 import { useQuickAdd } from "../features/cart/useQuickAdd";
-import { getCategories, getProducts } from "../data/products";
+import { useCategories } from "../features/catalog/useCategories";
+import { getProducts } from "../data/products";
 
 const PAGE_SIZE = 12;
 
@@ -93,7 +94,10 @@ export function Browse() {
   const minPrice = params.get("min_price") ?? "";
   const maxPrice = params.get("max_price") ?? "";
 
-  const [categories, setCategories] = useState([]);
+  // The full tree is kept here (not just topLevel) because the active chip
+  // resolves `currentCategory` by slug, and a deep link like /category/:slug
+  // must still name the category after a focus refetch.
+  const { all: categories } = useCategories();
   const [reload, setReload] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -101,20 +105,6 @@ export function Browse() {
   // in async callbacks (Storefront pattern; frontend-state rule 7).
   const requestKey = [query, category, sort, page, minPrice, maxPrice, reload].join("|");
   const [state, setState] = useState({ key: null, status: "idle", data: null, error: null });
-
-  useEffect(() => {
-    let cancelled = false;
-    getCategories()
-      .then((items) => {
-        if (!cancelled) setCategories(items);
-      })
-      .catch(() => {
-        if (!cancelled) setCategories([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;

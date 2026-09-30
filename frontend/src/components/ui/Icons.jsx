@@ -1,3 +1,5 @@
+import { cx } from "../../lib/cx";
+
 function I({ size = 18, className, strokeWidth = 1.8, children, ...rest }) {
   return (
     <svg
@@ -36,6 +38,7 @@ export const UserIcon = (p) => <I {...p}><circle cx="12" cy="8" r="4" /><path d=
 export const CalendarIcon = (p) => <I {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18" /></I>;
 export const EyeIcon = (p) => <I {...p}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></I>;
 export const EyeOffIcon = (p) => <I {...p}><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.9 3.9M6.6 6.6C3.7 8.6 2 12 2 12s3.5 7 10 7c1.4 0 2.7-.3 3.8-.8M9.9 9.9a3 3 0 0 0 4.2 4.2" /></I>;
+export const LockIcon = (p) => <I {...p}><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></I>;
 export const AlertCircleIcon = (p) => <I {...p}><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></I>;
 export const AlertTriangleIcon = (p) => <I {...p}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4M12 17h.01" /></I>;
 export const InfoIcon = (p) => <I {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></I>;
@@ -46,12 +49,18 @@ export const TrashIcon = (p) => <I {...p}><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2
 export const EditIcon = (p) => <I {...p}><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></I>;
 export const DownloadIcon = (p) => <I {...p}><path d="M12 3v12m-5-5 5 5 5-5M4 21h16" /></I>;
 export const ExternalLinkIcon = (p) => <I {...p}><path d="M14 4h6v6M20 4 11 13M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" /></I>;
-export const SettingsIcon = (p) => <I {...p}><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" /></I>;
+// A real gear. The previous drawing was a centre circle with eight radiating
+// strokes, which is a sunburst — it read as the theme toggle sitting in the
+// same navbar, so "Settings" looked like a second light/dark button.
+export const SettingsIcon = (p) => <I {...p}><circle cx="12" cy="12" r="3" /><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /></I>;
 export const BellIcon = (p) => <I {...p}><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M10.3 21a2 2 0 0 0 3.4 0" /></I>;
 export const LogOutIcon = (p) => <I {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></I>;
 export const HeartIcon = (p) => <I {...p}><path d="M19.5 12.6 12 20l-7.5-7.4a5 5 0 1 1 7.5-6.6 5 5 0 1 1 7.5 6.6z" /></I>;
 export const StarIcon = (p) => <I {...p}><path d="m12 2.5 2.9 5.9 6.6 1-4.8 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5-4.8-4.6 6.6-1z" /></I>;
 export const ArrowRightIcon = (p) => <I {...p}><path d="M4 12h16m-6-6 6 6-6 6" /></I>;
+// Back-links ("← All products") used a raw ← glyph, which inherits the font's
+// arrow design and sits on the baseline instead of centring on the text.
+export const ArrowLeftIcon = (p) => <I {...p}><path d="M20 12H4m6 6-6-6 6-6" /></I>;
 export const ArrowUpRightIcon = (p) => <I {...p}><path d="M7 17 17 7M8 7h9v9" /></I>;
 export const MoreHorizontalIcon = (p) => <I {...p}><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></I>;
 export const MoreVerticalIcon = (p) => <I {...p}><circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" /></I>;
@@ -82,6 +91,51 @@ export const WalletIcon = (p) => <I {...p}><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 
 export const PercentIcon = (p) => <I {...p}><path d="m19 5-14 14" /><circle cx="7" cy="7" r="2.5" /><circle cx="17" cy="17" r="2.5" /></I>;
 export const CreditCardSolidIcon = (p) => <I {...p}><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></I>;
 export const MessageSquareIcon = (p) => <I {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></I>;
+// Arrow entering a bracket: "come in" reads faster on a sign-in screen than the
+// bare LogOutIcon, whose arrow points the other way entirely.
+export const LogInIcon = (p) => <I {...p}><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" /></I>;
+// The join counterpart to LogInIcon: a person with a plus, not a door.
+export const UserPlusIcon = (p) => <I {...p}><path d="M15 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><path d="M19 8v6M22 11h-6" /></I>;
+
+// Social sign-in marks. They are brand glyphs, not drawings: the Google "G" and
+// the Facebook "f" are recognisable *because* of their exact outlines, so they
+// are filled paths and skip the shared `I` helper, which can only stroke. This
+// is the same escape `HeartSolidIcon` and `VerifiedBadgeIcon` already take.
+//
+// They are also the one place in this file that carries fixed hex colour rather
+// than `currentColor`, and deliberately so. A grey Facebook "f" is not a
+// stylisation, it is a misprint — the mark is blue, and a sign-in button whose
+// icon does not match the service it signs you in to reads as broken rather
+// than as quiet. So the real palette is hard-coded.
+//
+// That does make dark mode a non-question, which is the reason these never
+// needed the `currentColor` shortcut: the colours are constants, so there is
+// nothing for a `dark:` variant to vary and nothing that can be forgotten.
+// They are the official brand values, and every one of them sits at 4.5:1 or
+// better against the button's own surface, so they stay legible in both themes.
+const FILLABLE = { stroke: "none" };
+
+// The Google mark is four wedges, one per brand colour, drawn as a single
+// silhouette split by the white cross-bar in the middle. Offsets are the
+// official 2016-era geometry; `fill` on each path replaces a single
+// `fill="currentColor"` on the <svg> that the monochrome version used.
+export const GoogleIcon = ({ size = 18, className }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true" {...FILLABLE}>
+    <path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.63h6.46c-.28 1.49-1.11 2.77-2.39 3.62v3h3.86c2.26-2.09 3.59-5.17 3.59-8.8z" />
+    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.07.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.28v3.09A11.99 11.99 0 0 0 12 24z" />
+    <path fill="#FBBC05" d="M5.27 14.28a7.2 7.2 0 0 1 0-4.57V6.61H1.28a12 12 0 0 0 0 10.78l3.99-3.11z" />
+    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l2.58-2.58C17.4 2.13 14.97 1 12 1A11.99 11.99 0 0 0 1.28 6.61l3.99 3.11C6.22 6.86 8.87 4.75 12 4.75z" />
+  </svg>
+);
+
+// Facebook's mark is a single flat blue (#1877F2, the current Meta brand
+// blue). The older darker #3B5998 is retired; this is what the button says on
+// its own site today.
+export const FacebookIcon = ({ size = 18, className }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="#1877F2" className={className} aria-hidden="true" {...FILLABLE}>
+    <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.09 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.7 4.53-4.7 1.31 0 2.68.24 2.68.24v2.96h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.32l-.53 3.5h-2.79V24C19.61 23.09 24 18.1 24 12.07z" />
+  </svg>
+);
 
 export const HeartSolidIcon = ({ size = 18, className }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" className={className} aria-hidden="true">
@@ -114,12 +168,59 @@ export function VerifiedBadgeIcon({ size = 14, className }) {
   );
 }
 
+// The brand lockup: the hexagon mark plus a live-text wordmark.
+//
+// The wordmark is deliberately NOT baked into the bitmap. The original
+// jeyvro-lockup.png lettering was AI-generated, so it has no font behind it —
+// its inter-letter gaps measure 5, 8, 10, 11 and 16px, which no real typeface
+// produces. Reproducing it as an image would also mean the name could never be
+// restyled, translated or selected. Live text gives us real glyphs, dark-mode
+// colours that print correctly, and CSS control over size and tracking.
+//
+// Type is Michroma (--font-brand, loaded in index.html). Its wide, squared-off
+// caps are what separate a wordmark from ordinary UI text, so it is applied here
+// and nowhere else. Size is still derived from measurement, not taste: the
+// logo's cap-to-mark ratio is 94/249, so a 30px mark targets an 11.33px cap,
+// which lands on 16px. Tracking drops to 0.06em because Michroma's caps are
+// already far wider than Outfit's — the old 0.14em was compensating for narrow
+// glyphs and would blow the lockup's width out well past the mark.
+//
+// Michroma is a single-weight family (400 only), so `font-bold` would silently
+// do nothing. The added weight is a hairline text stroke in the current colour
+// instead, which thickens the caps without the browser synthesising a fake bold
+// and without a second webfont request. -webkit-text-stroke is non-standard but
+// degrades cleanly: without it the wordmark simply renders at its natural 400,
+// which is still the intended typeface.
+//
+// Mark-to-text gap is 6px, a normal optical gap. The mark still needs its
+// dark-mode brightness lift (it is a bitmap and its deepest facet, #194A2D, is
+// near-invisible on --color-night-950), but the wordmark does not — it is real
+// text and takes a real colour.
+export function LogoLockup({ size = 30, className }) {
+  return (
+    <span className={cx("flex shrink-0 items-center gap-1.5", className)}>
+      <LogoMark size={size} />
+      <span className="font-brand text-[16px] uppercase leading-none tracking-[0.06em] text-[#154329] [-webkit-text-stroke:0.35px_currentColor] dark:text-moss-200">
+        Jeyvro
+      </span>
+    </span>
+  );
+}
+
+// The hexagon is cropped from jeyvro-logo.png at its native 225:249 box
+// (measured, not guessed) so the browser reserves the right space and the
+// mark never distorts. Dark mode lifts it: the brand's deepest facet
+// (#194A2D) is otherwise invisible against --color-night-950 (#12160e).
 export function LogoMark({ size = 28, className }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
-      <rect width="32" height="32" rx="9" fill="#4f6d3f" />
-      <path d="M23.5 8.5C17 8.5 10 12 9.5 23.5 21 23 24 16 23.5 8.5Z" fill="#ffffff" />
-      <path d="M11 21.5C14 17 18 13.5 22 10.5" stroke="#4f6d3f" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
+    <img
+      src="/jeyvro-mark.png"
+      alt=""
+      aria-hidden="true"
+      width={Math.round((size * 225) / 249)}
+      height={size}
+      decoding="async"
+      className={cx("shrink-0 object-contain dark:brightness-[1.7]", className)}
+    />
   );
 }

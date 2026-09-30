@@ -74,7 +74,15 @@ export function ProtectedRoute({ children }) {
     );
   }
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    // Search and hash travel with the path: a bounce off /search?q=shoes has to
+    // return the shopper to that search, not to a bare /search.
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname + location.search + location.hash }}
+      />
+    );
   }
   return children;
 }

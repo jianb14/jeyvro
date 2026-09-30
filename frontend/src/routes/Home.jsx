@@ -7,23 +7,24 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Navbar } from "../components/layout/Navbar";
+import { HeroBanner } from "../components/layout/HeroBanner";
+import { CategoryGrid } from "../components/layout/CategoryGrid";
+import { PromoStrip } from "../components/layout/PromoStrip";
 import { Alert } from "../components/ui/Alert";
-import { Badge } from "../components/ui/Badge";
-import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ProductShelf } from "../components/ui/ProductShelf";
 import { Skeleton } from "../components/ui/Skeleton";
 import { useQuickAdd } from "../features/cart/useQuickAdd";
 import {
-  ArrowRightIcon,
   LeafIcon,
   LogoMark,
   StoreIcon,
   TagIcon,
   ZapIcon,
 } from "../components/ui/Icons";
-import { getCategories, getProducts } from "../data/products";
+import { useCategories } from "../features/catalog/useCategories";
+import { getProducts } from "../data/products";
 import { fetchPlatformInfo } from "../data/platform";
 import { recommendations } from "../data/search";
 import { fetchPublicStores } from "../data/stores";
@@ -86,7 +87,6 @@ function FeaturedStoreCard({ store }) {
 
 export function Home() {
   const addToCart = useQuickAdd();
-  const [categories, setCategories] = useState(null);
   const [featured, setFeatured] = useState(null);
   const [featuredError, setFeaturedError] = useState(null);
   const [trending, setTrending] = useState(null);
@@ -96,7 +96,12 @@ export function Home() {
   const [forYou, setForYou] = useState([]);
   const [stores, setStores] = useState(null);
   const [storesError, setStoresError] = useState(null);
+  // `null` keeps the section's skeleton until the first load resolves (the
+  // strip hides itself entirely once an empty taxonomy comes back).
+  const { topLevel, loading: categoriesLoading } = useCategories();
+  const categories = categoriesLoading ? null : topLevel;
   const [recent] = useState(() => getRecentlyViewed());
+
   const [platform, setPlatform] = useState(null);
 
   // Marketplace name + support contact are platform settings (Phase 13.6);
@@ -109,20 +114,6 @@ export function Home() {
       })
       .catch(() => {
         /* the footer must never break the page — defaults render instead */
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    getCategories()
-      .then((items) => {
-        if (alive) setCategories(items.filter((category) => category.parent == null));
-      })
-      .catch(() => {
-        if (alive) setCategories([]);
       });
     return () => {
       alive = false;
@@ -219,54 +210,27 @@ export function Home() {
     <div className="min-h-dvh bg-sand-50 dark:bg-night-950">
       <Navbar />
 
-      <main className="mx-auto max-w-7xl space-y-14 px-4 pb-24 pt-8 sm:px-6 lg:px-8">
-        <section className="animate-slide-up py-6 sm:py-10">
-          <Badge tone="moss" variant="soft" size="sm" dot>
-            Marketplace
-          </Badge>
-          <h1 className="mt-4 max-w-2xl font-display text-4xl font-semibold tracking-tight text-sand-900 dark:text-sand-100 sm:text-5xl">
-            Handpicked local goods — <span className="text-moss-600 dark:text-moss-400">calm by design.</span>
-          </h1>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-sand-500 dark:text-sand-400">
-            Every product below comes straight from the marketplace API —
-            real sellers, server-resolved prices, honest stock.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link to="/products">
-              <Button size="lg" trailingIcon={ArrowRightIcon}>Browse products</Button>
-            </Link>
-            <Link to="/sell">
-              <Button size="lg" variant="outline">Sell on Jeyvro</Button>
-            </Link>
-          </div>
-        </section>
+      <main className="mx-auto max-w-7xl space-y-10 px-4 pb-24 pt-8 sm:px-6 lg:px-8">
+        <HeroBanner />
 
         {(categories === null || categories.length > 0) && (
           <section className="flex flex-col gap-4">
-            <h2 className="font-display text-xl font-semibold tracking-tight text-sand-900 dark:text-sand-100">
-              Shop by category
-            </h2>
-            {categories === null ? (
-              <div className="flex flex-wrap gap-2" aria-hidden="true">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-32 rounded-full" />
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {categories.map((category) => (
-                  <Link
-                    key={category.slug}
-                    to={`/category/${category.slug}`}
-                    className="rounded-full border border-sand-300 bg-white px-4 py-2 text-sm font-medium text-sand-700 transition-colors hover:border-moss-400 hover:text-moss-700 dark:border-night-700 dark:bg-night-900 dark:text-sand-300 dark:hover:border-moss-600 dark:hover:text-moss-300"
-                  >
-                    {category.name}
-                  </Link>
-                ))}
-              </div>
-            )}
+            <div className="flex items-end justify-between gap-4">
+              <h2 className="font-display text-xl font-semibold tracking-tight text-sand-900 dark:text-sand-100">
+                Shop by category
+              </h2>
+              <Link
+                to="/products"
+                className="shrink-0 text-sm font-medium text-moss-700 transition-colors hover:text-moss-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 dark:text-moss-300 dark:hover:text-moss-200 dark:focus-visible:outline-moss-400"
+              >
+                View all
+              </Link>
+            </div>
+            <CategoryGrid categories={categories} loading={categories === null} />
           </section>
         )}
+
+        <PromoStrip />
 
         <ProductShelf
           title="Featured products"
@@ -375,7 +339,7 @@ export function Home() {
       <footer className="border-t border-sand-200 py-8 dark:border-night-800">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <span className="flex items-center gap-2">
-            <LogoMark size={22} />
+            <LogoMark size={26} />
             <span className="text-sm text-sand-500 dark:text-sand-400">
               {platform?.platformName ?? "Jeyvro"} Marketplace ·{" "}
               {new Date().getFullYear()}

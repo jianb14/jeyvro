@@ -127,6 +127,10 @@ export function SellerReviews() {
             label="Search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
             placeholder="Product or review text"
           />
         </div>

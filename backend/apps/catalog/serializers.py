@@ -15,9 +15,41 @@ from . import services
 
 
 class CategorySerializer(serializers.ModelSerializer):
+    """Public category shape.
+
+    `product_count` is annotated by the viewset (one query for the whole list).
+    `cover_image` is resolved from the category's newest published product —
+    the category has no image of its own, and this keeps the storefront cards
+    correct for any category staff creates, with no slug→photo map hardcoded
+    in the frontend (catalog rule 7). Both are read-only: the server counts
+    and picks, the client only renders.
+    """
+
+    product_count = serializers.IntegerField(read_only=True)
+    cover_image = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
-        fields = ['id', 'parent', 'name', 'slug', 'description', 'position', 'is_active']
+        fields = [
+            'id', 'parent', 'name', 'slug', 'description', 'position',
+            'is_active', 'product_count', 'cover_image',
+        ]
+
+    def get_cover_image(self, obj):
+        """Absolute URL of the first image on the newest published product.
+
+        Walks `published_products` (prefetched, newest first) rather than
+        querying per category, and returns None when the category has nothing
+        sellable yet — the card then draws its own branded panel.
+        """
+        request = self.context.get('request')
+        for product in getattr(obj, 'published_products', []):
+            image = product.images.order_by('position', 'created_at').first()
+            if image is None:
+                continue
+            url = image.image.url
+            return request.build_absolute_uri(url) if request else url
+        return None
 
 
 class BrandSerializer(serializers.ModelSerializer):

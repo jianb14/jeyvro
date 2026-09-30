@@ -135,6 +135,10 @@ export function StaffStores() {
             placeholder="Store name, slug, or owner email…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onClear={() => {
+              setSearch("");
+              setParam("q", "");
+            }}
           />
         </div>
         <div className="w-44">

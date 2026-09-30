@@ -5,7 +5,6 @@ import { useAuth } from "../../features/auth/AuthContext";
 import { useWishlist } from "../../features/wishlist/WishlistContext";
 import { Price } from "./Price";
 import { Rating } from "./Rating";
-import { Badge } from "./Badge";
 import { ProductArt } from "./ProductArt";
 import { StockIndicator } from "./StockIndicator";
 import { useToast } from "./ToastProvider";
@@ -67,19 +66,18 @@ export function ProductCard({ product, onAddToCart, className }) {
               src={product.image}
               alt={product.title}
               loading="lazy"
-              className="aspect-square w-full object-cover"
+              className="aspect-[4/3] w-full object-cover"
             />
           ) : (
-            <ProductArt seed={product.seed} className="aspect-square w-full" />
+            <ProductArt seed={product.seed} className="aspect-[4/3] w-full" />
           )}
         </Link>
-        <div className="absolute left-3 top-3 flex items-center">
-          {soldOut ? (
-            <Badge tone="neutral" variant="solid" size="sm">SOLD OUT</Badge>
-          ) : product.isNew ? (
-            <Badge tone="moss" variant="solid" size="sm">NEW</Badge>
-          ) : null}
-        </div>
+        {soldOut || product.isNew ? (
+          <CornerRibbon
+            tone={soldOut ? "neutral" : "moss"}
+            label={soldOut ? "SOLD OUT" : "NEW"}
+          />
+        ) : null}
         <button
           type="button"
           onClick={handleFav}
@@ -117,6 +115,58 @@ export function ProductCard({ product, onAddToCart, className }) {
   );
 }
 
+// A corner tape, not a pill — and the geometry is the whole point.
+//
+// The first attempt parked a short rotated strip a few pixels inside the
+// photo (left-2 top-3), which read as a sticker floating on the picture: it
+// reached neither edge, so nothing about it said "corner". What sells a
+// marketplace ribbon is the opposite — a band that spans the corner and gets
+// cut off BY it, so its two ends disappear under the top and left edges.
+//
+// How this hangs together: the band is a wide element rotated -45° whose
+// centre is pinned at (INSET, INSET) via translate -50%, -50%. Rotation runs
+// the band along the corner diagonal, so one end leaves through the top edge
+// and the other through the left edge. The wrapper's overflow-hidden does the
+// cutting, which is why the band can be far longer than the visible run and
+// still finish flush — no hard-coded clip path, and it re-cuts itself if the
+// grid ever changes the card width.
+//
+// The inset is not free. The rotated text's corner reaches
+// (textWidth / 2 + lineHeight / 2) * 0.707 out from the centre, and the clip
+// shaves anything that crosses x=0 or y=0. "SOLD OUT" is the worst case at
+// ~61px wide with an ~11px line box, so it needs inset >= ~27px; 30 leaves
+// margin. Pull the inset down and the S and the final T get sliced off.
+//
+// 30 is spelled out in the class string rather than interpolated, and that is
+// load-bearing: Tailwind extracts candidates by scanning source text, so a
+// `left-[${INSET}px]` template literal produces no `left-[30px]` rule at all
+// and the band silently falls back to `left: auto`.
+//
+// pointer-events-none because the tape sits on top of the product image, and
+// that image is the link — a tape you can tap but that goes nowhere is worse
+// than no tape at all.
+const RIBBON_TONES = {
+  moss: "bg-moss-600",
+  neutral: "bg-sand-500",
+};
+
+function CornerRibbon({ tone = "moss", label }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+      <span
+        className={cx(
+          "absolute flex h-6 w-[140%] items-center justify-center whitespace-nowrap",
+          "left-[30px] top-[30px] -translate-x-1/2 -translate-y-1/2 -rotate-45",
+          "text-[9px] font-semibold uppercase tracking-[0.12em] text-white",
+          RIBBON_TONES[tone]
+        )}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function StoreLine({ product }) {
   const inner = (
     <>
@@ -150,7 +200,7 @@ function AddButton({ soldOut, onClick }) {
       disabled={soldOut}
       onClick={onClick}
       className={cx(
-        "mt-2 inline-flex h-9 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-[background-color,border-color,color,transform] active:scale-[0.98]",
+        "mt-2 inline-flex h-9 items-center justify-center gap-2 rounded-lg text-sm font-medium transition-[background-color,border-color,color,transform] active:scale-[0.98]",
         soldOut
           ? "cursor-not-allowed bg-sand-100 text-sand-400 dark:bg-night-800 dark:text-sand-600"
           : "bg-moss-600 text-white hover:bg-moss-700 dark:bg-moss-500 dark:hover:bg-moss-600"
@@ -179,7 +229,7 @@ export function ProductGridSkeleton({ count = 6, columns = 3 }) {
     <div className={cx("grid grid-cols-1 gap-5", COLS[columns])} aria-hidden="true">
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="flex animate-pulse flex-col gap-3 rounded-2xl border border-sand-200 p-4 dark:border-night-800">
-          <div className="aspect-square w-full rounded-xl bg-sand-200/80 dark:bg-night-800" />
+          <div className="aspect-[4/3] w-full rounded-xl bg-sand-200/80 dark:bg-night-800" />
           <div className="h-3 w-3/4 rounded bg-sand-200/80 dark:bg-night-800" />
           <div className="h-3 w-1/2 rounded bg-sand-200/80 dark:bg-night-800" />
         </div>

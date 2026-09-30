@@ -1,16 +1,23 @@
 /**
- * Staff console shell (Phase 13) — the operator-side chrome: same Navbar as
- * the storefront, plus the staff navigation rail. Access is group-based and
+ * Staff console shell (Phase 13) — the operator-side chrome: the AdminShell
+ * (grouped rail + own topbar), plus the access guard. Access is group-based and
  * enforced server-side (PROJECT_CONTEXT §4) — this guard is UX, not security,
  * and non-staff accounts get an honest notice instead of an empty shell.
+ *
+ * The storefront `Navbar` used to sit on top of this layout, which stacked three
+ * navigation layers over one page (customer nav, category rail, staff rail) and
+ * put a cart badge above a moderation queue. AdminShell replaces all of it.
  */
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
+// Only the non-staff branch still wears the storefront chrome, and that is
+// deliberate: someone who wandered into /staff without staff access is a
+// customer, so they get the normal header and a way out rather than an
+// operator shell they cannot use.
 import { Navbar } from "../../components/layout/Navbar";
+import { AdminShell } from "../../components/layout/AdminShell";
 import { Alert } from "../../components/ui/Alert";
-import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../features/auth/AuthContext";
-import { cx } from "../../lib/cx";
 import {
   ClockIcon,
   CreditCardIcon,
@@ -28,70 +35,24 @@ import {
 
 // `groups` narrows a nav item to the §4 matrix roles; the backend refuses
 // out-of-group actions regardless (this is UX, not security).
+//
+// `section` is presentational grouping only — it keeps the rail scannable the
+// way an operator thinks about the work (sellers, catalog, money, people,
+// system) instead of one flat twelve-item list. It grants nothing.
 const NAV = [
-  { to: "/staff", label: "Seller approvals", icon: InboxIcon, end: true },
-  { to: "/staff/stores", label: "Stores", icon: StoreIcon },
-  {
-    to: "/staff/orders",
-    label: "Orders",
-    icon: ShoppingBagIcon,
-    groups: ["support", "finance", "operations", "administrator"],
-  },
-  {
-    to: "/staff/payments",
-    label: "Payments",
-    icon: CreditCardIcon,
-    groups: ["support", "finance", "administrator"],
-  },
-  {
-    // Campaign management is operations/administrator only; the promotions
-    // oversight tab is also open to finance, which supervises money (§4).
-    to: "/staff/campaigns",
-    label: "Campaigns & promos",
-    icon: MegaphoneIcon,
-    groups: ["finance", "operations", "administrator"],
-  },
-  {
-    to: "/staff/settings",
-    label: "Platform settings",
-    icon: SettingsIcon,
-    groups: ["administrator", "finance", "operations"],
-  },
-  {
-    to: "/staff/catalog",
-    label: "Catalog",
-    icon: PackageIcon,
-    groups: ["moderator", "administrator"],
-  },
-  {
-    to: "/staff/reviews",
-    label: "Reviews",
-    icon: StarIcon,
-    groups: ["support", "moderator", "administrator"],
-  },
-  {
-    to: "/staff/taxonomy",
-    label: "Categories & brands",
-    icon: TagIcon,
-    groups: ["operations", "administrator"],
-  },
-  { to: "/staff/users", label: "Users", icon: UserIcon },
-  {
-    to: "/staff/team",
-    label: "Staff & roles",
-    icon: ShieldCheckIcon,
-    administratorOnly: true,
-  },
-  { to: "/staff/audit", label: "Audit log", icon: ClockIcon },
+  { to: "/staff", label: "Seller approvals", icon: InboxIcon, end: true, section: "Sellers" },
+  { to: "/staff/stores", label: "Stores", icon: StoreIcon, section: "Sellers" },
+  { to: "/staff/catalog", label: "Catalog", icon: PackageIcon, groups: ["moderator", "administrator"], section: "Catalog" },
+  { to: "/staff/taxonomy", label: "Categories & brands", icon: TagIcon, groups: ["operations", "administrator"], section: "Catalog" },
+  { to: "/staff/reviews", label: "Reviews", icon: StarIcon, groups: ["support", "moderator", "administrator"], section: "Catalog" },
+  { to: "/staff/orders", label: "Orders", icon: ShoppingBagIcon, groups: ["support", "finance", "operations", "administrator"], section: "Orders & money" },
+  { to: "/staff/payments", label: "Payments", icon: CreditCardIcon, groups: ["support", "finance", "administrator"], section: "Orders & money" },
+  { to: "/staff/campaigns", label: "Campaigns & promos", icon: MegaphoneIcon, groups: ["finance", "operations", "administrator"], section: "Orders & money" },
+  { to: "/staff/users", label: "Users", icon: UserIcon, section: "People" },
+  { to: "/staff/team", label: "Staff & roles", icon: ShieldCheckIcon, administratorOnly: true, section: "People" },
+  { to: "/staff/settings", label: "Platform settings", icon: SettingsIcon, groups: ["administrator", "finance", "operations"], section: "System" },
+  { to: "/staff/audit", label: "Audit log", icon: ClockIcon, section: "System" },
 ];
-
-const navClass = ({ isActive }) =>
-  cx(
-    "inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-    isActive
-      ? "bg-moss-100 text-moss-800 dark:bg-moss-900 dark:text-moss-200"
-      : "text-sand-600 hover:bg-sand-100 hover:text-sand-900 dark:text-sand-400 dark:hover:bg-night-800 dark:hover:text-sand-100"
-  );
 
 export function StaffLayout() {
   const { user } = useAuth();
@@ -109,6 +70,17 @@ export function StaffLayout() {
     }
     return true;
   });
+
+  // Filter first, group second. A section the viewer has no access to at all
+  // must not leave a bare heading behind, so empty groups are dropped. This
+  // relies on NAV above being listed in section order — a new entry belongs in
+  // its section's block, not appended to the end of the array.
+  const sections = [];
+  for (const item of navItems) {
+    const last = sections[sections.length - 1];
+    if (last && last.label === item.section) last.items.push(item);
+    else sections.push({ label: item.section, items: [item] });
+  }
 
   if (!isStaff) {
     return (
@@ -131,40 +103,8 @@ export function StaffLayout() {
   }
 
   return (
-    <>
-      <Navbar />
-      <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-8 sm:px-6 lg:flex-row lg:px-8">
-        <aside className="lg:w-56 lg:shrink-0">
-          <div className="mb-3 hidden flex-col gap-2 lg:flex">
-            <p className="font-display text-lg font-semibold text-sand-900 dark:text-sand-100">
-              Operator console
-            </p>
-            {roles.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {roles.map((role) => (
-                  <Badge key={role} tone="moss" size="sm">
-                    {role.replace(/_/g, " ")}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-          <nav
-            aria-label="Staff navigation"
-            className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
-          >
-            {navItems.map(({ to, label, icon: Icon, end }) => (
-              <NavLink key={to} to={to} end={end} className={navClass}>
-                <Icon size={16} className="shrink-0" />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
-        <main className="min-w-0 flex-1">
-          <Outlet />
-        </main>
-      </div>
-    </>
+    <AdminShell sections={sections} roles={roles}>
+      <Outlet />
+    </AdminShell>
   );
 }

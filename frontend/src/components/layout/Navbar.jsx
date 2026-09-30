@@ -6,24 +6,25 @@
  * link, the theme toggle, and the auth menu. Mobile presents the same nav
  * as a disclosure panel (frontend-responsive rule 6).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { cx } from "../../lib/cx";
-import { useTheme } from "../../lib/useTheme";
 import { useAuth } from "../../features/auth/AuthContext";
 import { useCart } from "../../features/cart/CartContext";
-import { getCategories } from "../../data/products";
+import { useCategories } from "../../features/catalog/useCategories";
 import { SearchAutocomplete } from "./SearchAutocomplete";
-import { LogoMark, MenuIcon, XIcon, SunIcon, MoonIcon, ShoppingCartIcon, HeartIcon } from "../ui/Icons";
+import { LogoLockup, MenuIcon, XIcon, ShoppingCartIcon, HeartIcon } from "../ui/Icons";
 import { Button } from "../ui/Button";
 import { Avatar } from "../ui/Avatar";
 import { DropdownMenu } from "../ui/DropdownMenu";
+import { ThemeToggle } from "../ui/ThemeToggle";
 import {
   UserIcon,
   SettingsIcon,
   LogOutIcon,
   StoreIcon,
   PackageIcon,
+  ShieldCheckIcon,
 } from "../ui/Icons";
 import { NotificationBell } from "../ui/NotificationBell";
 import { MessageSquareIcon, TagIcon } from "../ui/Icons";
@@ -31,50 +32,26 @@ import { MessageSquareIcon, TagIcon } from "../ui/Icons";
 
 const navRailClass = ({ isActive }) =>
   cx(
-    "whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+    "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
     isActive
       ? "text-moss-700 dark:text-moss-300"
-      : "text-sand-600 hover:bg-sand-100 hover:text-sand-900 dark:text-sand-400 dark:hover:bg-night-800 dark:hover:text-sand-100"
+      : "text-sand-600 hover:bg-sand-100 hover:text-moss-700 dark:text-sand-400 dark:hover:bg-night-800 dark:hover:text-moss-300"
   );
 
+// Right padding is supplied by SearchAutocomplete (it widens for the clear
+// button), so this class must not set `pr-*`.
 const searchInputClass =
-  "h-10 w-full rounded-xl border border-sand-300 bg-white pl-10 pr-3.5 text-sm text-sand-900 transition-[border-color] placeholder:text-sand-400 focus:border-moss-500 focus:outline-2 focus:outline-offset-2 focus:outline-moss-500 dark:border-night-700 dark:bg-night-900 dark:text-sand-100 dark:focus:border-moss-400";
-
-function ThemeToggle() {
-  const { theme, toggle } = useTheme();
-  return (
-    <button
-      onClick={toggle}
-      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      className="inline-flex size-10 items-center justify-center rounded-lg text-sand-600 transition-colors hover:text-moss-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss-500 dark:text-sand-300 dark:hover:text-moss-300 dark:focus-visible:outline-moss-400"
-    >
-      {theme === "dark" ? <SunIcon size={20} /> : <MoonIcon size={20} />}
-    </button>
-  );
-}
+  "h-10 w-full rounded-xl border border-sand-300 bg-white pl-10 text-sm text-sand-900 transition-[border-color] placeholder:text-sand-400 focus:border-moss-500 focus:outline-2 focus:outline-offset-2 focus:outline-moss-500 dark:border-night-700 dark:bg-night-900 dark:text-sand-100 dark:focus:border-moss-400";
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [categories, setCategories] = useState([]);
+  // Top-level categories only in the rail; deeper levels arrive when the
+  // catalog needs sub-navigation. The hook refetches on window focus so a
+  // category created at /staff/taxonomy reaches this rail without a reload.
+  const { topLevel: categories } = useCategories();
   const { user, loading, logout } = useAuth();
   const { itemCount } = useCart();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    let cancelled = false;
-    getCategories()
-      .then((items) => {
-        // Top-level categories only in the rail; deeper levels arrive when
-        // the catalog needs sub-navigation.
-        if (!cancelled) setCategories(items.filter((category) => category.parent == null));
-      })
-      .catch(() => {
-        if (!cancelled) setCategories([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function handleLogout() {
     await logout();
@@ -89,14 +66,45 @@ export function Navbar() {
     navigate(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
   };
 
+  // Staff power is group-based (§4), so the roles list counts alongside the
+  // staff flag — a user with either one works in the operator console. This only
+  // decides which links to draw; StaffLayout and the backend still refuse the
+  // pages themselves.
+  const isStaff = Boolean(user?.is_staff || (user?.staff_roles ?? []).length > 0);
+  const isSeller = Boolean(user?.is_seller);
+
+  // The console and the studio are where these accounts actually work, so they
+  // sit above the shopper entries rather than buried under them. Before these
+  // links existed the only way into /staff was to type the URL by hand.
+  const roleItems = [
+    ...(isStaff
+      ? [
+          {
+            key: "staff",
+            label: "Operator console",
+            icon: ShieldCheckIcon,
+            onSelect: () => navigate("/staff"),
+          },
+        ]
+      : []),
+    ...(isSeller
+      ? [
+          {
+            key: "seller",
+            label: "Seller studio",
+            icon: StoreIcon,
+            onSelect: () => navigate("/seller"),
+          },
+        ]
+      : []),
+  ];
+  const roleDivider = roleItems.length > 0 ? [{ key: "role-sep", divider: true }] : [];
+
   return (
     <header className="sticky top-0 z-40 border-b border-sand-200/80 bg-sand-50/85 backdrop-blur-md dark:border-night-800 dark:bg-night-950/85">
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex shrink-0 items-center gap-2.5">
-          <LogoMark size={30} />
-          <span className="hidden font-display text-xl font-semibold tracking-tight text-sand-900 dark:text-sand-100 sm:inline">
-            Jeyvro
-          </span>
+        <Link to="/" className="flex shrink-0 items-center">
+          <LogoLockup size={30} />
         </Link>
 
         <SearchAutocomplete
@@ -156,6 +164,8 @@ export function Navbar() {
               }
               items={[
                 { key: "profile", label: "My account", icon: UserIcon, onSelect: () => navigate("/account") },
+                ...roleItems,
+                ...roleDivider,
                 { key: "messages", label: "Messages", icon: MessageSquareIcon, onSelect: () => navigate("/account/messages") },
                 { key: "orders", label: "My orders", icon: PackageIcon, onSelect: () => navigate("/orders") },
                 { key: "sell", label: "Sell on Jeyvro", icon: StoreIcon, onSelect: () => navigate("/sell") },
@@ -188,8 +198,11 @@ export function Navbar() {
       </nav>
 
       {categories.length > 0 && (
-        <div className="hidden border-t border-sand-200/70 dark:border-night-800/70 md:block">
-          <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
+        <div className="hidden border-t border-sand-200/50 dark:border-night-800/60 md:block">
+          {/* py-2 gives the rail breathing room so the links never sit flush
+              against the header's dividing line; the link padding itself
+              (navRailClass) is deliberately tight so the row stays short. */}
+          <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-2 sm:px-6 lg:px-8">
             <NavLink to="/products" end className={navRailClass}>
               All products
             </NavLink>
@@ -260,6 +273,25 @@ export function Navbar() {
               </Link>
             ))}
           </div>
+
+          {/* A staff or seller account needs the console/studio one tap away here
+              too — this panel is the only nav a small-screen user gets. Its own
+              row above the account buttons, since that row already carries the
+              theme toggle, account and logout. */}
+          {user && roleItems.length > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {isStaff && (
+                <Link to="/staff" onClick={() => setMobileOpen(false)}>
+                  <Button variant="outline" className="w-full">Operator console</Button>
+                </Link>
+              )}
+              {isSeller && (
+                <Link to="/seller" onClick={() => setMobileOpen(false)}>
+                  <Button variant="outline" className="w-full">Seller studio</Button>
+                </Link>
+              )}
+            </div>
+          )}
 
           <div className="mt-4 flex items-center gap-3">
             <ThemeToggle />

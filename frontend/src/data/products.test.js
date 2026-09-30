@@ -92,8 +92,49 @@ describe("catalog accessors", () => {
 
   it("unwraps the category envelope into a plain list", async () => {
     mockFetch({ count: 1, items: [{ id: 1, parent: null, name: "Food", slug: "food" }] });
+    // productCount/coverImage default rather than vanishing: a category the
+    // server sends no count for must still render a card (see CategoryGrid).
     expect(await getCategories()).toEqual([
-      { id: 1, parent: null, name: "Food", slug: "food" },
+      { id: 1, parent: null, name: "Food", slug: "food", productCount: 0, coverImage: null },
     ]);
+  });
+
+  it("maps the server-resolved count and cover photo onto each card", async () => {
+    // Both are server facts: the count of buyable products and the photo taken
+    // from the category's newest published product. The client renames them and
+    // never derives either itself.
+    mockFetch({
+      count: 1,
+      items: [
+        {
+          id: 4,
+          parent: null,
+          name: "Electronics",
+          slug: "electronics",
+          product_count: 2,
+          cover_image: "http://testserver/media/products/earbuds.jpg",
+        },
+      ],
+    });
+    expect(await getCategories()).toEqual([
+      {
+        id: 4,
+        parent: null,
+        name: "Electronics",
+        slug: "electronics",
+        productCount: 2,
+        coverImage: "http://testserver/media/products/earbuds.jpg",
+      },
+    ]);
+  });
+
+  it("asks for the full category list so a long taxonomy is never truncated", async () => {
+    // page_size guards the storefront: a truncated page would silently hide
+    // categories staff created (catalog rule 7 — the tree is a DB fact).
+    const fetchMock = mockFetch({ count: 0, items: [] });
+    await getCategories();
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/catalog/categories/");
+    expect(url).toContain("page_size=100");
   });
 });

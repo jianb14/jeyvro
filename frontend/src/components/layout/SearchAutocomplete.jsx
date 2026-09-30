@@ -11,10 +11,10 @@
  * The input owns its own text so the desktop and mobile instances in the
  * navbar can coexist without sharing (and fighting over) one value.
  */
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { cx } from "../../lib/cx";
 import { getSuggestions, MIN_SUGGEST_LENGTH } from "../../data/search";
-import { PackageIcon, SearchIcon, StoreIcon, TagIcon } from "../ui/Icons";
+import { PackageIcon, SearchIcon, StoreIcon, TagIcon, XIcon } from "../ui/Icons";
 
 const DEBOUNCE_MS = 250;
 
@@ -78,6 +78,7 @@ export function SearchAutocomplete({
   // rendered as if it belonged to the current text.
   const [suggestions, setSuggestions] = useState({ needle: "", groups: [] });
   const listId = useId();
+  const inputRef = useRef(null);
 
   const needle = value.trim();
   const groups = suggestions.groups;
@@ -113,6 +114,15 @@ export function SearchAutocomplete({
   const close = () => {
     setOpen(false);
     setActiveIndex(-1);
+  };
+
+  // Wiping the text must also drop the stale suggestion set, or the panel would
+  // keep rendering the previous needle's matches under an empty box.
+  const clear = () => {
+    setValue("");
+    setSuggestions({ needle: "", groups: [] });
+    setActiveIndex(-1);
+    inputRef.current?.focus();
   };
 
   const choose = (item) => {
@@ -161,6 +171,7 @@ export function SearchAutocomplete({
           <SearchIcon size={16} />
         </span>
         <input
+          ref={inputRef}
           value={value}
           onChange={(event) => {
             setValue(event.target.value);
@@ -180,8 +191,23 @@ export function SearchAutocomplete({
           aria-label="Search products"
           placeholder={placeholder}
           autoComplete="off"
-          className={inputClassName}
+          // This component owns the right padding: the caller's inputClassName
+          // must not set `pr-*`, because the clear button widens the gutter
+          // while it is visible. Two competing `pr-*` classes resolve by
+          // stylesheet order, not by the order written here.
+          className={cx(inputClassName, value ? "pr-10" : "pr-3.5")}
         />
+        {value && (
+          // type="button" keeps it from firing the form's submit handler.
+          <button
+            type="button"
+            onClick={clear}
+            aria-label="Clear search"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-sand-400 transition-colors hover:bg-sand-100 hover:text-sand-700 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-moss-500 dark:hover:bg-night-800 dark:hover:text-sand-100 dark:focus-visible:outline-moss-400"
+          >
+            <XIcon size={15} />
+          </button>
+        )}
       </form>
 
       {visible && (

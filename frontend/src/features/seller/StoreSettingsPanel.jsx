@@ -9,6 +9,7 @@ import { Alert } from "../../components/ui/Alert";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
+import { ArrowRightIcon } from "../../components/ui/Icons";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { Textarea } from "../../components/ui/Textarea";
 import * as storesApi from "../../data/stores";
@@ -109,9 +110,10 @@ export function StoreSettingsPanel() {
         {store.status === "active" && (
           <Link
             to={`/store/${store.slug}`}
-            className="text-sm font-medium text-moss-700 hover:underline dark:text-moss-300"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-moss-700 hover:underline dark:text-moss-300"
           >
-            View public storefront →
+            View public storefront
+            <ArrowRightIcon size={15} />
           </Link>
         )}
       </div>

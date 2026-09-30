@@ -20,16 +20,31 @@ export const Checkbox = forwardRef(function Checkbox(
     if (innerRef.current) innerRef.current.indeterminate = Boolean(indeterminate);
   }, [indeterminate]);
 
+  // A bare label is one line of text, so the box centres against its line box.
+  // Adding a description makes the block two lines tall, and only then does
+  // top-aligning read as correct — centring there would float the box into the
+  // gap between the label and its description. Same reason the `mt-0.5` nudge
+  // exists only on that branch: it optically centres the 20px box against the
+  // ~14px cap height of the first line. On the single-line branch that nudge is
+  // what drags the box visibly below the text.
+  const stacked = Boolean(description);
+
   return (
     <label
       htmlFor={inputId}
       className={cx(
-        "flex select-none items-start gap-3",
+        "flex select-none gap-3",
+        stacked ? "items-start" : "items-center",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
         className
       )}
     >
-      <span className="relative mt-0.5 grid size-5 shrink-0 place-items-center">
+      <span
+        className={cx(
+          "relative grid size-5 shrink-0 place-items-center",
+          stacked && "mt-0.5"
+        )}
+      >
         <input
           ref={setRefs}
           id={inputId}

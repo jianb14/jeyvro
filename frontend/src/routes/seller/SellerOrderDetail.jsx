@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
+import { ArrowLeftIcon } from "../../components/ui/Icons";
 import { OrderStatusBadge } from "../../components/ui/OrderStatusBadge";
 import { Price } from "../../components/ui/Price";
 import { Select } from "../../components/ui/Select";
@@ -121,9 +122,10 @@ export function SellerOrderDetail() {
         <div className="flex flex-col gap-1">
           <Link
             to="/seller/orders"
-            className="text-sm font-medium text-moss-700 hover:underline dark:text-moss-300"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-moss-700 hover:underline dark:text-moss-300"
           >
-            ← All orders
+            <ArrowLeftIcon size={15} />
+            All orders
           </Link>
           <h1 className="font-display text-2xl font-semibold text-sand-900 dark:text-sand-100">
             {order.orderNumber}

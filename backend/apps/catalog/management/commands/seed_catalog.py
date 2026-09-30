@@ -24,13 +24,28 @@ STORES = [
     ('Cebu Delights', 'cebu@example.com', 'Dried mangoes and Cebuano treats.'),
     ('Ilocos Weavers', 'ilocos@example.com', 'Inabel blankets and home textiles.'),
     ('Davao Cacao House', 'davao@example.com', 'Tablea and single-origin cacao.'),
+    ('Kadaugan Gadgets', 'kadaugan@example.com', 'Everyday tech, honestly priced.'),
+    ('Sampaguita Beauty', 'sampaguita@example.com', 'Small-batch skincare from the Philippines.'),
 ]
 
-CATEGORIES = ['Home & Living', 'Food', 'Fashion']
+# (name, position) — position drives the storefront rail order (Category.Meta
+# orders by ['position', 'name']). Lower sorts first; the numbers are spaced so
+# staff can slot a new category between two existing ones at /staff/taxonomy
+# without renumbering the rest. The live category tree stays a database fact
+# that staff edit — the frontend never hardcodes this list (catalog rule 7).
+CATEGORIES = [
+    ('Fashion', 10),
+    ('Electronics', 20),
+    ('Home & Living', 30),
+    ('Food', 40),
+    ('Beauty', 50),
+    ('Accessories', 60),
+]
 
 BRANDS = [
     'Kalinga Crafts', 'Batangas Brew', 'Mugna', 'Bicol Weavers',
-    'Cebu Delights', 'Ilocos Weavers', 'Davao Cacao',
+    'Cebu Delights', 'Ilocos Weavers', 'Davao Cacao', 'Kadaugan',
+    'Sampaguita',
 ]
 
 # (store, category, brand, title, base_price, compare_at_price, stock,
@@ -60,6 +75,30 @@ PRODUCTS = [
     ('Davao Cacao House', 'Food', 'Davao Cacao',
      'Tsokolate Tablea (Pack of 12)', '280.00', None, 30, False,
      'Tablea tablets for hot tsokolate, pack of 12.'),
+    # The rows below give every seeded category at least one product, so the
+    # storefront category cards always have a real photo to show. A category
+    # with no products renders the branded fallback panel instead.
+    ('Kadaugan Gadgets', 'Electronics', 'Kadaugan',
+     'Wireless Earbuds with Charging Case', '1290.00', '1690.00', 26, True,
+     'True-wireless earbuds, 24h total playback, USB-C case.'),
+    ('Kadaugan Gadgets', 'Electronics', 'Kadaugan',
+     'Compact Bluetooth Speaker', '890.00', None, 18, False,
+     'Pocket-sized speaker, 12h playtime, water-resistant.'),
+    ('Kadaugan Gadgets', 'Accessories', 'Kadaugan',
+     'Braided USB-C Charging Cable (2m)', '190.00', '260.00', 60, False,
+     'Two-metre braided cable, 60W fast charge.'),
+    ('Sampaguita Beauty', 'Beauty', 'Sampaguita',
+     'Cold-Pressed Virgin Coconut Oil 100ml', '340.00', None, 22, True,
+     'Unrefined coconut oil, cold-pressed and unperfumed.'),
+    ('Sampaguita Beauty', 'Beauty', 'Sampaguita',
+     'Gentle Castile Soap Bar', '180.00', '230.00', 40, False,
+     'Olive-oil soap bar, fragrance-free, handmade.'),
+    ('Bicol Weavers', 'Accessories', 'Bicol Weavers',
+     'Woven Straw Sun Hat', '420.00', None, 14, False,
+     'Handwoven straw hat with an adjustable band.'),
+    ('Ilocos Weavers', 'Fashion', 'Ilocos Weavers',
+     'Inabel Woven Sundress', '1650.00', '2100.00', 7, True,
+     'Inabel cotton sundress, handwoven in Ilocos.'),
 ]
 
 
@@ -68,9 +107,13 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         with transaction.atomic():
+            # get_or_create keyed on name: re-running the seed is idempotent and
+            # never renames, reorders, or removes a row staff has since edited.
             categories = {
-                name: Category.objects.get_or_create(name=name)[0]
-                for name in CATEGORIES
+                name: Category.objects.get_or_create(
+                    name=name, defaults={'position': position}
+                )[0]
+                for name, position in CATEGORIES
             }
             brands = {
                 name: Brand.objects.get_or_create(name=name)[0]
