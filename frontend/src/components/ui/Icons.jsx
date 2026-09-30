@@ -89,6 +89,10 @@ export const MegaphoneIcon = (p) => <I {...p}><path d="M3 11v2a1 1 0 0 0 1 1h2l4
 export const FilterIcon = (p) => <I {...p}><path d="M3 5h18M6.5 12h11M10 19h4" /></I>;
 export const WalletIcon = (p) => <I {...p}><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z" /><path d="M16 7V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2M16 14h.01" /></I>;
 export const PercentIcon = (p) => <I {...p}><path d="m19 5-14 14" /><circle cx="7" cy="7" r="2.5" /><circle cx="17" cy="17" r="2.5" /></I>;
+// Analytics (§19) needed a bar mark: the set had money, time and store glyphs
+// but nothing that read as "figures over days" in the rail.
+export const ChartIcon = (p) => <I {...p}><path d="M3 3v18h18" /><path d="M7.5 17v-5.5M12 17V7.5M16.5 17v-3.5" /></I>;
+
 export const CreditCardSolidIcon = (p) => <I {...p}><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></I>;
 export const MessageSquareIcon = (p) => <I {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></I>;
 // Arrow entering a bracket: "come in" reads faster on a sign-in screen than the

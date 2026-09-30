@@ -37,6 +37,7 @@ urlpatterns = [
     path('api/v1/', include('apps.messaging.urls')),
     path('api/v1/', include('apps.promotions.urls')),
     path('api/v1/', include('apps.resolutions.urls')),
+    path('api/v1/', include('apps.reporting.urls')),
     path('api/v1/search/', include('apps.search.urls')),
 ]
 

@@ -12,6 +12,9 @@ import {
   fetchAdminUsers,
   fetchApplicationQueue,
   fetchAuditEvents,
+  fetchStaffAnalyticsProducts,
+  fetchStaffAnalyticsStores,
+  fetchStaffAnalyticsSummary,
   fetchStaffMembers,
   fetchStaffOrderDetail,
   fetchStaffOrders,
@@ -792,3 +795,176 @@ describe("platform settings accessors (13.6)", () => {
     expect(settings.updatedByEmail).toBeNull();
   });
 });
+
+describe("analytics accessors (19.1)", () => {
+  const SUMMARY_PAYLOAD = {
+    start: "2026-09-25",
+    end: "2026-09-30",
+    totals: {
+      start: "2026-09-25",
+      end: "2026-09-30",
+      orders_count: 4,
+      orders_cancelled: 5,
+      orders_paid: 0,
+      units_sold: 22,
+      products_sold: 6,
+      customer_days: 2,
+      seller_days: 6,
+      gmv: "28578.00",
+      merchandise: "28578.00",
+      shipping: "0.00",
+      discounts: "0.00",
+      captured_total: "0.00",
+      refunded_total: "0.00",
+      revenue: "0.00",
+      commission_base: "0.00",
+      commission: "0.00",
+    },
+    days: [
+      {
+        day: "2026-09-29",
+        orders_count: 1,
+        orders_cancelled: 0,
+        orders_paid: 0,
+        units_sold: 1,
+        products_sold: 1,
+        active_customers: 1,
+        active_sellers: 1,
+        gmv: "1500.00",
+        merchandise: "1500.00",
+        shipping: "0.00",
+        discounts: "0.00",
+        captured_total: "0.00",
+        refunded_total: "0.00",
+        revenue: "0.00",
+        commission_base: "0.00",
+        commission: "0.00",
+        commission_rate_percent: "0.00",
+      },
+    ],
+  };
+
+  it("fetches the summary, keeping money as strings and summing nothing", async () => {
+    const { fetchMock } = mockFetch(SUMMARY_PAYLOAD);
+    const summary = await fetchStaffAnalyticsSummary({
+      from: "2026-09-01",
+      to: "2026-09-30",
+    });
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/admin/analytics/summary/?");
+    expect(url).toContain("from=2026-09-01");
+    expect(url).toContain("to=2026-09-30");
+
+    expect(summary.totals.gmv).toBe("28578.00");
+    expect(summary.totals.commission).toBe("0.00");
+    expect(summary.totals.ordersCount).toBe(4);
+    // Day counts are summed, so they are named for the day they came from —
+    // never dressed up as distinct people.
+    expect(summary.totals.customerDays).toBe(2);
+
+    const [day] = summary.days;
+    expect(day.day).toBe("2026-09-29");
+    expect(day.gmv).toBe("1500.00");
+    expect(day.commissionRatePercent).toBe("0.00");
+    expect(day.activeCustomers).toBe(1);
+  });
+
+  it("asks for the bare endpoint when no range is given", async () => {
+    const { fetchMock } = mockFetch(SUMMARY_PAYLOAD);
+    await fetchStaffAnalyticsSummary();
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/v1/admin/analytics/summary/"
+    );
+  });
+
+  it("maps the store leaderboard, seller-funded discount included", async () => {
+    const { fetchMock } = mockFetch({
+      start: "2026-09-01",
+      end: "2026-09-30",
+      items: [
+        {
+          store_id: 8,
+          store__name: "Ilocos Weavers",
+          store__slug: "ilocos-weavers",
+          orders_count: 1,
+          units_sold: 1,
+          gross_sales: "1500.00",
+          merchandise: "1500.00",
+          seller_funded_discount: "0.00",
+          captured_total: "0.00",
+          refunded_total: "0.00",
+          revenue: "0.00",
+          commission_base: "0.00",
+          commission: "0.00",
+        },
+      ],
+    });
+    const rows = await fetchStaffAnalyticsStores({
+      from: "2026-09-01",
+      to: "2026-09-30",
+      limit: 10,
+    });
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain("/api/v1/admin/analytics/stores/?");
+    expect(url).toContain("from=2026-09-01");
+    expect(url).toContain("limit=10");
+
+    const [row] = rows;
+    expect(row.storeId).toBe(8);
+    expect(row.storeName).toBe("Ilocos Weavers");
+    expect(row.storeSlug).toBe("ilocos-weavers");
+    // The discount the store itself funded is the figure the commission base
+    // was cut against, so it travels with the row rather than being inferred.
+    expect(row.sellerFundedDiscount).toBe("0.00");
+    expect(row.commissionBase).toBe("0.00");
+  });
+
+  it("maps product activity rows", async () => {
+    const { fetchMock } = mockFetch({
+      start: "2026-09-01",
+      end: "2026-09-30",
+      items: [
+        {
+          product_id: 7,
+          product__title: "Inabel Woven Throw Blanket",
+          store_id: 8,
+          store__name: "Ilocos Weavers",
+          units_sold: 1,
+          orders_count: 1,
+          merchandise: "1500.00",
+        },
+      ],
+    });
+    const rows = await fetchStaffAnalyticsProducts({
+      from: "2026-09-01",
+      to: "2026-09-30",
+      limit: 10,
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toContain(
+      "/api/v1/admin/analytics/products/"
+    );
+    const [row] = rows;
+    expect(row.productId).toBe(7);
+    expect(row.productTitle).toBe("Inabel Woven Throw Blanket");
+    expect(row.storeName).toBe("Ilocos Weavers");
+    expect(row.merchandise).toBe("1500.00");
+  });
+
+  it("renders zeroes, not undefined, when a range has no rows at all", async () => {
+    mockFetch({ start: "2026-09-01", end: "2026-09-30", totals: {}, days: [] });
+    const summary = await fetchStaffAnalyticsSummary();
+    expect(summary.totals.gmv).toBe("0.00");
+    expect(summary.totals.ordersCount).toBe(0);
+    expect(summary.totals.customerDays).toBe(0);
+    expect(summary.totals.start).toBeNull();
+    expect(summary.days).toEqual([]);
+
+    const { fetchMock } = mockFetch({ start: "2026-09-01", end: "2026-09-30" });
+    expect(await fetchStaffAnalyticsStores()).toEqual([]);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admin/analytics/stores/");
+  });
+});
+

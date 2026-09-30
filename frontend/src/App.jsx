@@ -44,6 +44,7 @@ import { StaffPayments } from "./routes/staff/StaffPayments";
 import { StaffReviews } from "./routes/staff/StaffReviews";
 import { StaffSettings } from "./routes/staff/StaffSettings";
 import { StaffCampaigns } from "./routes/staff/StaffCampaigns";
+import { StaffAnalytics } from "./routes/staff/StaffAnalytics";
 
 function App() {
   return (
@@ -161,6 +162,7 @@ function App() {
                 <Route path="orders" element={<StaffOrders />} />
                 <Route path="payments" element={<StaffPayments />} />
                 <Route path="campaigns" element={<StaffCampaigns />} />
+                <Route path="analytics" element={<StaffAnalytics />} />
                 <Route path="reviews" element={<StaffReviews />} />
                 <Route path="settings" element={<StaffSettings />} />
                 <Route path="users" element={<StaffUsers />} />

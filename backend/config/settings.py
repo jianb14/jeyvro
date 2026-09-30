@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'apps.notifications',
     'apps.promotions',
     'apps.resolutions',
+    'apps.reporting',
     'apps.search',
 ]
 

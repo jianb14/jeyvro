@@ -717,3 +717,123 @@ export async function updateStaffCommission(patch) {
   );
 }
 
+// --- 19.1 Analytics & reporting --------------------------------------------
+
+const ANALYTICS = "/api/v1/admin/analytics";
+
+// Every figure below arrives pre-computed from the reporting aggregates: the
+// dashboard renders what the server derived and never re-derives a number of
+// its own (marketplace-admin rule 5). Money stays a string — never a float.
+
+export function mapPlatformTotals(totals) {
+  return {
+    start: totals.start ?? null,
+    end: totals.end ?? null,
+    ordersCount: totals.orders_count ?? 0,
+    ordersCancelled: totals.orders_cancelled ?? 0,
+    ordersPaid: totals.orders_paid ?? 0,
+    unitsSold: totals.units_sold ?? 0,
+    productsSold: totals.products_sold ?? 0,
+    // Named for what they are: sums of the daily active counts, not distinct
+    // people — a customer who ordered on three days is three customer-days.
+    customerDays: totals.customer_days ?? 0,
+    sellerDays: totals.seller_days ?? 0,
+    gmv: totals.gmv ?? "0.00",
+    merchandise: totals.merchandise ?? "0.00",
+    shipping: totals.shipping ?? "0.00",
+    discounts: totals.discounts ?? "0.00",
+    capturedTotal: totals.captured_total ?? "0.00",
+    refundedTotal: totals.refunded_total ?? "0.00",
+    revenue: totals.revenue ?? "0.00",
+    commissionBase: totals.commission_base ?? "0.00",
+    commission: totals.commission ?? "0.00",
+  };
+}
+
+export function mapPlatformDay(day) {
+  return {
+    day: day.day,
+    ordersCount: day.orders_count ?? 0,
+    ordersCancelled: day.orders_cancelled ?? 0,
+    ordersPaid: day.orders_paid ?? 0,
+    unitsSold: day.units_sold ?? 0,
+    productsSold: day.products_sold ?? 0,
+    activeCustomers: day.active_customers ?? 0,
+    activeSellers: day.active_sellers ?? 0,
+    gmv: day.gmv ?? "0.00",
+    merchandise: day.merchandise ?? "0.00",
+    shipping: day.shipping ?? "0.00",
+    discounts: day.discounts ?? "0.00",
+    capturedTotal: day.captured_total ?? "0.00",
+    refundedTotal: day.refunded_total ?? "0.00",
+    revenue: day.revenue ?? "0.00",
+    commissionBase: day.commission_base ?? "0.00",
+    commission: day.commission ?? "0.00",
+    commissionRatePercent: day.commission_rate_percent ?? "0.00",
+  };
+}
+
+export function mapStoreLeaderRow(row) {
+  return {
+    storeId: row.store_id,
+    storeName: row.store__name ?? "",
+    storeSlug: row.store__slug ?? "",
+    ordersCount: row.orders_count ?? 0,
+    unitsSold: row.units_sold ?? 0,
+    grossSales: row.gross_sales ?? "0.00",
+    merchandise: row.merchandise ?? "0.00",
+    sellerFundedDiscount: row.seller_funded_discount ?? "0.00",
+    capturedTotal: row.captured_total ?? "0.00",
+    refundedTotal: row.refunded_total ?? "0.00",
+    revenue: row.revenue ?? "0.00",
+    commissionBase: row.commission_base ?? "0.00",
+    commission: row.commission ?? "0.00",
+  };
+}
+
+export function mapTopProductRow(row) {
+  return {
+    productId: row.product_id,
+    productTitle: row.product__title ?? "",
+    storeId: row.store_id,
+    storeName: row.store__name ?? "",
+    unitsSold: row.units_sold ?? 0,
+    ordersCount: row.orders_count ?? 0,
+    merchandise: row.merchandise ?? "0.00",
+  };
+}
+
+/** GET /api/v1/admin/analytics/summary/ — totals + the daily series. */
+export async function fetchStaffAnalyticsSummary({ from = "", to = "" } = {}) {
+  const query = buildQuery({ from, to });
+  const data = await request(ANALYTICS, `/summary/${query}`);
+  return {
+    start: data.start ?? null,
+    end: data.end ?? null,
+    totals: mapPlatformTotals(data.totals ?? {}),
+    days: (data.days ?? []).map(mapPlatformDay),
+  };
+}
+
+/** GET /api/v1/admin/analytics/stores/ — the store leaderboard. */
+export async function fetchStaffAnalyticsStores({
+  from = "",
+  to = "",
+  limit = "",
+} = {}) {
+  const query = buildQuery({ from, to, limit });
+  const data = await request(ANALYTICS, `/stores/${query}`);
+  return (data.items ?? []).map(mapStoreLeaderRow);
+}
+
+/** GET /api/v1/admin/analytics/products/ — product activity. */
+export async function fetchStaffAnalyticsProducts({
+  from = "",
+  to = "",
+  limit = "",
+} = {}) {
+  const query = buildQuery({ from, to, limit });
+  const data = await request(ANALYTICS, `/products/${query}`);
+  return (data.items ?? []).map(mapTopProductRow);
+}
+

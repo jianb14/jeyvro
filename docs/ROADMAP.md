@@ -1916,14 +1916,52 @@ Provide useful operational and business intelligence.
 
 ### 19.1 Platform analytics
 
--   [ ] Gross merchandise value
--   [ ] Orders
--   [ ] Revenue
--   [ ] Commission
--   [ ] Refunds
--   [ ] Active customers
--   [ ] Active sellers
--   [ ] Product activity
+-   [x] Gross merchandise value
+-   [x] Orders
+-   [x] Revenue
+-   [x] Commission
+-   [x] Refunds
+-   [x] Active customers
+-   [x] Active sellers
+-   [x] Product activity
+
+> **Backend (done):** `apps.reporting` holds three derived rollup tables
+> (`DailyPlatformMetric`, `DailyStoreMetric`, `DailyProductMetric`) and
+> `manage.py rebuild_reporting [--from --to]` is their **only** writer — a
+> dashboard never queries the transactional tables (§17), and every figure is a
+> pure function of the records, so the rebuild is idempotent by construction
+> (verified on the real database, not just fixtures: same rows, same primary
+> keys, and 28,578.00 GMV reconciling exactly against the non-cancelled
+> `grand_total` of the orders it describes).
+>
+> The definitions are pinned to §6 v1.16 and nothing derives them twice: **GMV**
+> is the `grand_total` of orders placed whose status is not cancelled;
+> **revenue** is the ledger's capture credits minus its refund debits;
+> **commission** is the store slice's merchandise (its own net subtotal, so the
+> discounts *that store* funded are the only ones removed, shipping excluded)
+> times `PlatformSettings.commission_rate_percent` **as it stood when the money
+> was captured** — the applied rate is stored on the row, so a later rate change
+> cannot rewrite settled history, and the dev database shows the rule biting:
+> 28,578.00 of GMV with nothing captured earns 0.00 of commission, because
+> commission follows the ledger and not the badge. Active customers/sellers are
+> per-day counts and are exposed as such (`customer_days`/`seller_days`), since
+> summing days cannot honestly be called distinct people.
+>
+> Reads are group-gated per §4 and read-only: `summary`, `stores` and
+> `stores/<id>` belong to `finance`/`administrator`; `products` is open to the
+> read-only oversight groups too, and the whole matrix was exercised over HTTP
+> against the dev host — finance and administrator 200 everywhere, support and
+> operations 200 on product activity and 403 on the money three, a signed-in
+> customer and an anonymous visitor 403 everywhere, and a reversed, malformed or
+> over-long range a 400 rather than a silently clamped answer.
+> Covered by `backend/tests/test_reporting.py` (9 tests); the suite that
+> contains it is 302 tests, green in 87s.
+>
+> **Frontend (done):** `/staff/analytics` reads the aggregates through
+> `src/data/staff.js` and adds no arithmetic of its own. The link is shown to
+> every group that may read *something* on the page, and the page hides the
+> money cards rather than the link, so a support operator still gets product
+> activity instead of a guaranteed 403.
 
 ### 19.2 Seller analytics
 

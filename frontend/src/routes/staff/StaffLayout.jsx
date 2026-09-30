@@ -19,6 +19,7 @@ import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../features/auth/AuthContext";
 import {
+  ChartIcon,
   ClockIcon,
   CreditCardIcon,
   InboxIcon,
@@ -48,6 +49,11 @@ const NAV = [
   { to: "/staff/orders", label: "Orders", icon: ShoppingBagIcon, groups: ["support", "finance", "operations", "administrator"], section: "Orders & money" },
   { to: "/staff/payments", label: "Payments", icon: CreditCardIcon, groups: ["support", "finance", "administrator"], section: "Orders & money" },
   { to: "/staff/campaigns", label: "Campaigns & promos", icon: MegaphoneIcon, groups: ["finance", "operations", "administrator"], section: "Orders & money" },
+  // The groups here are the union of the two read gates (§19.1): finance and
+  // administrator see the whole page, support and operations see product
+  // activity. The page itself hides the money cards rather than the link, so a
+  // support operator still gets the half they may read.
+  { to: "/staff/analytics", label: "Analytics", icon: ChartIcon, groups: ["support", "operations", "finance", "administrator"], section: "Orders & money" },
   { to: "/staff/users", label: "Users", icon: UserIcon, section: "People" },
   { to: "/staff/team", label: "Staff & roles", icon: ShieldCheckIcon, administratorOnly: true, section: "People" },
   { to: "/staff/settings", label: "Platform settings", icon: SettingsIcon, groups: ["administrator", "finance", "operations"], section: "System" },
